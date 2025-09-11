@@ -1,0 +1,127 @@
+{
+  "address": "",
+  "city": "College Park",
+  "country": "United States",
+  "education": [
+    {
+      "degree": "Master of Science in Data Science",
+      "gpa": "3.62",
+      "graduation_year": "2026",
+      "institution": "University of Maryland",
+      "relevant_courses": []
+    },
+    {
+      "degree": "Bachelor of Engineering in Computer Science",
+      "gpa": "3.52",
+      "graduation_year": "2024",
+      "institution": "A.P. Shah Institute of Technology",
+      "relevant_courses": []
+    }
+  ],
+  "email": "chordiasahil24@gmail.com",
+  "first name": "Sahil",
+  "github": "github/protocorn",
+  "last name": "Chordia",
+  "linkedin": "linkedin/in/sahil–chordia",
+  "other links": [
+    "www.sahil-chordia.com"
+  ],
+  "phone": "(240) 610-1453",
+  "projects": [
+    {
+      "description": "Built an AI assistant that ingests diverse content (social media, PDFs, images) to generate personalized LLMs\nEngineered a hybrid retrieval pipeline (70% expanded query + 30% original), improving RAG accuracy.\nIntegrated Gemini 2.0 Flash with Pinecone for dynamic vector search and real-time responses.",
+      "features": [],
+      "github_url": "",
+      "live_url": "mimikree.com",
+      "name": "Mimikree - Personalized AI Assistant",
+      "technologies": []
+    },
+    {
+      "description": "Led a team of 3 to design a RAG engine generating grant proposals, PPTs, & posts from 1,500+ documents.\nEmbedded text and images (CLIP model + Cloudinary) into Pinecone with metadata for multimodal retrieval.\nDecreased revision time by 60% through AI-assisted selective edits, full-document re-generation from a single prompt, and content suggestions with error detection.",
+      "features": [],
+      "github_url": "",
+      "live_url": "",
+      "name": "AI Document Generator – Capital Area Food Bank AI Challenge",
+      "technologies": []
+    },
+    {
+      "description": "Built privacy-first vector search (FAISS + Sentence Transformers) with intelligent code-aware chunking.\nReduced re-indexing time by ~80% for large repos through caching and parallel indexing.\nIntegrated Ollama Llama3:8B for query expansion, improving semantic relevance by ~20%.",
+      "features": [],
+      "github_url": "",
+      "live_url": "",
+      "name": "Local Document Search Engine",
+      "technologies": []
+    }
+  ],
+  "skills": {
+    "frameworks": [
+      "PyTorch",
+      "TensorFlow",
+      "LangChain",
+      "React.js",
+      "Node.js",
+      "Express.js"
+    ],
+    "languages": [],
+    "programming_languages": [
+      "Python",
+      "JavaScript",
+      "TypeScript"
+    ],
+    "soft_skills": [],
+    "technical": [
+      "AI",
+      "ML",
+      "Data Science",
+      "Vector Search",
+      "Multimodal RAG",
+      "Production Deployment"
+    ],
+    "tools": [
+      "MongoDB",
+      "PostgreSQL",
+      "Pinecone",
+      "FAISS",
+      "Qdrant",
+      "AWS",
+      "Docker",
+      "Git",
+      "Streamlit",
+      "Ollama",
+      "Gemini API",
+      "CLIP"
+    ]
+  },
+  "state": "Maryland",
+  "summary": "AI/ML Engineer & Data Science M.S. candidate delivering AI-powered search and automation systems with 50–80% efficiency gains. Skilled in vector search, multimodal RAG, and production deployment.",
+  "work experience": [
+    {
+      "achievements": [
+        "Automated AT tool discovery via two-pass Gemini 2.0 Pro pipeline, cutting manual verification time by 50%",
+        "Resolved 95% of detected dataset inconsistencies (mislabeled categories, duplicates, outdated entries) by automating enrichment workflows for a database of 300+ tools.",
+        "Built an inclusive chatbot (Ollama Gemma2:9B), improving ambiguous query handling accuracy to 90%",
+        "Boosted search by integrating cosine similarity–based vector search (Qdrant) for AT tool recommendations.",
+        "Reduced QA cycles from days to under 2 hours by developing reusable AI audit scripts."
+      ],
+      "company": "Raising The Floor – Nonprofit focused on accessibility technology",
+      "description": "",
+      "end_date": "2025-08-22",
+      "start_date": "2025-06-18",
+      "title": "AI Intern (Full Time)"
+    }
+  ],
+  "zip": "20740",
+  "country_code": "US",
+  "state_code": "MD",
+  "resume_url": "https://docs.google.com/document/d/1flfyzOJ_5sOklftoq76HLErYDmEYYdOsEsAB4G4ZMIs/edit",
+  "visa sponsorship": "Required",
+  "preferred location": [
+    "New York",
+    "San Fransico",
+    "Texas",
+    "Maryland",
+    "DMV Area",
+    "Chicago",
+    "Seattle"
+  ]
+}
