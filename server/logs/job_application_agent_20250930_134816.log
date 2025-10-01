@@ -1,0 +1,592 @@
+2025-09-30 13:48:16 | INFO | root | setup_file_logging:88 | File logging configured. Logs will be saved to: logs\job_application_agent_20250930_134816.log
+2025-09-30 13:48:16.916 | INFO     | logging_config:setup_file_logging:90 - Loguru logging configured. Logs will be saved to: logs\job_application_agent_20250930_134816.log
+2025-09-30 13:48:16 | INFO | root | <module>:1412 | API Server starting. Logs will be saved to: logs\job_application_agent_20250930_134816.log
+2025-09-30 13:48:16 | INFO | root | <module>:1420 | 🔧 Running in DEVELOPMENT mode
+2025-09-30 13:48:16 | INFO | werkzeug | _log:97 | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://10.4.10.146:5000
+2025-09-30 13:48:16 | INFO | werkzeug | _log:97 | [33mPress CTRL+C to quit[0m
+2025-09-30 13:48:21 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:21] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 13:48:21 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:21] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 13:48:23 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:23] "OPTIONS /api/apply-job HTTP/1.1" 200 -
+2025-09-30 13:48:23 | INFO | root | apply_job:735 | Received payload - job_url: https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea, resume_url: https://docs.google.com/document/d/1flfyzOJ_5sOklftoq76HLErYDmEYYdOsEsAB4G4ZMIs/edit, use_tailored: False, tailored_resume_url: 
+2025-09-30 13:48:23 | INFO | root | apply_job:744 | Starting job application for: https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea
+2025-09-30 13:48:23 | INFO | root | apply_job:745 | Using resume: https://docs.google.com/document/d/1flfyzOJ_5sOklftoq76HLErYDmEYYdOsEsAB4G4ZMIs/edit
+2025-09-30 13:48:23 | INFO | root | apply_job:765 | Job ba9ddc06-23c1-4d7f-a3cd-3b4ff1b2a420 stored in JOBS dictionary
+2025-09-30 13:48:23 | INFO | root | apply_job:766 | JOBS keys: ['ba9ddc06-23c1-4d7f-a3cd-3b4ff1b2a420']
+2025-09-30 13:48:23 | INFO | root | run_async_job:859 | Starting async job thread for ba9ddc06-23c1-4d7f-a3cd-3b4ff1b2a420
+2025-09-30 13:48:23 | INFO | root | apply_job:879 | Job thread started for ba9ddc06-23c1-4d7f-a3cd-3b4ff1b2a420
+2025-09-30 13:48:23 | DEBUG | asyncio | __init__:634 | Using proactor: IocpProactor
+2025-09-30 13:48:23 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:23] "POST /api/apply-job HTTP/1.1" 200 -
+2025-09-30 13:48:23 | INFO | root | run_job_application:784 | Job ba9ddc06-23c1-4d7f-a3cd-3b4ff1b2a420 starting execution
+2025-09-30 13:48:24 | INFO | job_application_agent | process_link:197 | Processing link with refactored agent: https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea
+2025-09-30 13:48:24.385 | DEBUG    | components.session.session_manager:save_sessions:142 - Saved 1 sessions to storage
+2025-09-30 13:48:24.385 | INFO     | components.session.session_manager:create_session:291 - Created new session 256a983b-0a81-4dd0-9ffc-fbe94e774400 for https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea
+2025-09-30 13:48:24 | INFO | job_application_agent | process_link:203 | Created session 256a983b-0a81-4dd0-9ffc-fbe94e774400 for https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea
+2025-09-30 13:48:24 | INFO | components.action_recorder | start_recording:56 | Started action recording for session 256a983b-0a81-4dd0-9ffc-fbe94e774400
+2025-09-30 13:48:24 | DEBUG | components.action_recorder | record_navigation:72 | Recorded navigation to: https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea
+2025-09-30 13:48:24.388 | INFO     | components.session.session_manager:start_action_recording:151 - Started action recording for session 256a983b-0a81-4dd0-9ffc-fbe94e774400
+2025-09-30 13:48:24.710 | DEBUG    | components.session.session_manager:save_sessions:142 - Saved 1 sessions to storage
+2025-09-30 13:48:24.710 | DEBUG    | components.session.session_manager:update_session:307 - Updated session 256a983b-0a81-4dd0-9ffc-fbe94e774400
+2025-09-30 13:48:24.711 | INFO     | components.brains.gemini_button_brain:_configure_gemini:33 - ✅ Gemini Button Brain configured from environment
+2025-09-30 13:48:24.711 | INFO     | components.brains.gemini_form_brain:__init__:22 - ✅ Gemini Form Brain configured successfully.
+2025-09-30 13:48:24.711 | INFO     | components.brains.gemini_field_mapper:_configure_gemini:110 - ✅ Gemini API configured from environment
+2025-09-30 13:48:24 | INFO | job_application_agent | _initialize_components_for_context:95 | 🎬 Form filler initialized with action recorder for context: Page
+2025-09-30 13:48:24.712 | INFO     | components.brains.gemini_button_brain:_configure_gemini:33 - ✅ Gemini Button Brain configured from environment
+2025-09-30 13:48:24.712 | INFO     | components.brains.gemini_button_brain:_configure_gemini:33 - ✅ Gemini Button Brain configured from environment
+2025-09-30 13:48:24.712 | INFO     | components.brains.gemini_page_analyzer:_configure_gemini:32 - ✅ Gemini Page Analyzer configured successfully.
+2025-09-30 13:48:28 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:28] "GET /api/sessions/dashboard HTTP/1.1" 200 -
+2025-09-30 13:48:28 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:28] "GET /api/sessions/dashboard HTTP/1.1" 200 -
+2025-09-30 13:48:29 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:29] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:29 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:29] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:29 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:29] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:30 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:30] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:30 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:30] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:30 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:30] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:32 | DEBUG | components.action_recorder | record_navigation:72 | Recorded navigation to: https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea
+2025-09-30 13:48:32 | INFO | job_application_agent | process_link:233 | 🎬 Recorded initial navigation to: https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea
+2025-09-30 13:48:33 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:33] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:33 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:33] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:35 | INFO | components.router.state_machine | run:71 | 🚀 Entering state: start
+2025-09-30 13:48:35 | INFO | job_application_agent | _load_profile_data:1998 | ✅ Successfully loaded profile for: Sahil Chordia
+2025-09-30 13:48:35 | INFO | job_application_agent | _load_profile_data:1999 | 📧 Email: chordiasahil2412@gmail.com
+2025-09-30 13:48:35 | INFO | job_application_agent | _load_profile_data:2000 | 📱 Phone: (240) 610-1453
+2025-09-30 13:48:35 | INFO | job_application_agent | _load_profile_data:2001 | 📄 Resume: C:\Users\proto\Job_Application_Agent\Resumes\Sahil-Chordia-Resume.pdf
+2025-09-30 13:48:35 | INFO | job_application_agent | _load_profile_data:2002 | 🔗 LinkedIn: linkedin/in/sahil–chordia
+2025-09-30 13:48:35 | INFO | job_application_agent | _load_profile_data:2003 | 💻 GitHub: github/protocorn
+2025-09-30 13:48:35 | INFO | job_application_agent | _load_profile_data:2007 | 🎓 Education entries: 2
+2025-09-30 13:48:35 | INFO | job_application_agent | _load_profile_data:2009 |    1. Master of Science at University of Maryland
+2025-09-30 13:48:35 | INFO | job_application_agent | _load_profile_data:2009 |    2. Bachelor of Engineering at A.P. Shah Institute of Technology
+2025-09-30 13:48:35 | INFO | job_application_agent | _load_profile_data:2013 | 💼 Work experience entries: 1
+2025-09-30 13:48:35 | INFO | job_application_agent | _load_profile_data:2015 |    1. AI Intern at Raising The Floor – Nonprofit focused on accessibility technology
+2025-09-30 13:48:35 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:35] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:35 | INFO | job_application_agent | _extract_job_context_from_page:424 | 📋 Extracted job context: ['page_title', 'company', 'title']
+2025-09-30 13:48:35 | INFO | job_application_agent | _state_start:331 | 📋 Extracted job context: Staff Software Engineer, AI Platform - Location
+2025-09-30 13:48:35 | DEBUG | components.router.state_machine | record_transition:28 | History: start -> ai_guided_navigation @ https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea
+2025-09-30 13:48:35 | INFO | components.router.state_machine | run:79 | ✅ State 'start' completed, transitioning to 'ai_guided_navigation'.
+2025-09-30 13:48:35 | INFO | components.router.state_machine | run:71 | 🚀 Entering state: ai_guided_navigation
+2025-09-30 13:48:35 | INFO | job_application_agent | _state_ai_guided_navigation:433 | >>> State: AI_GUIDED_NAVIGATION
+2025-09-30 13:48:35 | INFO | job_application_agent | _state_ai_guided_navigation:436 | 🔍 Universal Check 1: Detecting popups...
+2025-09-30 13:48:36 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:36] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:38 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:38] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:39 | INFO | job_application_agent | _state_ai_guided_navigation:444 | 🔍 Universal Check 2: Checking for authentication pages...
+2025-09-30 13:48:39.030 | INFO     | components.detectors.auth_page_detector:detect:56 - 🔍 Analyzing page for authentication indicators...
+2025-09-30 13:48:39.049 | INFO     | components.detectors.auth_page_detector:detect:87 - No authentication page detected (confidence below threshold).
+2025-09-30 13:48:39 | INFO | job_application_agent | _state_ai_guided_navigation:452 | 🔍 Universal Check 3: Checking for cookie consent...
+2025-09-30 13:48:39 | DEBUG | job_application_agent | _state_ai_guided_navigation:459 | CMP consent check failed: 'CmpConsent' object has no attribute 'detect_and_handle'
+2025-09-30 13:48:39 | INFO | job_application_agent | _state_ai_guided_navigation:465 | 🔍 Pattern Check: Looking for apply button before AI analysis...
+2025-09-30 13:48:39.050 | INFO     | components.detectors.apply_detector:detect:54 - 🕵️‍♂️ Detecting apply button...
+2025-09-30 13:48:39 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:39] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:41 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:41] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:42 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:42] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:44 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:44] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:45 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:45] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:47 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:47] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:48 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:48] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:49.068 | WARNING  | components.detectors.apply_detector:detect:62 - No standard apply button appeared within timeout.
+2025-09-30 13:48:50.614 | WARNING  | components.detectors.apply_detector:detect:71 - Pattern matching failed. Attempting AI fallback.
+2025-09-30 13:48:50 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:50] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:51 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:51] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:53 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:53] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:54 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:54] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:56.562 | INFO     | components.brains.gemini_button_brain:_find_button:73 - 🧠 AI found apply button: Apply for this Job
+2025-09-30 13:48:56.567 | INFO     | components.detectors.apply_detector:detect:74 - ✅ Found apply button via AI fallback. Reason: AI fallback: This element is an 'a' tag containing a 'button' element with the text 'Apply for this Job'. It has a class indicating it's a primary button, which aligns with the call-to-action of starting a job application.  The href attribute also points to an application page.
+2025-09-30 13:48:56 | INFO | job_application_agent | _state_ai_guided_navigation:469 | ✅ Apply button found via pattern matching - proceeding to click
+2025-09-30 13:48:56 | DEBUG | components.router.state_machine | record_transition:28 | History: ai_guided_navigation -> click_apply @ https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea
+2025-09-30 13:48:56 | INFO | components.router.state_machine | run:79 | ✅ State 'ai_guided_navigation' completed, transitioning to 'click_apply'.
+2025-09-30 13:48:56 | INFO | components.router.state_machine | run:71 | 🚀 Entering state: click_apply
+2025-09-30 13:48:56 | INFO | job_application_agent | _state_click_apply:1117 | >>> State: CLICK_APPLY
+2025-09-30 13:48:56 | DEBUG | components.validators.nav_validator | capture_initial_state:24 | Initial pages count: 1
+2025-09-30 13:48:56 | INFO | components.executors.click_executor | execute:44 | ✅ Successfully clicked 'element'.
+2025-09-30 13:48:56 | DEBUG | components.action_recorder | record_click:102 | Recorded click: element
+2025-09-30 13:48:56 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:56] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:57 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:57] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:48:58 | INFO | job_application_agent | _state_click_apply:1137 | 🔍 Checking for new tabs opened by Apply button click...
+2025-09-30 13:48:58 | DEBUG | components.validators.nav_validator | detect_new_tab:74 | Current pages count: 1, Initial: 1
+2025-09-30 13:48:58 | INFO | job_application_agent | _state_click_apply:1148 | 🔍 Checking for popups after Apply button click...
+2025-09-30 13:48:59 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:48:59] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:00 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:00] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:00 | DEBUG | components.action_recorder | record_navigation:72 | Recorded navigation to: https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea/application
+2025-09-30 13:49:00 | INFO | job_application_agent | _state_click_apply:1160 | 🎬 Recorded navigation after apply click: https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea/application
+2025-09-30 13:49:00 | DEBUG | components.router.state_machine | record_transition:28 | History: click_apply -> ai_guided_navigation @ https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea/application
+2025-09-30 13:49:00 | INFO | components.router.state_machine | run:79 | ✅ State 'click_apply' completed, transitioning to 'ai_guided_navigation'.
+2025-09-30 13:49:00 | INFO | components.router.state_machine | run:71 | 🚀 Entering state: ai_guided_navigation
+2025-09-30 13:49:00 | INFO | job_application_agent | _state_ai_guided_navigation:433 | >>> State: AI_GUIDED_NAVIGATION
+2025-09-30 13:49:00 | INFO | job_application_agent | _state_ai_guided_navigation:436 | 🔍 Universal Check 1: Detecting popups...
+2025-09-30 13:49:02 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:02] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:03 | INFO | job_application_agent | _state_ai_guided_navigation:444 | 🔍 Universal Check 2: Checking for authentication pages...
+2025-09-30 13:49:03.002 | INFO     | components.detectors.auth_page_detector:detect:56 - 🔍 Analyzing page for authentication indicators...
+2025-09-30 13:49:03.019 | INFO     | components.detectors.auth_page_detector:detect:87 - No authentication page detected (confidence below threshold).
+2025-09-30 13:49:03 | INFO | job_application_agent | _state_ai_guided_navigation:452 | 🔍 Universal Check 3: Checking for cookie consent...
+2025-09-30 13:49:03 | DEBUG | job_application_agent | _state_ai_guided_navigation:459 | CMP consent check failed: 'CmpConsent' object has no attribute 'detect_and_handle'
+2025-09-30 13:49:03 | INFO | job_application_agent | _state_ai_guided_navigation:475 | 🔍 Skipping apply button check - already in application process
+2025-09-30 13:49:03 | INFO | job_application_agent | _state_ai_guided_navigation:478 | 🧠 AI Analysis: Determining page state and next action...
+2025-09-30 13:49:03 | DEBUG | components.action_recorder | record_page_state:202 | Recorded page state: ai_analysis_checkpoint - Staff Software Engineer, AI Platform @ EvenUp
+2025-09-30 13:49:03 | DEBUG | PIL.PngImagePlugin | call:191 | STREAM b'IHDR' 16 13
+2025-09-30 13:49:03 | DEBUG | PIL.PngImagePlugin | call:191 | STREAM b'IDAT' 41 4096
+2025-09-30 13:49:03 | DEBUG | PIL.PngImagePlugin | call:191 | STREAM b'IDAT' 66363 6
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing BlpImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing BmpImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing BufrStubImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing CurImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing DcxImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing DdsImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing EpsImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing FitsImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing FliImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing FpxImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:366 | Image: failed to import FpxImagePlugin: No module named 'olefile'
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing FtexImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing GbrImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing GifImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing GribStubImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing Hdf5StubImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing IcnsImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing IcoImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing ImImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing ImtImagePlugin
+2025-09-30 13:49:03 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:03] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing IptcImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing JpegImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing Jpeg2KImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing McIdasImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing MicImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:366 | Image: failed to import MicImagePlugin: No module named 'olefile'
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing MpegImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing MpoImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing MspImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing PalmImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing PcdImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing PcxImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing PdfImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing PixarImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing PngImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing PpmImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing PsdImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing QoiImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing SgiImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing SpiderImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing SunImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing TgaImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing TiffImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing WebPImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing WmfImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing XbmImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing XpmImagePlugin
+2025-09-30 13:49:03 | DEBUG | PIL.Image | init:363 | Importing XVThumbImagePlugin
+2025-09-30 13:49:05 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:05] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:06 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:06] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:06 | INFO | job_application_agent | _state_ai_guided_navigation:481 | 🤖 AI Analysis Result: {'action': 'fill_form', 'confidence': 0.9, 'reason': 'The page presents an application form with fields like Name, Preferred Name, Email, and Phone Number that need to be filled. Therefore, the appropriate action is to fill the form.', 'page_type': 'application_form', 'elements_detected': ['Name', 'Preferred Name', 'Email', 'Phone Number', 'Type here...', 'Upload file']}
+2025-09-30 13:49:06 | INFO | job_application_agent | _state_ai_guided_navigation:489 | 📝 AI: Form detected - proceeding to fill
+2025-09-30 13:49:06 | DEBUG | components.router.state_machine | record_transition:28 | History: ai_guided_navigation -> fill_form @ https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea/application
+2025-09-30 13:49:06 | INFO | components.router.state_machine | run:79 | ✅ State 'ai_guided_navigation' completed, transitioning to 'fill_form'.
+2025-09-30 13:49:06 | INFO | components.router.state_machine | run:71 | 🚀 Entering state: fill_form
+2025-09-30 13:49:06 | INFO | job_application_agent | _state_fill_form:1200 | >>> State: ANALYZE_AND_FILL_FORM
+2025-09-30 13:49:06 | INFO | job_application_agent | _state_fill_form:1203 | 🔍 Checking for popups before form filling...
+2025-09-30 13:49:08.301 | INFO     | components.state.field_completion_tracker:set_current_page:24 - 📍 Tracking new page: https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea/application
+2025-09-30 13:49:08 | INFO | job_application_agent | _state_fill_form:1230 | 📊 Form Progress - Iteration 1: 0 fields completed, 0 successful attempts
+2025-09-30 13:49:08 | INFO | job_application_agent | _load_profile_data:1998 | ✅ Successfully loaded profile for: Sahil Chordia
+2025-09-30 13:49:08 | INFO | job_application_agent | _load_profile_data:1999 | 📧 Email: chordiasahil2412@gmail.com
+2025-09-30 13:49:08 | INFO | job_application_agent | _load_profile_data:2000 | 📱 Phone: (240) 610-1453
+2025-09-30 13:49:08 | INFO | job_application_agent | _load_profile_data:2001 | 📄 Resume: C:\Users\proto\Job_Application_Agent\Resumes\Sahil-Chordia-Resume.pdf
+2025-09-30 13:49:08 | INFO | job_application_agent | _load_profile_data:2002 | 🔗 LinkedIn: linkedin/in/sahil–chordia
+2025-09-30 13:49:08 | INFO | job_application_agent | _load_profile_data:2003 | 💻 GitHub: github/protocorn
+2025-09-30 13:49:08 | INFO | job_application_agent | _load_profile_data:2007 | 🎓 Education entries: 2
+2025-09-30 13:49:08 | INFO | job_application_agent | _load_profile_data:2009 |    1. Master of Science at University of Maryland
+2025-09-30 13:49:08 | INFO | job_application_agent | _load_profile_data:2009 |    2. Bachelor of Engineering at A.P. Shah Institute of Technology
+2025-09-30 13:49:08 | INFO | job_application_agent | _load_profile_data:2013 | 💼 Work experience entries: 1
+2025-09-30 13:49:08 | INFO | job_application_agent | _load_profile_data:2015 |    1. AI Intern at Raising The Floor – Nonprofit focused on accessibility technology
+2025-09-30 13:49:08 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:08] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:09 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:09] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:09.357 | INFO     | components.executors.generic_form_filler:fill_form:63 - 🚀 Starting generic form filling process...
+2025-09-30 13:49:09.357 | INFO     | components.state.field_completion_tracker:log_progress:115 - 📊 Form Progress: 0 completed, 0 successful attempts, 0 failed attempts
+2025-09-30 13:49:09.357 | INFO     | components.executors.generic_form_filler:_expand_form_sections_if_needed:768 - 🔍 Preparing section expansion data...
+2025-09-30 13:49:09.357 | INFO     | components.executors.generic_form_filler:_expand_form_sections_if_needed:780 - 📋 Found 2 education entries to potentially add
+2025-09-30 13:49:09.358 | INFO     | components.executors.generic_form_filler:_expand_form_sections_if_needed:780 - 📋 Found 1 work_experience entries to potentially add
+2025-09-30 13:49:09.358 | INFO     | components.executors.generic_form_filler:_expand_form_sections_if_needed:780 - 📋 Found 3 projects entries to potentially add
+2025-09-30 13:49:09.358 | INFO     | components.detectors.sensitive_field_detector:detect:26 - 🛡️ Detecting sensitive fields...
+2025-09-30 13:49:11 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:11] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:12 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:12] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:14 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:14] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:15 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:15] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:17 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:17] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:18 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:18] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:20.713 | DEBUG    | components.executors.field_interactor:upload_resume_if_present:288 - Workday upload strategy failed for button[data-automation-id="select-files"]: Page.wait_for_selector: Timeout 3000ms exceeded.
+Call log:
+  - waiting for locator("button[data-automation-id=\"select-files\"]") to be visible
+
+2025-09-30 13:49:20 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:20] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:21 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:21] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:23.730 | DEBUG    | components.executors.field_interactor:upload_resume_if_present:288 - Workday upload strategy failed for [data-automation-id="file-upload-drop-zone"]: Page.wait_for_selector: Timeout 3000ms exceeded.
+Call log:
+  - waiting for locator("[data-automation-id=\"file-upload-drop-zone\"]") to be visible
+
+2025-09-30 13:49:23 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:23] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:24 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:24] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:26.742 | DEBUG    | components.executors.field_interactor:upload_resume_if_present:288 - Workday upload strategy failed for input[data-automation-id="file-upload-input-ref"]: Page.wait_for_selector: Timeout 3000ms exceeded.
+Call log:
+  - waiting for locator("input[data-automation-id=\"file-upload-input-ref\"]") to be visible
+
+2025-09-30 13:49:26.838 | INFO     | components.executors.field_interactor:upload_resume:148 - ✅ Resume uploaded successfully using file chooser: C:\Users\proto\Job_Application_Agent\Resumes\Sahil-Chordia-Resume.pdf
+2025-09-30 13:49:26.838 | INFO     | components.executors.generic_form_filler:_decide_next_action:136 - ✅ Resume uploaded directly (avoiding autofill)
+2025-09-30 13:49:26.839 | INFO     | components.executors.generic_form_filler:_fill_remaining_fields:166 - Scanning for remaining fields to fill...
+2025-09-30 13:49:26.839 | INFO     | components.executors.generic_form_filler:_fill_all_fields_sequentially:171 - Executing sequential field filling strategy (Patterns -> Fast Mapping -> AI).
+2025-09-30 13:49:26 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:26] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:27 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:27] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:27.912 | INFO     | components.executors.generic_form_filler:_fill_with_patterns:233 - Found match for 'email' (Label: 'Email')
+2025-09-30 13:49:27.912 | DEBUG    | components.executors.field_interactor:fill_field:22 - Interactor filling 'Email' (Category: email_input)
+2025-09-30 13:49:27 | DEBUG | components.action_recorder | record_enhanced_field_interaction:257 | Recorded enhanced field interaction: Email = chordiasahil2412@gmail.com
+2025-09-30 13:49:27.928 | DEBUG    | components.executors.field_interactor:fill_field:119 - 🎬 Recorded field interaction: Email = chordiasahil2412@gmail.com
+2025-09-30 13:49:27.930 | INFO     | components.executors.generic_form_filler:_fill_with_patterns:233 - Found match for 'phone' (Label: 'Phone Number')
+2025-09-30 13:49:27.931 | DEBUG    | components.executors.field_interactor:fill_field:22 - Interactor filling 'Phone Number' (Category: tel_input)
+2025-09-30 13:49:27 | DEBUG | components.action_recorder | record_enhanced_field_interaction:257 | Recorded enhanced field interaction: Phone Number = (240) 610-1453
+2025-09-30 13:49:27.951 | DEBUG    | components.executors.field_interactor:fill_field:119 - 🎬 Recorded field interaction: Phone Number = (240) 610-1453
+2025-09-30 13:49:27.951 | INFO     | components.executors.generic_form_filler:_fill_all_fields_sequentially:175 - 📊 Pattern matching filled 2 fields.
+2025-09-30 13:49:27.952 | INFO     | components.executors.generic_form_filler:_fill_with_fast_mapping:251 - ⚡ Starting fast profile mapping...
+2025-09-30 13:49:28.891 | INFO     | components.executors.fast_field_mapper:fast_map_field:208 - ⚡ Fast mapped 'Phone Number' → '(240) 610-1453'
+2025-09-30 13:49:28.891 | INFO     | components.executors.fast_field_mapper:fast_map_field:208 - ⚡ Fast mapped 'Phone Number' → '(240) 610-1453'
+2025-09-30 13:49:28.891 | INFO     | components.executors.fast_field_mapper:fast_map_field:208 - ⚡ Fast mapped 'LinkedIn Profile Link' → 'linkedin/in/sahil–chordia'
+2025-09-30 13:49:28.892 | INFO     | components.executors.fast_field_mapper:fast_map_field:208 - ⚡ Fast mapped 'If hired, in what country will you be based?' → 'United States of America'
+2025-09-30 13:49:28.892 | INFO     | components.executors.fast_field_mapper:batch_map_fields:404 - ⚡ Fast mapper: 4 mapped instantly, 8 need AI
+2025-09-30 13:49:28.892 | DEBUG    | components.executors.field_interactor:fill_field:22 - Interactor filling 'Phone Number' (Category: radio)
+2025-09-30 13:49:28 | DEBUG | components.action_recorder | record_enhanced_field_interaction:257 | Recorded enhanced field interaction: Phone Number = (240) 610-1453
+2025-09-30 13:49:28.923 | DEBUG    | components.executors.field_interactor:fill_field:119 - 🎬 Recorded field interaction: Phone Number = (240) 610-1453
+2025-09-30 13:49:28.924 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Phone Number' = '(240) 610-1453' (ID: name:communicationConsent)
+2025-09-30 13:49:28.924 | INFO     | components.executors.generic_form_filler:_fill_with_fast_mapping:293 - ⚡ Fast filled: Phone Number = (240) 610-1453
+2025-09-30 13:49:28.924 | DEBUG    | components.executors.field_interactor:fill_field:22 - Interactor filling 'LinkedIn Profile Link' (Category: text_input)
+2025-09-30 13:49:28 | DEBUG | components.action_recorder | record_enhanced_field_interaction:257 | Recorded enhanced field interaction: LinkedIn Profile Link = linkedin/in/sahil–chordia
+2025-09-30 13:49:28.941 | DEBUG    | components.executors.field_interactor:fill_field:119 - 🎬 Recorded field interaction: LinkedIn Profile Link = linkedin/in/sahil–chordia
+2025-09-30 13:49:28.942 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'LinkedIn Profile Link' = 'linkedin/in/sahil–chordia' (ID: id:8f37eb79-674e-401b-bf3d-b4ba9ae41a10)
+2025-09-30 13:49:28.942 | INFO     | components.executors.generic_form_filler:_fill_with_fast_mapping:293 - ⚡ Fast filled: LinkedIn Profile Link = linkedin/in/sahil–chordia
+2025-09-30 13:49:28.942 | DEBUG    | components.executors.field_interactor:fill_field:22 - Interactor filling 'If hired, in what country will you be based?' (Category: custom_dropdown)
+2025-09-30 13:49:28.953 | DEBUG    | components.executors.field_interactor:_handle_dropdown_selection:688 - Standard select_option failed for 'United States of America'. Trying custom dropdown logic.
+2025-09-30 13:49:29 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:29] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:30.063 | INFO     | components.executors.field_interactor:_handle_dropdown_selection:718 - Typed 'United States of America' into dropdown and pressed Enter.
+2025-09-30 13:49:30 | DEBUG | components.action_recorder | record_enhanced_field_interaction:257 | Recorded enhanced field interaction: If hired, in what country will you be based? = United States of America
+2025-09-30 13:49:30.067 | DEBUG    | components.executors.field_interactor:fill_field:119 - 🎬 Recorded field interaction: If hired, in what country will you be based? = United States of America
+2025-09-30 13:49:30.067 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'If hired, in what country will you be based?' = 'United States of America' (ID: label:If hired, in what country will you be based?:input:text)
+2025-09-30 13:49:30.068 | INFO     | components.executors.generic_form_filler:_fill_with_fast_mapping:293 - ⚡ Fast filled: If hired, in what country will you be based? = United States of America
+2025-09-30 13:49:30.068 | INFO     | components.executors.generic_form_filler:_fill_with_fast_mapping:298 - ⚡ Fast mapping completed: 3 fields filled instantly
+2025-09-30 13:49:30.068 | INFO     | components.executors.generic_form_filler:_fill_all_fields_sequentially:179 - ⚡ Fast mapping filled 3 fields instantly.
+2025-09-30 13:49:30.068 | INFO     | components.executors.generic_form_filler:_fill_with_ai:311 - Phase 1: Extracting form fields (without expensive dropdown extraction)...
+2025-09-30 13:49:30 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:30] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:31.073 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Phone Number' = '(240) 610-1453'
+2025-09-30 13:49:31.074 | INFO     | components.executors.generic_form_filler:_fill_with_ai:321 - 🎯 After filtering completed fields: 8 fields remaining (was 14)
+2025-09-30 13:49:31.074 | INFO     | components.executors.generic_form_filler:_fill_with_ai:330 - Phase 1b: Extracting dropdown options for remaining fields only...
+2025-09-30 13:49:31.074 | INFO     | components.executors.generic_form_filler:_fill_with_ai:347 - Found 8 unfilled fields for enhanced AI mapping.
+2025-09-30 13:49:31.074 | INFO     | components.executors.generic_form_filler:_fill_with_ai:350 - Phase 2: Categorizing fields by interaction type...
+2025-09-30 13:49:31.074 | INFO     | components.executors.generic_form_filler:_categorize_fields_by_type:1227 - 📊 Field categories: 2 standard, 1 dropdowns, 5 checkboxes, 0 complex
+2025-09-30 13:49:31.074 | INFO     | components.executors.generic_form_filler:_fill_with_ai:354 - Phase 3: Processing each field category with AI...
+2025-09-30 13:49:31.074 | INFO     | components.executors.generic_form_filler:_process_standard_fields:1235 - 🔤 Processing 2 standard text fields...
+2025-09-30 13:49:31.832 | DEBUG    | components.brains.gemini_field_mapper:_parse_comprehensive_mapping_response:401 - Mapped id:_systemfield_name -> SIMPLE: Sahil Chordia
+2025-09-30 13:49:31.832 | DEBUG    | components.brains.gemini_field_mapper:_parse_comprehensive_mapping_response:401 - Mapped id:db984a1f-eb3b-4eb5-b8d0-136fd4340df5 -> SIMPLE: Sahil
+2025-09-30 13:49:31.833 | INFO     | components.brains.gemini_field_mapper:_parse_comprehensive_mapping_response:407 - Successfully parsed 2 field mappings from AI response
+2025-09-30 13:49:31.834 | INFO     | components.brains.gemini_field_mapper:map_fields_to_profile:149 - 🧠 Gemini processed 2 fields: 2 simple, 0 dropdown, 0 manual
+2025-09-30 13:49:31.838 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: _systemfield_name
+2025-09-30 13:49:31.852 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Name' (ID: id:_systemfield_name) - Success: True
+2025-09-30 13:49:31.852 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Name' = 'filled' (ID: id:_systemfield_name)
+2025-09-30 13:49:31.852 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Name - ✅ SUCCESS
+2025-09-30 13:49:31.853 | INFO     | components.executors.generic_form_filler:_process_standard_fields:1256 - ✅ Filled standard field 'Name': Sahil Chordia
+2025-09-30 13:49:31.857 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: db984a1f-eb3b-4eb5-b8d0-136fd4340df5
+2025-09-30 13:49:31.880 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Preferred Name' (ID: id:db984a1f-eb3b-4eb5-b8d0-136fd4340df5) - Success: True
+2025-09-30 13:49:31.881 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Preferred Name' = 'filled' (ID: id:db984a1f-eb3b-4eb5-b8d0-136fd4340df5)
+2025-09-30 13:49:31.882 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Preferred Name - ✅ SUCCESS
+2025-09-30 13:49:31.882 | INFO     | components.executors.generic_form_filler:_process_standard_fields:1256 - ✅ Filled standard field 'Preferred Name': Sahil
+2025-09-30 13:49:31.882 | INFO     | components.executors.generic_form_filler:_process_dropdown_fields:1268 - 📋 Processing 1 dropdown fields with AI...
+2025-09-30 13:49:31.882 | DEBUG    | components.executors.generic_form_filler:_process_dropdown_fields:1284 - 📋 Sending 1 dropdown contexts to AI
+2025-09-30 13:49:31.882 | DEBUG    | components.executors.generic_form_filler:_process_dropdown_fields:1286 -    Context 1: What are your pronouns? [optional] with 0 options
+2025-09-30 13:49:32.754 | DEBUG    | components.executors.generic_form_filler:_get_ai_dropdown_selections:1611 - AI dropdown response: ```json
+{
+  "id:3a490895-e39e-42d0-8429-073ff6802bc7": "Prefer not to say"
+}
+```...
+2025-09-30 13:49:32.754 | INFO     | components.executors.generic_form_filler:_get_ai_dropdown_selections:1622 - 🧠 AI made 1 dropdown selections
+2025-09-30 13:49:32.759 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:466 - Failed to find element by ID 3a490895-e39e-42d0-8429-073ff6802bc7: Locator.is_visible: SyntaxError: Failed to execute 'querySelectorAll' on 'Document': '#3a490895-e39e-42d0-8429-073ff6802bc7' is not a valid selector.
+    at query (<anonymous>:5031:41)
+    at <anonymous>:5041:7
+    at SelectorEvaluatorImpl._cached (<anonymous>:4818:20)
+    at SelectorEvaluatorImpl._queryCSS (<anonymous>:5028:17)
+    at SelectorEvaluatorImpl._querySimple (<anonymous>:4908:19)
+    at <anonymous>:4856:29
+    at SelectorEvaluatorImpl._cached (<anonymous>:4818:20)
+    at SelectorEvaluatorImpl.query (<anonymous>:4849:19)
+    at Object.query (<anonymous>:5063:44)
+    at <anonymous>:5021:21
+Call log:
+    - checking visibility of locator("#3a490895-e39e-42d0-8429-073ff6802bc7").first
+
+2025-09-30 13:49:32.759 | WARNING  | components.executors.generic_form_filler:_get_fresh_element_reference:526 - Could not find fresh element reference for stable_id: id:3a490895-e39e-42d0-8429-073ff6802bc7
+2025-09-30 13:49:32.760 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1319 - ☑️ Processing 5 checkbox/radio fields with AI...
+2025-09-30 13:49:32 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:32] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:33 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:33] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:35 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:35] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:36 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:36] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:36.311 | INFO     | components.executors.generic_form_filler:_get_ai_checkbox_decisions:1718 - 🧠 AI made 5 checkbox decisions
+2025-09-30 13:49:36.315 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 239cdf5b-4454-4313-96de-6256ec9e54d2_d57a7bdb-64e6-4c67-a431-b6c979bc76c7-labeled-radio-0
+2025-09-30 13:49:36.357 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1351 - ✅ AI checked 'Yes, I’m willing to relocate': No preferred locations specified, defaulting to willing to relocate.
+2025-09-30 13:49:36.357 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Yes, I’m willing to relocate' (ID: id:239cdf5b-4454-4313-96de-6256ec9e54d2_d57a7bdb-64e6-4c67-a431-b6c979bc76c7-labeled-radio-0) - Success: True
+2025-09-30 13:49:36.358 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Yes, I’m willing to relocate' = 'checked' (ID: id:239cdf5b-4454-4313-96de-6256ec9e54d2_d57a7bdb-64e6-4c67-a431-b6c979bc76c7-labeled-radio-0)
+2025-09-30 13:49:36.358 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Yes, I’m willing to relocate - ✅ SUCCESS
+2025-09-30 13:49:36.361 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 239cdf5b-4454-4313-96de-6256ec9e54d2_d57a7bdb-64e6-4c67-a431-b6c979bc76c7-labeled-radio-1
+2025-09-30 13:49:36.368 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1368 - ⬜ AI left unchecked 'I’m already based in the San Francisco or Toronto metro area': Candidate is located in College Park, Maryland, not San Francisco or Toronto.
+2025-09-30 13:49:36.368 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'I’m already based in the San Francisco or Toronto metro area' (ID: id:239cdf5b-4454-4313-96de-6256ec9e54d2_d57a7bdb-64e6-4c67-a431-b6c979bc76c7-labeled-radio-1) - Success: True
+2025-09-30 13:49:36.368 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'I’m already based in the San Francisco or Toronto metro area' = 'unchecked' (ID: id:239cdf5b-4454-4313-96de-6256ec9e54d2_d57a7bdb-64e6-4c67-a431-b6c979bc76c7-labeled-radio-1)
+2025-09-30 13:49:36.369 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: I’m already based in the San Francisco or Toronto metro area - ✅ SUCCESS
+2025-09-30 13:49:36.373 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 239cdf5b-4454-4313-96de-6256ec9e54d2_d57a7bdb-64e6-4c67-a431-b6c979bc76c7-labeled-radio-2
+2025-09-30 13:49:36.377 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1368 - ⬜ AI left unchecked 'No, I’m not willing to relocate and not based in San Francisco or Toronto metro area': Since default is set to willing to relocate, this does not need to be checked
+2025-09-30 13:49:36.380 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'No, I’m not willing to relocate and not based in San Francisco or Toronto metro area' (ID: id:239cdf5b-4454-4313-96de-6256ec9e54d2_d57a7bdb-64e6-4c67-a431-b6c979bc76c7-labeled-radio-2) - Success: True
+2025-09-30 13:49:36.380 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'No, I’m not willing to relocate and not based in San Francisco or Toronto metro area' = 'unchecked' (ID: id:239cdf5b-4454-4313-96de-6256ec9e54d2_d57a7bdb-64e6-4c67-a431-b6c979bc76c7-labeled-radio-2)
+2025-09-30 13:49:36.380 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: No, I’m not willing to relocate and not based in San Francisco or Toronto metro area - ✅ SUCCESS
+2025-09-30 13:49:36.385 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 239cdf5b-4454-4313-96de-6256ec9e54d2_c95438a2-e950-4289-a90f-56fa7f636f5d-labeled-radio-0
+2025-09-30 13:49:36.395 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1368 - ⬜ AI left unchecked 'San Francisco, CA, USA': San Francisco not in preferred locations and is not current location.
+2025-09-30 13:49:36.397 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'San Francisco, CA, USA' (ID: id:239cdf5b-4454-4313-96de-6256ec9e54d2_c95438a2-e950-4289-a90f-56fa7f636f5d-labeled-radio-0) - Success: True
+2025-09-30 13:49:36.398 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'San Francisco, CA, USA' = 'unchecked' (ID: id:239cdf5b-4454-4313-96de-6256ec9e54d2_c95438a2-e950-4289-a90f-56fa7f636f5d-labeled-radio-0)
+2025-09-30 13:49:36.398 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: San Francisco, CA, USA - ✅ SUCCESS
+2025-09-30 13:49:36.402 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 239cdf5b-4454-4313-96de-6256ec9e54d2_c95438a2-e950-4289-a90f-56fa7f636f5d-labeled-radio-1
+2025-09-30 13:49:36.406 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1368 - ⬜ AI left unchecked 'Toronto, ON, Canada': Toronto not in preferred locations and is not current location.
+2025-09-30 13:49:36.408 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Toronto, ON, Canada' (ID: id:239cdf5b-4454-4313-96de-6256ec9e54d2_c95438a2-e950-4289-a90f-56fa7f636f5d-labeled-radio-1) - Success: True
+2025-09-30 13:49:36.409 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Toronto, ON, Canada' = 'unchecked' (ID: id:239cdf5b-4454-4313-96de-6256ec9e54d2_c95438a2-e950-4289-a90f-56fa7f636f5d-labeled-radio-1)
+2025-09-30 13:49:36.409 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Toronto, ON, Canada - ✅ SUCCESS
+2025-09-30 13:49:36.409 | INFO     | components.executors.generic_form_filler:_fill_with_ai:370 - ✅ Generic AI processing filled 7 fields successfully
+2025-09-30 13:49:36.410 | INFO     | components.executors.generic_form_filler:_fill_all_fields_sequentially:183 - 🧠 AI mapping filled 7 additional fields.
+2025-09-30 13:49:36.410 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:848 - 🔄 Expanding sections after filling existing fields...
+2025-09-30 13:49:36.411 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:854 - 📝 Processing education sections...
+2025-09-30 13:49:36.657 | DEBUG    | components.executors.generic_form_filler:_count_existing_sections:1060 - Final section count: 1 (capped from 0)
+2025-09-30 13:49:36.657 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:866 - 📊 Found 1 existing education sections, need 2
+2025-09-30 13:49:36.657 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:870 - ➕ Adding education section 2/2
+2025-09-30 13:49:36.673 | WARNING  | components.executors.generic_form_filler:_click_single_add_button:917 - ❌ Could not find Add button for education
+2025-09-30 13:49:36.674 | WARNING  | components.executors.generic_form_filler:_expand_sections_after_filling:875 - ❌ Failed to add education section 2
+2025-09-30 13:49:36.674 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:854 - 📝 Processing work_experience sections...
+2025-09-30 13:49:36.800 | DEBUG    | components.executors.generic_form_filler:_count_existing_sections:1002 - Found 4 job sections using pattern: div[class*="job"]
+2025-09-30 13:49:36.937 | DEBUG    | components.executors.generic_form_filler:_count_existing_sections:1060 - Final section count: 4 (capped from 4)
+2025-09-30 13:49:36.937 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:866 - 📊 Found 4 existing work_experience sections, need 1
+2025-09-30 13:49:36.937 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:854 - 📝 Processing projects sections...
+2025-09-30 13:49:37.087 | DEBUG    | components.executors.generic_form_filler:_count_existing_sections:1060 - Final section count: 1 (capped from 0)
+2025-09-30 13:49:37.087 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:866 - 📊 Found 1 existing projects sections, need 3
+2025-09-30 13:49:37.087 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:870 - ➕ Adding projects section 2/3
+2025-09-30 13:49:37.100 | WARNING  | components.executors.generic_form_filler:_click_single_add_button:917 - ❌ Could not find Add button for projects
+2025-09-30 13:49:37.100 | WARNING  | components.executors.generic_form_filler:_expand_sections_after_filling:875 - ❌ Failed to add projects section 2
+2025-09-30 13:49:37.100 | INFO     | components.executors.generic_form_filler:fill_form:109 - 🏁 Form filling process completed. Success: True
+2025-09-30 13:49:37 | INFO | job_application_agent | _fill_sections_if_needed:1303 | 🔍 Checking for education and work experience sections...
+2025-09-30 13:49:37.101 | INFO     | components.detectors.section_detector:detect:46 - 🔎 Detecting 'education' section...
+2025-09-30 13:49:37.107 | INFO     | components.detectors.section_detector:detect:57 - No 'education' section container found.
+2025-09-30 13:49:37 | INFO | job_application_agent | _fill_sections_if_needed:1321 | 📝 No education section detected
+2025-09-30 13:49:37.107 | INFO     | components.detectors.section_detector:detect:46 - 🔎 Detecting 'work_experience' section...
+2025-09-30 13:49:37.112 | INFO     | components.detectors.section_detector:detect:57 - No 'work_experience' section container found.
+2025-09-30 13:49:37 | INFO | job_application_agent | _fill_sections_if_needed:1339 | 📝 No work experience section detected
+2025-09-30 13:49:37 | DEBUG | components.router.state_machine | record_transition:28 | History: fill_form -> ai_guided_navigation @ https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea/application
+2025-09-30 13:49:37 | INFO | components.router.state_machine | run:79 | ✅ State 'fill_form' completed, transitioning to 'ai_guided_navigation'.
+2025-09-30 13:49:37 | INFO | components.router.state_machine | run:71 | 🚀 Entering state: ai_guided_navigation
+2025-09-30 13:49:37 | INFO | job_application_agent | _state_ai_guided_navigation:433 | >>> State: AI_GUIDED_NAVIGATION
+2025-09-30 13:49:37 | INFO | job_application_agent | _state_ai_guided_navigation:436 | 🔍 Universal Check 1: Detecting popups...
+2025-09-30 13:49:38 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:38] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:39 | INFO | job_application_agent | _state_ai_guided_navigation:444 | 🔍 Universal Check 2: Checking for authentication pages...
+2025-09-30 13:49:39.159 | INFO     | components.detectors.auth_page_detector:detect:56 - 🔍 Analyzing page for authentication indicators...
+2025-09-30 13:49:39.178 | INFO     | components.detectors.auth_page_detector:detect:87 - No authentication page detected (confidence below threshold).
+2025-09-30 13:49:39 | INFO | job_application_agent | _state_ai_guided_navigation:452 | 🔍 Universal Check 3: Checking for cookie consent...
+2025-09-30 13:49:39 | DEBUG | job_application_agent | _state_ai_guided_navigation:459 | CMP consent check failed: 'CmpConsent' object has no attribute 'detect_and_handle'
+2025-09-30 13:49:39 | INFO | job_application_agent | _state_ai_guided_navigation:475 | 🔍 Skipping apply button check - already in application process
+2025-09-30 13:49:39 | INFO | job_application_agent | _state_ai_guided_navigation:478 | 🧠 AI Analysis: Determining page state and next action...
+2025-09-30 13:49:39 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:39] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:39 | DEBUG | components.action_recorder | record_page_state:202 | Recorded page state: ai_analysis_checkpoint - Staff Software Engineer, AI Platform @ EvenUp
+2025-09-30 13:49:39 | DEBUG | PIL.PngImagePlugin | call:191 | STREAM b'IHDR' 16 13
+2025-09-30 13:49:39 | DEBUG | PIL.PngImagePlugin | call:191 | STREAM b'IDAT' 41 4096
+2025-09-30 13:49:39 | DEBUG | PIL.PngImagePlugin | call:191 | STREAM b'IDAT' 72644 6
+2025-09-30 13:49:40 | INFO | job_application_agent | _state_ai_guided_navigation:481 | 🤖 AI Analysis Result: {'action': 'fill_form', 'confidence': 0.95, 'reason': 'The page displays a form with multiple questions (country, employment history, relocation preference, commute ability) requiring user input through text input and radio button selections.', 'page_type': 'application_form', 'elements_detected': ['text input', 'radio buttons', 'questions']}
+2025-09-30 13:49:40 | INFO | job_application_agent | _state_ai_guided_navigation:489 | 📝 AI: Form detected - proceeding to fill
+2025-09-30 13:49:40 | DEBUG | components.router.state_machine | record_transition:28 | History: ai_guided_navigation -> fill_form @ https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea/application
+2025-09-30 13:49:40 | INFO | components.router.state_machine | run:79 | ✅ State 'ai_guided_navigation' completed, transitioning to 'fill_form'.
+2025-09-30 13:49:40 | INFO | components.router.state_machine | run:71 | 🚀 Entering state: fill_form
+2025-09-30 13:49:40 | INFO | job_application_agent | _state_fill_form:1200 | >>> State: ANALYZE_AND_FILL_FORM
+2025-09-30 13:49:40 | INFO | job_application_agent | _state_fill_form:1203 | 🔍 Checking for popups before form filling...
+2025-09-30 13:49:41 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:41] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:42 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:42] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:42 | INFO | job_application_agent | _state_fill_form:1230 | 📊 Form Progress - Iteration 2: 10 fields completed, 7 successful attempts
+2025-09-30 13:49:42 | INFO | job_application_agent | _load_profile_data:1998 | ✅ Successfully loaded profile for: Sahil Chordia
+2025-09-30 13:49:42 | INFO | job_application_agent | _load_profile_data:1999 | 📧 Email: chordiasahil2412@gmail.com
+2025-09-30 13:49:42 | INFO | job_application_agent | _load_profile_data:2000 | 📱 Phone: (240) 610-1453
+2025-09-30 13:49:42 | INFO | job_application_agent | _load_profile_data:2001 | 📄 Resume: C:\Users\proto\Job_Application_Agent\Resumes\Sahil-Chordia-Resume.pdf
+2025-09-30 13:49:42 | INFO | job_application_agent | _load_profile_data:2002 | 🔗 LinkedIn: linkedin/in/sahil–chordia
+2025-09-30 13:49:42 | INFO | job_application_agent | _load_profile_data:2003 | 💻 GitHub: github/protocorn
+2025-09-30 13:49:42 | INFO | job_application_agent | _load_profile_data:2007 | 🎓 Education entries: 2
+2025-09-30 13:49:42 | INFO | job_application_agent | _load_profile_data:2009 |    1. Master of Science at University of Maryland
+2025-09-30 13:49:42 | INFO | job_application_agent | _load_profile_data:2009 |    2. Bachelor of Engineering at A.P. Shah Institute of Technology
+2025-09-30 13:49:42 | INFO | job_application_agent | _load_profile_data:2013 | 💼 Work experience entries: 1
+2025-09-30 13:49:42 | INFO | job_application_agent | _load_profile_data:2015 |    1. AI Intern at Raising The Floor – Nonprofit focused on accessibility technology
+2025-09-30 13:49:43.881 | INFO     | components.executors.generic_form_filler:fill_form:63 - 🚀 Starting generic form filling process...
+2025-09-30 13:49:43.882 | INFO     | components.state.field_completion_tracker:log_progress:115 - 📊 Form Progress: 10 completed, 7 successful attempts, 0 failed attempts
+2025-09-30 13:49:43.882 | INFO     | components.state.field_completion_tracker:log_progress:120 - ✅ Completed fields:
+2025-09-30 13:49:43.882 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Phone Number: (240) 610-1453
+2025-09-30 13:49:43.882 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • LinkedIn Profile Link: linkedin/in/sahil–chordia
+2025-09-30 13:49:43.882 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • If hired, in what country will you be based?: United States of America
+2025-09-30 13:49:43.882 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Name: filled
+2025-09-30 13:49:43.882 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Preferred Name: filled
+2025-09-30 13:49:43.883 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Yes, I’m willing to relocate: checked
+2025-09-30 13:49:43.883 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • I’m already based in the San Francisco or Toronto metro area: unchecked
+2025-09-30 13:49:43.883 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • No, I’m not willing to relocate and not based in San Francisco or Toronto metro area: unchecked
+2025-09-30 13:49:43.883 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • San Francisco, CA, USA: unchecked
+2025-09-30 13:49:43.883 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Toronto, ON, Canada: unchecked
+2025-09-30 13:49:43.883 | INFO     | components.executors.generic_form_filler:_expand_form_sections_if_needed:768 - 🔍 Preparing section expansion data...
+2025-09-30 13:49:43.883 | INFO     | components.executors.generic_form_filler:_expand_form_sections_if_needed:780 - 📋 Found 2 education entries to potentially add
+2025-09-30 13:49:43.884 | INFO     | components.executors.generic_form_filler:_expand_form_sections_if_needed:780 - 📋 Found 1 work_experience entries to potentially add
+2025-09-30 13:49:43.884 | INFO     | components.executors.generic_form_filler:_expand_form_sections_if_needed:780 - 📋 Found 3 projects entries to potentially add
+2025-09-30 13:49:43.884 | INFO     | components.detectors.sensitive_field_detector:detect:26 - 🛡️ Detecting sensitive fields...
+2025-09-30 13:49:44 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:44] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:45 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:45] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:47 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:47] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:48 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:48] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:50 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:50] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:51 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:51] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:52.086 | INFO     | components.executors.field_interactor:_is_resume_already_uploaded:217 - 🔍 Found uploaded file: Sahil-Chordia-Resume.pdf
+2025-09-30 13:49:52.087 | INFO     | components.executors.field_interactor:upload_resume_if_present:245 - ✅ Resume already uploaded, skipping re-upload
+2025-09-30 13:49:52.087 | INFO     | components.executors.generic_form_filler:_decide_next_action:136 - ✅ Resume uploaded directly (avoiding autofill)
+2025-09-30 13:49:52.087 | INFO     | components.executors.generic_form_filler:_fill_remaining_fields:166 - Scanning for remaining fields to fill...
+2025-09-30 13:49:52.087 | INFO     | components.executors.generic_form_filler:_fill_all_fields_sequentially:171 - Executing sequential field filling strategy (Patterns -> Fast Mapping -> AI).
+2025-09-30 13:49:53.037 | DEBUG    | components.executors.generic_form_filler:_fill_with_patterns:230 - Skipping pattern match: 'phone' not suitable for radio field
+2025-09-30 13:49:53.037 | INFO     | components.executors.generic_form_filler:_fill_all_fields_sequentially:175 - 📊 Pattern matching filled 0 fields.
+2025-09-30 13:49:53.039 | INFO     | components.executors.generic_form_filler:_fill_with_fast_mapping:251 - ⚡ Starting fast profile mapping...
+2025-09-30 13:49:53 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:53] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:53.957 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Phone Number' = '(240) 610-1453'
+2025-09-30 13:49:53.958 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'If hired, in what country will you be based?' = 'United States of America'
+2025-09-30 13:49:53.958 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I’m already based in the San Francisco or Toronto metro area' = 'unchecked'
+2025-09-30 13:49:53.958 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'No, I’m not willing to relocate and not based in San Francisco or Toronto metro area' = 'unchecked'
+2025-09-30 13:49:53.959 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'San Francisco, CA, USA' = 'unchecked'
+2025-09-30 13:49:53.959 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Toronto, ON, Canada' = 'unchecked'
+2025-09-30 13:49:53.959 | INFO     | components.executors.fast_field_mapper:batch_map_fields:404 - ⚡ Fast mapper: 0 mapped instantly, 1 need AI
+2025-09-30 13:49:53.959 | INFO     | components.executors.generic_form_filler:_fill_with_fast_mapping:298 - ⚡ Fast mapping completed: 0 fields filled instantly
+2025-09-30 13:49:53.959 | INFO     | components.executors.generic_form_filler:_fill_all_fields_sequentially:179 - ⚡ Fast mapping filled 0 fields instantly.
+2025-09-30 13:49:53.959 | INFO     | components.executors.generic_form_filler:_fill_with_ai:311 - Phase 1: Extracting form fields (without expensive dropdown extraction)...
+2025-09-30 13:49:54 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:54] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:54.912 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Phone Number' = '(240) 610-1453'
+2025-09-30 13:49:54.913 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'If hired, in what country will you be based?' = 'United States of America'
+2025-09-30 13:49:54.913 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I’m already based in the San Francisco or Toronto metro area' = 'unchecked'
+2025-09-30 13:49:54.913 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'No, I’m not willing to relocate and not based in San Francisco or Toronto metro area' = 'unchecked'
+2025-09-30 13:49:54.913 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'San Francisco, CA, USA' = 'unchecked'
+2025-09-30 13:49:54.913 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Toronto, ON, Canada' = 'unchecked'
+2025-09-30 13:49:54.913 | INFO     | components.executors.generic_form_filler:_fill_with_ai:321 - 🎯 After filtering completed fields: 1 fields remaining (was 14)
+2025-09-30 13:49:54.914 | INFO     | components.executors.generic_form_filler:_fill_with_ai:330 - Phase 1b: Extracting dropdown options for remaining fields only...
+2025-09-30 13:49:54.914 | INFO     | components.executors.generic_form_filler:_fill_with_ai:347 - Found 1 unfilled fields for enhanced AI mapping.
+2025-09-30 13:49:54.914 | INFO     | components.executors.generic_form_filler:_fill_with_ai:350 - Phase 2: Categorizing fields by interaction type...
+2025-09-30 13:49:54.914 | INFO     | components.executors.generic_form_filler:_categorize_fields_by_type:1227 - 📊 Field categories: 0 standard, 1 dropdowns, 0 checkboxes, 0 complex
+2025-09-30 13:49:54.914 | INFO     | components.executors.generic_form_filler:_fill_with_ai:354 - Phase 3: Processing each field category with AI...
+2025-09-30 13:49:54.914 | INFO     | components.executors.generic_form_filler:_process_dropdown_fields:1268 - 📋 Processing 1 dropdown fields with AI...
+2025-09-30 13:49:54.914 | DEBUG    | components.executors.generic_form_filler:_process_dropdown_fields:1284 - 📋 Sending 1 dropdown contexts to AI
+2025-09-30 13:49:54.914 | DEBUG    | components.executors.generic_form_filler:_process_dropdown_fields:1286 -    Context 1: What are your pronouns? [optional] with 0 options
+2025-09-30 13:49:55.626 | DEBUG    | components.executors.generic_form_filler:_get_ai_dropdown_selections:1611 - AI dropdown response: ```json
+{
+  "id:3a490895-e39e-42d0-8429-073ff6802bc7": "Prefer not to say"
+}
+```...
+2025-09-30 13:49:55.626 | INFO     | components.executors.generic_form_filler:_get_ai_dropdown_selections:1622 - 🧠 AI made 1 dropdown selections
+2025-09-30 13:49:55.630 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:466 - Failed to find element by ID 3a490895-e39e-42d0-8429-073ff6802bc7: Locator.is_visible: SyntaxError: Failed to execute 'querySelectorAll' on 'Document': '#3a490895-e39e-42d0-8429-073ff6802bc7' is not a valid selector.
+    at query (<anonymous>:5031:41)
+    at <anonymous>:5041:7
+    at SelectorEvaluatorImpl._cached (<anonymous>:4818:20)
+    at SelectorEvaluatorImpl._queryCSS (<anonymous>:5028:17)
+    at SelectorEvaluatorImpl._querySimple (<anonymous>:4908:19)
+    at <anonymous>:4856:29
+    at SelectorEvaluatorImpl._cached (<anonymous>:4818:20)
+    at SelectorEvaluatorImpl.query (<anonymous>:4849:19)
+    at Object.query (<anonymous>:5063:44)
+    at <anonymous>:5021:21
+Call log:
+    - checking visibility of locator("#3a490895-e39e-42d0-8429-073ff6802bc7").first
+
+2025-09-30 13:49:55.630 | WARNING  | components.executors.generic_form_filler:_get_fresh_element_reference:526 - Could not find fresh element reference for stable_id: id:3a490895-e39e-42d0-8429-073ff6802bc7
+2025-09-30 13:49:55.631 | INFO     | components.executors.generic_form_filler:_fill_with_ai:370 - ✅ Generic AI processing filled 0 fields successfully
+2025-09-30 13:49:55.631 | INFO     | components.executors.generic_form_filler:_fill_all_fields_sequentially:183 - 🧠 AI mapping filled 0 additional fields.
+2025-09-30 13:49:55.631 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:848 - 🔄 Expanding sections after filling existing fields...
+2025-09-30 13:49:55.632 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:854 - 📝 Processing education sections...
+2025-09-30 13:49:55.840 | DEBUG    | components.executors.generic_form_filler:_count_existing_sections:1060 - Final section count: 1 (capped from 0)
+2025-09-30 13:49:55.840 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:866 - 📊 Found 1 existing education sections, need 2
+2025-09-30 13:49:55.840 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:870 - ➕ Adding education section 2/2
+2025-09-30 13:49:55.854 | WARNING  | components.executors.generic_form_filler:_click_single_add_button:917 - ❌ Could not find Add button for education
+2025-09-30 13:49:55.854 | WARNING  | components.executors.generic_form_filler:_expand_sections_after_filling:875 - ❌ Failed to add education section 2
+2025-09-30 13:49:55.854 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:854 - 📝 Processing work_experience sections...
+2025-09-30 13:49:55.978 | DEBUG    | components.executors.generic_form_filler:_count_existing_sections:1002 - Found 4 job sections using pattern: div[class*="job"]
+2025-09-30 13:49:56.106 | DEBUG    | components.executors.generic_form_filler:_count_existing_sections:1060 - Final section count: 4 (capped from 4)
+2025-09-30 13:49:56.107 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:866 - 📊 Found 4 existing work_experience sections, need 1
+2025-09-30 13:49:56.107 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:854 - 📝 Processing projects sections...
+2025-09-30 13:49:56.256 | DEBUG    | components.executors.generic_form_filler:_count_existing_sections:1060 - Final section count: 1 (capped from 0)
+2025-09-30 13:49:56.256 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:866 - 📊 Found 1 existing projects sections, need 3
+2025-09-30 13:49:56.256 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:870 - ➕ Adding projects section 2/3
+2025-09-30 13:49:56.313 | WARNING  | components.executors.generic_form_filler:_click_single_add_button:917 - ❌ Could not find Add button for projects
+2025-09-30 13:49:56.314 | WARNING  | components.executors.generic_form_filler:_expand_sections_after_filling:875 - ❌ Failed to add projects section 2
+2025-09-30 13:49:56.314 | INFO     | components.executors.generic_form_filler:fill_form:109 - 🏁 Form filling process completed. Success: False
+2025-09-30 13:49:56 | INFO | job_application_agent | _state_fill_form:1285 | 🎯 Form appears complete: 10 fields filled
+2025-09-30 13:49:56 | INFO | job_application_agent | _state_fill_form:1286 | 👤 Ready for human review and submission
+2025-09-30 13:49:56 | DEBUG | components.router.state_machine | record_transition:28 | History: fill_form -> human_intervention @ https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea/application
+2025-09-30 13:49:56 | INFO | components.router.state_machine | run:79 | ✅ State 'fill_form' completed, transitioning to 'human_intervention'.
+2025-09-30 13:49:56 | INFO | components.router.state_machine | run:71 | 🚀 Entering state: human_intervention
+2025-09-30 13:49:56 | CRITICAL | job_application_agent | _state_human_intervention:1698 | ================================================================================
+2025-09-30 13:49:56.317 | DEBUG    | components.session.session_manager:save_sessions:142 - Saved 1 sessions to storage
+2025-09-30 13:49:56.317 | DEBUG    | components.session.session_manager:update_session:307 - Updated session 256a983b-0a81-4dd0-9ffc-fbe94e774400
+2025-09-30 13:49:56.528 | INFO     | components.session.session_manager:freeze_session:330 - Screenshot saved: C:\Users\proto\Job_Application_Agent\server\sessions\screenshots\session_256a983b-0a81-4dd0-9ffc-fbe94e774400_1759254596.png
+2025-09-30 13:49:56.548 | INFO     | components.session.session_manager:freeze_session:362 - Browser state saved: C:\Users\proto\Job_Application_Agent\server\sessions\browser_states\state_256a983b-0a81-4dd0-9ffc-fbe94e774400.json
+2025-09-30 13:49:56.548 | DEBUG    | components.session.session_manager:freeze_session:382 - Completion calculation: 10 completed / 7 attempted = 100%
+2025-09-30 13:49:56.552 | DEBUG    | components.session.session_manager:save_sessions:142 - Saved 1 sessions to storage
+2025-09-30 13:49:56.552 | INFO     | components.session.session_manager:freeze_session:422 - Session 256a983b-0a81-4dd0-9ffc-fbe94e774400 frozen successfully with 100% completion
+2025-09-30 13:49:56 | INFO | job_application_agent | _state_human_intervention:1724 | Session 256a983b-0a81-4dd0-9ffc-fbe94e774400 frozen before human intervention
+2025-09-30 13:49:56 | INFO | job_application_agent | _notify_intervention_needed:1789 | 🔔 Creating intervention notification for job ba9ddc06-23c1-4d7f-a3cd-3b4ff1b2a420
+2025-09-30 13:49:56 | INFO | job_application_agent | _notify_intervention_needed:1790 | 🔔 Reason: ✅ Form filling complete! Successfully filled 10 fields. Please review the form and submit when ready.
+2025-09-30 13:49:56 | INFO | job_application_agent | _notify_intervention_needed:1796 | 📸 Screenshot captured: 96888 characters
+2025-09-30 13:49:56.621 | INFO     | components.session.session_manager:__init__:114 - ✅ Session storage directories created at: C:\Users\proto\Job_Application_Agent\server\sessions
+2025-09-30 13:49:56.633 | INFO     | components.session.session_manager:load_sessions:131 - Loaded 1 sessions from storage
+2025-09-30 13:49:56 | INFO | job_application_agent | _notify_intervention_needed:1820 | 📡 Intervention stored in INTERVENTIONS for job ba9ddc06-23c1-4d7f-a3cd-3b4ff1b2a420
+2025-09-30 13:49:56 | INFO | job_application_agent | _notify_intervention_needed:1821 | 📡 INTERVENTIONS keys: ['ba9ddc06-23c1-4d7f-a3cd-3b4ff1b2a420']
+2025-09-30 13:49:56 | INFO | job_application_agent | _notify_intervention_needed:1822 | 📡 Intervention data type: manual_action_required
+2025-09-30 13:49:56 | INFO | job_application_agent | _state_human_intervention:1737 | 💾 Session state saved! Browser will stay open for manual completion.
+2025-09-30 13:49:56 | INFO | job_application_agent | _state_human_intervention:1740 | 👤 Browser staying open for human intervention
+2025-09-30 13:49:56.644 | DEBUG    | components.session.session_manager:save_sessions:142 - Saved 1 sessions to storage
+2025-09-30 13:49:56.644 | DEBUG    | components.session.session_manager:update_session:307 - Updated session 256a983b-0a81-4dd0-9ffc-fbe94e774400
+2025-09-30 13:49:56 | DEBUG | components.router.state_machine | record_transition:28 | History: human_intervention -> None @ https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea/application
+2025-09-30 13:49:56 | INFO | components.router.state_machine | run:79 | ✅ State 'human_intervention' completed, transitioning to 'None'.
+2025-09-30 13:49:56 | INFO | components.router.state_machine | run:95 | 🏁 State machine finished. Final state: success
+2025-09-30 13:49:56 | INFO | job_application_agent | process_link:283 | 👤 Keeping browser open indefinitely for human intervention...
+2025-09-30 13:49:56 | INFO | job_application_agent | run_links_with_refactored_agent:2035 | 🔒 Keeping Playwright instance alive for human intervention - browser will stay open
+2025-09-30 13:49:56.646 | DEBUG    | components.session.session_manager:save_sessions:142 - Saved 1 sessions to storage
+2025-09-30 13:49:56.646 | DEBUG    | components.session.session_manager:update_session:307 - Updated session 256a983b-0a81-4dd0-9ffc-fbe94e774400
+2025-09-30 13:49:56 | INFO | root | run_job_application:813 | Updated session 256a983b-0a81-4dd0-9ffc-fbe94e774400 status to completed
+2025-09-30 13:49:56 | INFO | root | run_job_application:815 | Job ba9ddc06-23c1-4d7f-a3cd-3b4ff1b2a420 completed successfully
+2025-09-30 13:49:56 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:56] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:57 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:57] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:57 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:57] "GET /api/job-logs/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:49:57 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:49:57] "GET /api/job-status/256a983b-0a81-4dd0-9ffc-fbe94e774400 HTTP/1.1" 200 -
+2025-09-30 13:50:23 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:50:23] "GET /api/sessions/dashboard HTTP/1.1" 200 -
+2025-09-30 13:50:23 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:50:23] "GET /api/sessions/dashboard HTTP/1.1" 200 -
+2025-09-30 13:50:24 | INFO | root | resume_session_api:1164 | Created resume job 4c8af6e5-4775-4bef-8f70-3f3a47593c59 for session 256a983b-0a81-4dd0-9ffc-fbe94e774400
+2025-09-30 13:50:24 | DEBUG | asyncio | __init__:634 | Using proactor: IocpProactor
+2025-09-30 13:50:24 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:50:24] "POST /api/sessions/256a983b-0a81-4dd0-9ffc-fbe94e774400/resume HTTP/1.1" 200 -
+2025-09-30 13:50:24 | INFO | root | run_resume_job:1181 | Resume job 4c8af6e5-4775-4bef-8f70-3f3a47593c59 starting execution
+2025-09-30 13:50:25.619 | WARNING  | components.session.session_manager:resume_session_with_actions:211 - No action history found for session 256a983b-0a81-4dd0-9ffc-fbe94e774400
+2025-09-30 13:50:25.621 | INFO     | components.session.session_manager:resume_session_with_actions:212 - Checking for saved action log file...
+2025-09-30 13:50:25.683 | INFO     | components.session.session_manager:resume_session:444 - Starting enhanced authentication restoration...
+2025-09-30 13:50:25.683 | INFO     | components.session.session_manager:resume_session:448 - Restoring 2 cookies
+2025-09-30 13:50:25.688 | INFO     | components.session.session_manager:resume_session:451 - ✓ Cookies restored successfully
+2025-09-30 13:50:25.688 | INFO     | components.session.session_manager:resume_session:457 - Restoring localStorage
+2025-09-30 13:50:25.697 | WARNING  | components.session.session_manager:resume_session:462 - Failed to restore localStorage: Page.evaluate: SecurityError: Failed to read the 'localStorage' property from 'Window': Access is denied for this document.
+    at eval (<anonymous>)
+    at UtilityScript.evaluate (<anonymous>:291:30)
+    at UtilityScript.<anonymous> (<anonymous>:1:44)
+2025-09-30 13:50:25.697 | INFO     | components.session.session_manager:resume_session:465 - Restoring sessionStorage
+2025-09-30 13:50:25.701 | WARNING  | components.session.session_manager:resume_session:470 - Failed to restore sessionStorage: Page.evaluate: SecurityError: Failed to read the 'sessionStorage' property from 'Window': Access is denied for this document.
+    at eval (<anonymous>)
+    at UtilityScript.evaluate (<anonymous>:291:30)
+    at UtilityScript.<anonymous> (<anonymous>:1:44)
+2025-09-30 13:50:25.701 | INFO     | components.session.session_manager:resume_session:475 - Navigating to saved URL: https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea/application
+2025-09-30 13:50:26.252 | INFO     | components.session.session_manager:resume_session:480 - ✓ Page navigation completed
+2025-09-30 13:50:28.255 | INFO     | components.session.session_manager:resume_session:498 - Waiting for page to fully settle and authentication to complete...
+2025-09-30 13:50:29 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 13:50:29] "GET /api/sessions HTTP/1.1" 200 -
+2025-09-30 13:50:32.263 | INFO     | components.session.session_manager:_restore_form_fields_comprehensive:520 - Starting comprehensive form field restoration
+2025-09-30 13:50:33.864 | INFO     | components.session.session_manager:_restore_from_completed_fields:565 - Restoring 10 completed fields
+2025-09-30 13:50:34.004 | DEBUG    | components.session.session_manager:_restore_from_completed_fields:597 - ✓ Restored text: Name = filled
+2025-09-30 13:50:34.144 | DEBUG    | components.session.session_manager:_restore_from_completed_fields:597 - ✓ Restored text: Preferred Name = filled
+2025-09-30 13:50:34.148 | DEBUG    | components.session.session_manager:_restore_from_completed_fields:610 - Element not visible: Yes, I’m willing to relocate
+2025-09-30 13:50:34.284 | DEBUG    | components.session.session_manager:_restore_from_page_content:636 - ✓ Restored email from page content: chordiasahil2412@gmail.com
+2025-09-30 13:50:34.425 | DEBUG    | components.session.session_manager:_restore_from_page_content:647 - ✓ Restored phone from page content: (240) 610-1453
+2025-09-30 13:50:34.436 | INFO     | components.session.session_manager:_restore_form_fields_comprehensive:533 - Comprehensive form field restoration completed
+2025-09-30 13:50:34.436 | INFO     | components.session.session_manager:resume_session:504 - Session 256a983b-0a81-4dd0-9ffc-fbe94e774400 resumed successfully
+2025-09-30 13:50:34.437 | DEBUG    | components.session.session_manager:save_sessions:142 - Saved 1 sessions to storage
+2025-09-30 13:50:34 | INFO | root | run_resume_job:1261 | Session 256a983b-0a81-4dd0-9ffc-fbe94e774400 resumed successfully with form restoration
+2025-09-30 13:50:34 | INFO | root | run_resume_job:1264 | Session 256a983b-0a81-4dd0-9ffc-fbe94e774400 - keeping browser open for manual completion

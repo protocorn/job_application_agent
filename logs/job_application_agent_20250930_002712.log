@@ -1,0 +1,522 @@
+2025-09-30 00:27:12 | INFO | root | setup_file_logging:88 | File logging configured. Logs will be saved to: logs\job_application_agent_20250930_002712.log
+2025-09-30 00:27:12.536 | INFO     | logging_config:setup_file_logging:90 - Loguru logging configured. Logs will be saved to: logs\job_application_agent_20250930_002712.log
+2025-09-30 00:27:12 | INFO | root | <module>:1210 | API Server starting. Logs will be saved to: logs\job_application_agent_20250930_002712.log
+2025-09-30 00:27:12 | INFO | root | <module>:1218 | 🔧 Running in DEVELOPMENT mode
+2025-09-30 00:27:12 | INFO | werkzeug | _log:97 | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://10.4.10.146:5000
+2025-09-30 00:27:12 | INFO | werkzeug | _log:97 | [33mPress CTRL+C to quit[0m
+2025-09-30 00:28:39 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:28:39] "[31m[1mGET /api/profile HTTP/1.1[0m" 401 -
+2025-09-30 00:28:40 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:28:40] "[31m[1mGET /api/profile HTTP/1.1[0m" 401 -
+2025-09-30 00:29:58 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:29:58] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:29:58 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:29:58] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:31:19 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:31:19] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:31:19 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:31:19] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:34:35 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:34:35] "OPTIONS /api/process-resume HTTP/1.1" 200 -
+2025-09-30 00:34:35 | DEBUG | urllib3.connectionpool | _new_conn:1051 | Starting new HTTPS connection (1): docs.google.com:443
+2025-09-30 00:34:36 | DEBUG | urllib3.connectionpool | _make_request:546 | https://docs.google.com:443 "GET /document/d/1flfyzOJ_5sOklftoq76HLErYDmEYYdOsEsAB4G4ZMIs/export?format=txt HTTP/11" 307 0
+2025-09-30 00:34:36 | DEBUG | urllib3.connectionpool | _new_conn:1051 | Starting new HTTPS connection (1): doc-0o-bs-docstext.googleusercontent.com:443
+2025-09-30 00:34:36 | DEBUG | urllib3.connectionpool | _make_request:546 | https://doc-0o-bs-docstext.googleusercontent.com:443 "GET /export/e6hpso97lrhpva19l3uocm525o/rfo163nfs1obq0irid8hl1ae5k/1759206875000/106787193062298858211/*/1flfyzOJ_5sOklftoq76HLErYDmEYYdOsEsAB4G4ZMIs?format=txt HTTP/11" 200 None
+2025-09-30 00:34:36 | INFO | root | process_resume:381 | Processing resume with LLM: ﻿Sahil Chordia
+College Park, MD | (240) 610-1453 | chordiasahil24@gmail.com | linkedin/in/sahil–chordia | github/protocorn
+
+PROFILE
+________________
+
+
+AI/ML Engineer & Data Science M.S. candidate delivering AI-powered search and automation systems with 50–80% efficiency gains. Skilled in vector search, multimodal RAG, and production deployment.
+SKILLS
+________________
+
+
+Python, JavaScript, TypeScript | PyTorch, TensorFlow, LangChain | React.js, Node.js, Express.js | MongoDB, PostgreSQL, Pinecone, FAISS, Qdrant | AWS, Docker, Git, Streamlit | Ollama, Gemini API, CLIP
+
+
+EDUCATION
+________________
+
+
+University of Maryland | CGPA: 3.62        College Park, MD
+Master of Science in Data Science        August 2024 - May 2026
+A.P. Shah Institute of Technology | CGPA: 3.52        Thane, MH
+Bachelor of Engineering in Computer Science        June 2020 - May 2024
+
+
+WORK EXPERIENCE
+________________
+
+
+Raising The Floor – Nonprofit focused on accessibility technology        Washington D.C (Remote)
+AI Intern        June 2025 - August 2025
+* Automated AT tool discovery via two-pass Gemini 2.0 Pro pipeline, cutting manual verification time by 50%
+* Resolved 95% of detected dataset inconsistencies (mislabeled categories, duplicates, outdated entries) by automating enrichment workflows for a database of 300+ tools.
+* Built an inclusive chatbot (Ollama Gemma2:9B), improving ambiguous query handling accuracy to 90%
+* Boosted search by integrating cosine similarity–based vector search (Qdrant) for AT tool recommendations.
+* Reduced QA cycles from days to under 2 hours by developing reusable AI audit scripts.
+
+
+PROJECTS
+________________
+
+
+Mimikree - Personalized AI Assistant | mimikree.com        February 2025 - Present
+* Built an AI assistant that ingests diverse content (social media, PDFs, images) to generate personalized LLMs
+* Engineered a hybrid retrieval pipeline (70% expanded query + 30% original), improving RAG accuracy.
+* Integrated Gemini 2.0 Flash with Pinecone for dynamic vector search and real-time responses.
+AI Document Generator – Capital Area Food Bank AI Challenge        February 2025 - May 2025
+* Led a team of 3 to design a RAG engine generating grant proposals, PPTs, & posts from 1,500+ documents.
+* Embedded text and images (CLIP model + Cloudinary) into Pinecone with metadata for multimodal retrieval.
+* Decreased revision time by 60% through AI-assisted selective edits, full-document re-generation from a single prompt, and content suggestions with error detection.
+
+
+Local Document Search Engine        March 2025 - May 2025
+* Built privacy-first vector search (FAISS + Sentence Transformers) with intelligent code-aware chunking.
+* Reduced re-indexing time by ~80% for large repos through caching and parallel indexing.
+* Integrated Ollama Llama3:8B for query expansion, improving semantic relevance by ~20%.
+
+
+PUBLICATIONS
+________________
+
+
+Chordia, S. et al. Cross-Domain Sentiment Analysis: An Extensive Study of Machine Learning and Deep Learning Models, Datasets, and Preprocessing Techniques for Predictive Performance. CSCT 2023,  Link.
+
+
+ACHIEVEMENTS
+________________
+
+
+* Finalist (Top 3%) – i.mobilothon 3.0, Volkswagen Group Technology Solution India (Nov 2023)
+* 3rd Place – Firefly Hackathon, NIT Warangal (Apr 2022)
+2025-09-30 00:34:36 | WARNING | google_genai._api_client | get_env_api_key:104 | Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2025-09-30 00:34:37 | INFO | google_genai.models | generate_content:6513 | AFC is enabled with max remote calls: 10.
+2025-09-30 00:34:37 | DEBUG | httpcore.connection | trace:47 | connect_tcp.started host='generativelanguage.googleapis.com' port=443 local_address=None timeout=None socket_options=None
+2025-09-30 00:34:37 | DEBUG | httpcore.connection | trace:47 | connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x000001D987554FB0>
+2025-09-30 00:34:37 | DEBUG | httpcore.connection | trace:47 | start_tls.started ssl_context=<ssl.SSLContext object at 0x000001D987126F50> server_hostname='generativelanguage.googleapis.com' timeout=None
+2025-09-30 00:34:37 | DEBUG | httpcore.connection | trace:47 | start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x000001D987554D70>
+2025-09-30 00:34:37 | DEBUG | httpcore.http11 | trace:47 | send_request_headers.started request=<Request [b'POST']>
+2025-09-30 00:34:37 | DEBUG | httpcore.http11 | trace:47 | send_request_headers.complete
+2025-09-30 00:34:37 | DEBUG | httpcore.http11 | trace:47 | send_request_body.started request=<Request [b'POST']>
+2025-09-30 00:34:37 | DEBUG | httpcore.http11 | trace:47 | send_request_body.complete
+2025-09-30 00:34:37 | DEBUG | httpcore.http11 | trace:47 | receive_response_headers.started request=<Request [b'POST']>
+2025-09-30 00:34:44 | DEBUG | httpcore.http11 | trace:47 | receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Content-Type', b'application/json; charset=UTF-8'), (b'Vary', b'Origin'), (b'Vary', b'X-Origin'), (b'Vary', b'Referer'), (b'Content-Encoding', b'gzip'), (b'Date', b'Tue, 30 Sep 2025 04:34:44 GMT'), (b'Server', b'scaffolding on HTTPServer2'), (b'X-XSS-Protection', b'0'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Content-Type-Options', b'nosniff'), (b'Server-Timing', b'gfet4t7; dur=7705'), (b'Alt-Svc', b'h3=":443"; ma=2592000,h3-29=":443"; ma=2592000'), (b'Transfer-Encoding', b'chunked')])
+2025-09-30 00:34:44 | INFO | httpx | _send_single_request:1025 | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent "HTTP/1.1 200 OK"
+2025-09-30 00:34:44 | DEBUG | httpcore.http11 | trace:47 | receive_response_body.started request=<Request [b'POST']>
+2025-09-30 00:34:44 | DEBUG | httpcore.http11 | trace:47 | receive_response_body.complete
+2025-09-30 00:34:44 | DEBUG | httpcore.http11 | trace:47 | response_closed.started
+2025-09-30 00:34:44 | DEBUG | httpcore.http11 | trace:47 | response_closed.complete
+2025-09-30 00:34:44 | INFO | google_genai.models | generate_content:6524 | AFC remote call 1 is done.
+2025-09-30 00:34:44 | DEBUG | httpcore.connection | trace:47 | close.started
+2025-09-30 00:34:44 | DEBUG | httpcore.connection | trace:47 | close.complete
+2025-09-30 00:34:44 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:34:44] "POST /api/process-resume HTTP/1.1" 200 -
+2025-09-30 00:35:38 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:35:38] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:35:39 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:35:39] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:36:04 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:36:04] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:36:08 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:36:08] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:36:19 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:36:19] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:36:22 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:36:22] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:36:25 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:36:25] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:36:28 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:36:28] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:36:32 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:36:32] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:36:34 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:36:34] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:36:39 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:36:39] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:36:59 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:36:59] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:36:59 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:36:59] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:37:07 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:37:07] "OPTIONS /api/process-resume HTTP/1.1" 200 -
+2025-09-30 00:37:07 | DEBUG | urllib3.connectionpool | _new_conn:1051 | Starting new HTTPS connection (1): docs.google.com:443
+2025-09-30 00:37:07 | DEBUG | urllib3.connectionpool | _make_request:546 | https://docs.google.com:443 "GET /document/d/1flfyzOJ_5sOklftoq76HLErYDmEYYdOsEsAB4G4ZMIs/export?format=txt HTTP/11" 307 0
+2025-09-30 00:37:07 | DEBUG | urllib3.connectionpool | _new_conn:1051 | Starting new HTTPS connection (1): doc-0o-bs-docstext.googleusercontent.com:443
+2025-09-30 00:37:08 | DEBUG | urllib3.connectionpool | _make_request:546 | https://doc-0o-bs-docstext.googleusercontent.com:443 "GET /export/e6hpso97lrhpva19l3uocm525o/4qbah7p6alhuc9cf32oobqlfdo/1759207025000/106787193062298858211/*/1flfyzOJ_5sOklftoq76HLErYDmEYYdOsEsAB4G4ZMIs?format=txt HTTP/11" 200 None
+2025-09-30 00:37:08 | INFO | root | process_resume:381 | Processing resume with LLM: ﻿Sahil Chordia
+College Park, MD | (240) 610-1453 | chordiasahil24@gmail.com | linkedin/in/sahil–chordia | github/protocorn
+
+PROFILE
+________________
+
+
+AI/ML Engineer & Data Science M.S. candidate delivering AI-powered search and automation systems with 50–80% efficiency gains. Skilled in vector search, multimodal RAG, and production deployment.
+SKILLS
+________________
+
+
+Python, JavaScript, TypeScript | PyTorch, TensorFlow, LangChain | React.js, Node.js, Express.js | MongoDB, PostgreSQL, Pinecone, FAISS, Qdrant | AWS, Docker, Git, Streamlit | Ollama, Gemini API, CLIP
+
+
+EDUCATION
+________________
+
+
+University of Maryland | CGPA: 3.62        College Park, MD
+Master of Science in Data Science        August 2024 - May 2026
+A.P. Shah Institute of Technology | CGPA: 3.52        Thane, MH
+Bachelor of Engineering in Computer Science        June 2020 - May 2024
+
+
+WORK EXPERIENCE
+________________
+
+
+Raising The Floor – Nonprofit focused on accessibility technology        Washington D.C (Remote)
+AI Intern        June 2025 - August 2025
+* Automated AT tool discovery via two-pass Gemini 2.0 Pro pipeline, cutting manual verification time by 50%
+* Resolved 95% of detected dataset inconsistencies (mislabeled categories, duplicates, outdated entries) by automating enrichment workflows for a database of 300+ tools.
+* Built an inclusive chatbot (Ollama Gemma2:9B), improving ambiguous query handling accuracy to 90%
+* Boosted search by integrating cosine similarity–based vector search (Qdrant) for AT tool recommendations.
+* Reduced QA cycles from days to under 2 hours by developing reusable AI audit scripts.
+
+
+PROJECTS
+________________
+
+
+Mimikree - Personalized AI Assistant | mimikree.com        February 2025 - Present
+* Built an AI assistant that ingests diverse content (social media, PDFs, images) to generate personalized LLMs
+* Engineered a hybrid retrieval pipeline (70% expanded query + 30% original), improving RAG accuracy.
+* Integrated Gemini 2.0 Flash with Pinecone for dynamic vector search and real-time responses.
+AI Document Generator – Capital Area Food Bank AI Challenge        February 2025 - May 2025
+* Led a team of 3 to design a RAG engine generating grant proposals, PPTs, & posts from 1,500+ documents.
+* Embedded text and images (CLIP model + Cloudinary) into Pinecone with metadata for multimodal retrieval.
+* Decreased revision time by 60% through AI-assisted selective edits, full-document re-generation from a single prompt, and content suggestions with error detection.
+
+
+Local Document Search Engine        March 2025 - May 2025
+* Built privacy-first vector search (FAISS + Sentence Transformers) with intelligent code-aware chunking.
+* Reduced re-indexing time by ~80% for large repos through caching and parallel indexing.
+* Integrated Ollama Llama3:8B for query expansion, improving semantic relevance by ~20%.
+
+
+PUBLICATIONS
+________________
+
+
+Chordia, S. et al. Cross-Domain Sentiment Analysis: An Extensive Study of Machine Learning and Deep Learning Models, Datasets, and Preprocessing Techniques for Predictive Performance. CSCT 2023,  Link.
+
+
+ACHIEVEMENTS
+________________
+
+
+* Finalist (Top 3%) – i.mobilothon 3.0, Volkswagen Group Technology Solution India (Nov 2023)
+* 3rd Place – Firefly Hackathon, NIT Warangal (Apr 2022)
+2025-09-30 00:37:08 | WARNING | google_genai._api_client | get_env_api_key:104 | Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2025-09-30 00:37:10 | INFO | google_genai.models | generate_content:6513 | AFC is enabled with max remote calls: 10.
+2025-09-30 00:37:10 | DEBUG | httpcore.connection | trace:47 | connect_tcp.started host='generativelanguage.googleapis.com' port=443 local_address=None timeout=None socket_options=None
+2025-09-30 00:37:10 | DEBUG | httpcore.connection | trace:47 | connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x000001D987557860>
+2025-09-30 00:37:10 | DEBUG | httpcore.connection | trace:47 | start_tls.started ssl_context=<ssl.SSLContext object at 0x000001D98714EA50> server_hostname='generativelanguage.googleapis.com' timeout=None
+2025-09-30 00:37:10 | DEBUG | httpcore.connection | trace:47 | start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x000001D987554D70>
+2025-09-30 00:37:10 | DEBUG | httpcore.http11 | trace:47 | send_request_headers.started request=<Request [b'POST']>
+2025-09-30 00:37:10 | DEBUG | httpcore.http11 | trace:47 | send_request_headers.complete
+2025-09-30 00:37:10 | DEBUG | httpcore.http11 | trace:47 | send_request_body.started request=<Request [b'POST']>
+2025-09-30 00:37:10 | DEBUG | httpcore.http11 | trace:47 | send_request_body.complete
+2025-09-30 00:37:10 | DEBUG | httpcore.http11 | trace:47 | receive_response_headers.started request=<Request [b'POST']>
+2025-09-30 00:37:17 | DEBUG | httpcore.http11 | trace:47 | receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Content-Type', b'application/json; charset=UTF-8'), (b'Vary', b'Origin'), (b'Vary', b'X-Origin'), (b'Vary', b'Referer'), (b'Content-Encoding', b'gzip'), (b'Date', b'Tue, 30 Sep 2025 04:37:16 GMT'), (b'Server', b'scaffolding on HTTPServer2'), (b'X-XSS-Protection', b'0'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Content-Type-Options', b'nosniff'), (b'Server-Timing', b'gfet4t7; dur=6883'), (b'Alt-Svc', b'h3=":443"; ma=2592000,h3-29=":443"; ma=2592000'), (b'Transfer-Encoding', b'chunked')])
+2025-09-30 00:37:17 | INFO | httpx | _send_single_request:1025 | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent "HTTP/1.1 200 OK"
+2025-09-30 00:37:17 | DEBUG | httpcore.http11 | trace:47 | receive_response_body.started request=<Request [b'POST']>
+2025-09-30 00:37:17 | DEBUG | httpcore.http11 | trace:47 | receive_response_body.complete
+2025-09-30 00:37:17 | DEBUG | httpcore.http11 | trace:47 | response_closed.started
+2025-09-30 00:37:17 | DEBUG | httpcore.http11 | trace:47 | response_closed.complete
+2025-09-30 00:37:17 | INFO | google_genai.models | generate_content:6524 | AFC remote call 1 is done.
+2025-09-30 00:37:17 | DEBUG | httpcore.connection | trace:47 | close.started
+2025-09-30 00:37:17 | DEBUG | httpcore.connection | trace:47 | close.complete
+2025-09-30 00:37:17 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:37:17] "POST /api/process-resume HTTP/1.1" 200 -
+2025-09-30 00:39:09 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:39:09] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:39:17 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:39:17] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:39:17 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:39:17] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:39:21 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:39:21] "OPTIONS /api/process-resume HTTP/1.1" 200 -
+2025-09-30 00:39:21 | DEBUG | urllib3.connectionpool | _new_conn:1051 | Starting new HTTPS connection (1): docs.google.com:443
+2025-09-30 00:39:21 | DEBUG | urllib3.connectionpool | _make_request:546 | https://docs.google.com:443 "GET /document/d/1flfyzOJ_5sOklftoq76HLErYDmEYYdOsEsAB4G4ZMIs/export?format=txt HTTP/11" 307 0
+2025-09-30 00:39:21 | DEBUG | urllib3.connectionpool | _new_conn:1051 | Starting new HTTPS connection (1): doc-0o-bs-docstext.googleusercontent.com:443
+2025-09-30 00:39:21 | DEBUG | urllib3.connectionpool | _make_request:546 | https://doc-0o-bs-docstext.googleusercontent.com:443 "GET /export/e6hpso97lrhpva19l3uocm525o/0d36hi3a8lmr12htgkd7l233f4/1759207160000/106787193062298858211/*/1flfyzOJ_5sOklftoq76HLErYDmEYYdOsEsAB4G4ZMIs?format=txt HTTP/11" 200 None
+2025-09-30 00:39:21 | INFO | root | process_resume:381 | Processing resume with LLM: ﻿Sahil Chordia
+College Park, MD | (240) 610-1453 | chordiasahil24@gmail.com | linkedin/in/sahil–chordia | github/protocorn
+
+PROFILE
+________________
+
+
+AI/ML Engineer & Data Science M.S. candidate delivering AI-powered search and automation systems with 50–80% efficiency gains. Skilled in vector search, multimodal RAG, and production deployment.
+SKILLS
+________________
+
+
+Python, JavaScript, TypeScript | PyTorch, TensorFlow, LangChain | React.js, Node.js, Express.js | MongoDB, PostgreSQL, Pinecone, FAISS, Qdrant | AWS, Docker, Git, Streamlit | Ollama, Gemini API, CLIP
+
+
+EDUCATION
+________________
+
+
+University of Maryland | CGPA: 3.62        College Park, MD
+Master of Science in Data Science        August 2024 - May 2026
+A.P. Shah Institute of Technology | CGPA: 3.52        Thane, MH
+Bachelor of Engineering in Computer Science        June 2020 - May 2024
+
+
+WORK EXPERIENCE
+________________
+
+
+Raising The Floor – Nonprofit focused on accessibility technology        Washington D.C (Remote)
+AI Intern        June 2025 - August 2025
+* Automated AT tool discovery via two-pass Gemini 2.0 Pro pipeline, cutting manual verification time by 50%
+* Resolved 95% of detected dataset inconsistencies (mislabeled categories, duplicates, outdated entries) by automating enrichment workflows for a database of 300+ tools.
+* Built an inclusive chatbot (Ollama Gemma2:9B), improving ambiguous query handling accuracy to 90%
+* Boosted search by integrating cosine similarity–based vector search (Qdrant) for AT tool recommendations.
+* Reduced QA cycles from days to under 2 hours by developing reusable AI audit scripts.
+
+
+PROJECTS
+________________
+
+
+Mimikree - Personalized AI Assistant | mimikree.com        February 2025 - Present
+* Built an AI assistant that ingests diverse content (social media, PDFs, images) to generate personalized LLMs
+* Engineered a hybrid retrieval pipeline (70% expanded query + 30% original), improving RAG accuracy.
+* Integrated Gemini 2.0 Flash with Pinecone for dynamic vector search and real-time responses.
+AI Document Generator – Capital Area Food Bank AI Challenge        February 2025 - May 2025
+* Led a team of 3 to design a RAG engine generating grant proposals, PPTs, & posts from 1,500+ documents.
+* Embedded text and images (CLIP model + Cloudinary) into Pinecone with metadata for multimodal retrieval.
+* Decreased revision time by 60% through AI-assisted selective edits, full-document re-generation from a single prompt, and content suggestions with error detection.
+
+
+Local Document Search Engine        March 2025 - May 2025
+* Built privacy-first vector search (FAISS + Sentence Transformers) with intelligent code-aware chunking.
+* Reduced re-indexing time by ~80% for large repos through caching and parallel indexing.
+* Integrated Ollama Llama3:8B for query expansion, improving semantic relevance by ~20%.
+
+
+PUBLICATIONS
+________________
+
+
+Chordia, S. et al. Cross-Domain Sentiment Analysis: An Extensive Study of Machine Learning and Deep Learning Models, Datasets, and Preprocessing Techniques for Predictive Performance. CSCT 2023,  Link.
+
+
+ACHIEVEMENTS
+________________
+
+
+* Finalist (Top 3%) – i.mobilothon 3.0, Volkswagen Group Technology Solution India (Nov 2023)
+* 3rd Place – Firefly Hackathon, NIT Warangal (Apr 2022)
+2025-09-30 00:39:21 | WARNING | google_genai._api_client | get_env_api_key:104 | Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2025-09-30 00:39:26 | INFO | google_genai.models | generate_content:6513 | AFC is enabled with max remote calls: 10.
+2025-09-30 00:39:26 | DEBUG | httpcore.connection | trace:47 | connect_tcp.started host='generativelanguage.googleapis.com' port=443 local_address=None timeout=None socket_options=None
+2025-09-30 00:39:26 | DEBUG | httpcore.connection | trace:47 | connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x000001D987153320>
+2025-09-30 00:39:26 | DEBUG | httpcore.connection | trace:47 | start_tls.started ssl_context=<ssl.SSLContext object at 0x000001D98714E450> server_hostname='generativelanguage.googleapis.com' timeout=None
+2025-09-30 00:39:26 | DEBUG | httpcore.connection | trace:47 | start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x000001D987152AB0>
+2025-09-30 00:39:26 | DEBUG | httpcore.http11 | trace:47 | send_request_headers.started request=<Request [b'POST']>
+2025-09-30 00:39:26 | DEBUG | httpcore.http11 | trace:47 | send_request_headers.complete
+2025-09-30 00:39:26 | DEBUG | httpcore.http11 | trace:47 | send_request_body.started request=<Request [b'POST']>
+2025-09-30 00:39:26 | DEBUG | httpcore.http11 | trace:47 | send_request_body.complete
+2025-09-30 00:39:26 | DEBUG | httpcore.http11 | trace:47 | receive_response_headers.started request=<Request [b'POST']>
+2025-09-30 00:39:33 | DEBUG | httpcore.http11 | trace:47 | receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Content-Type', b'application/json; charset=UTF-8'), (b'Vary', b'Origin'), (b'Vary', b'X-Origin'), (b'Vary', b'Referer'), (b'Content-Encoding', b'gzip'), (b'Date', b'Tue, 30 Sep 2025 04:39:32 GMT'), (b'Server', b'scaffolding on HTTPServer2'), (b'X-XSS-Protection', b'0'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Content-Type-Options', b'nosniff'), (b'Server-Timing', b'gfet4t7; dur=7286'), (b'Alt-Svc', b'h3=":443"; ma=2592000,h3-29=":443"; ma=2592000'), (b'Transfer-Encoding', b'chunked')])
+2025-09-30 00:39:33 | INFO | httpx | _send_single_request:1025 | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent "HTTP/1.1 200 OK"
+2025-09-30 00:39:33 | DEBUG | httpcore.http11 | trace:47 | receive_response_body.started request=<Request [b'POST']>
+2025-09-30 00:39:33 | DEBUG | httpcore.http11 | trace:47 | receive_response_body.complete
+2025-09-30 00:39:33 | DEBUG | httpcore.http11 | trace:47 | response_closed.started
+2025-09-30 00:39:33 | DEBUG | httpcore.http11 | trace:47 | response_closed.complete
+2025-09-30 00:39:33 | INFO | google_genai.models | generate_content:6524 | AFC remote call 1 is done.
+2025-09-30 00:39:33 | DEBUG | httpcore.connection | trace:47 | close.started
+2025-09-30 00:39:33 | DEBUG | httpcore.connection | trace:47 | close.complete
+2025-09-30 00:39:33 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:39:33] "POST /api/process-resume HTTP/1.1" 200 -
+2025-09-30 00:40:44 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:40:44] "POST /api/profile HTTP/1.1" 200 -
+2025-09-30 00:40:50 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:40:50] "POST /api/profile HTTP/1.1" 200 -
+2025-09-30 00:41:04 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:41:04] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:41:04 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:41:04] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:41:10 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:41:10] "OPTIONS /api/process-resume HTTP/1.1" 200 -
+2025-09-30 00:41:10 | DEBUG | urllib3.connectionpool | _new_conn:1051 | Starting new HTTPS connection (1): docs.google.com:443
+2025-09-30 00:41:10 | DEBUG | urllib3.connectionpool | _make_request:546 | https://docs.google.com:443 "GET /document/d/1flfyzOJ_5sOklftoq76HLErYDmEYYdOsEsAB4G4ZMIs/export?format=txt HTTP/11" 307 0
+2025-09-30 00:41:10 | DEBUG | urllib3.connectionpool | _new_conn:1051 | Starting new HTTPS connection (1): doc-0o-bs-docstext.googleusercontent.com:443
+2025-09-30 00:41:10 | DEBUG | urllib3.connectionpool | _make_request:546 | https://doc-0o-bs-docstext.googleusercontent.com:443 "GET /export/e6hpso97lrhpva19l3uocm525o/eoqjp2huii89otufuhn56kugho/1759207265000/106787193062298858211/*/1flfyzOJ_5sOklftoq76HLErYDmEYYdOsEsAB4G4ZMIs?format=txt HTTP/11" 200 None
+2025-09-30 00:41:10 | INFO | root | process_resume:381 | Processing resume with LLM: ﻿Sahil Chordia
+College Park, MD | (240) 610-1453 | chordiasahil24@gmail.com | linkedin/in/sahil–chordia | github/protocorn
+
+PROFILE
+________________
+
+
+AI/ML Engineer & Data Science M.S. candidate delivering AI-powered search and automation systems with 50–80% efficiency gains. Skilled in vector search, multimodal RAG, and production deployment.
+SKILLS
+________________
+
+
+Python, JavaScript, TypeScript | PyTorch, TensorFlow, LangChain | React.js, Node.js, Express.js | MongoDB, PostgreSQL, Pinecone, FAISS, Qdrant | AWS, Docker, Git, Streamlit | Ollama, Gemini API, CLIP
+
+
+EDUCATION
+________________
+
+
+University of Maryland | CGPA: 3.62        College Park, MD
+Master of Science in Data Science        August 2024 - May 2026
+A.P. Shah Institute of Technology | CGPA: 3.52        Thane, MH
+Bachelor of Engineering in Computer Science        June 2020 - May 2024
+
+
+WORK EXPERIENCE
+________________
+
+
+Raising The Floor – Nonprofit focused on accessibility technology        Washington D.C (Remote)
+AI Intern        June 2025 - August 2025
+* Automated AT tool discovery via two-pass Gemini 2.0 Pro pipeline, cutting manual verification time by 50%
+* Resolved 95% of detected dataset inconsistencies (mislabeled categories, duplicates, outdated entries) by automating enrichment workflows for a database of 300+ tools.
+* Built an inclusive chatbot (Ollama Gemma2:9B), improving ambiguous query handling accuracy to 90%
+* Boosted search by integrating cosine similarity–based vector search (Qdrant) for AT tool recommendations.
+* Reduced QA cycles from days to under 2 hours by developing reusable AI audit scripts.
+
+
+PROJECTS
+________________
+
+
+Mimikree - Personalized AI Assistant | mimikree.com        February 2025 - Present
+* Built an AI assistant that ingests diverse content (social media, PDFs, images) to generate personalized LLMs
+* Engineered a hybrid retrieval pipeline (70% expanded query + 30% original), improving RAG accuracy.
+* Integrated Gemini 2.0 Flash with Pinecone for dynamic vector search and real-time responses.
+AI Document Generator – Capital Area Food Bank AI Challenge        February 2025 - May 2025
+* Led a team of 3 to design a RAG engine generating grant proposals, PPTs, & posts from 1,500+ documents.
+* Embedded text and images (CLIP model + Cloudinary) into Pinecone with metadata for multimodal retrieval.
+* Decreased revision time by 60% through AI-assisted selective edits, full-document re-generation from a single prompt, and content suggestions with error detection.
+
+
+Local Document Search Engine        March 2025 - May 2025
+* Built privacy-first vector search (FAISS + Sentence Transformers) with intelligent code-aware chunking.
+* Reduced re-indexing time by ~80% for large repos through caching and parallel indexing.
+* Integrated Ollama Llama3:8B for query expansion, improving semantic relevance by ~20%.
+
+
+PUBLICATIONS
+________________
+
+
+Chordia, S. et al. Cross-Domain Sentiment Analysis: An Extensive Study of Machine Learning and Deep Learning Models, Datasets, and Preprocessing Techniques for Predictive Performance. CSCT 2023,  Link.
+
+
+ACHIEVEMENTS
+________________
+
+
+* Finalist (Top 3%) – i.mobilothon 3.0, Volkswagen Group Technology Solution India (Nov 2023)
+* 3rd Place – Firefly Hackathon, NIT Warangal (Apr 2022)
+2025-09-30 00:41:10 | WARNING | google_genai._api_client | get_env_api_key:104 | Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2025-09-30 00:41:12 | INFO | google_genai.models | generate_content:6513 | AFC is enabled with max remote calls: 10.
+2025-09-30 00:41:12 | DEBUG | httpcore.connection | trace:47 | connect_tcp.started host='generativelanguage.googleapis.com' port=443 local_address=None timeout=None socket_options=None
+2025-09-30 00:41:12 | DEBUG | httpcore.connection | trace:47 | connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x000001D987576ED0>
+2025-09-30 00:41:12 | DEBUG | httpcore.connection | trace:47 | start_tls.started ssl_context=<ssl.SSLContext object at 0x000001D987125B50> server_hostname='generativelanguage.googleapis.com' timeout=None
+2025-09-30 00:41:12 | DEBUG | httpcore.connection | trace:47 | start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x000001D987576E70>
+2025-09-30 00:41:12 | DEBUG | httpcore.http11 | trace:47 | send_request_headers.started request=<Request [b'POST']>
+2025-09-30 00:41:12 | DEBUG | httpcore.http11 | trace:47 | send_request_headers.complete
+2025-09-30 00:41:12 | DEBUG | httpcore.http11 | trace:47 | send_request_body.started request=<Request [b'POST']>
+2025-09-30 00:41:12 | DEBUG | httpcore.http11 | trace:47 | send_request_body.complete
+2025-09-30 00:41:12 | DEBUG | httpcore.http11 | trace:47 | receive_response_headers.started request=<Request [b'POST']>
+2025-09-30 00:41:21 | DEBUG | httpcore.http11 | trace:47 | receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Content-Type', b'application/json; charset=UTF-8'), (b'Vary', b'Origin'), (b'Vary', b'X-Origin'), (b'Vary', b'Referer'), (b'Content-Encoding', b'gzip'), (b'Date', b'Tue, 30 Sep 2025 04:41:20 GMT'), (b'Server', b'scaffolding on HTTPServer2'), (b'X-XSS-Protection', b'0'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Content-Type-Options', b'nosniff'), (b'Server-Timing', b'gfet4t7; dur=8820'), (b'Alt-Svc', b'h3=":443"; ma=2592000,h3-29=":443"; ma=2592000'), (b'Transfer-Encoding', b'chunked')])
+2025-09-30 00:41:21 | INFO | httpx | _send_single_request:1025 | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent "HTTP/1.1 200 OK"
+2025-09-30 00:41:21 | DEBUG | httpcore.http11 | trace:47 | receive_response_body.started request=<Request [b'POST']>
+2025-09-30 00:41:21 | DEBUG | httpcore.http11 | trace:47 | receive_response_body.complete
+2025-09-30 00:41:21 | DEBUG | httpcore.http11 | trace:47 | response_closed.started
+2025-09-30 00:41:21 | DEBUG | httpcore.http11 | trace:47 | response_closed.complete
+2025-09-30 00:41:21 | INFO | google_genai.models | generate_content:6524 | AFC remote call 1 is done.
+2025-09-30 00:41:21 | DEBUG | httpcore.connection | trace:47 | close.started
+2025-09-30 00:41:21 | DEBUG | httpcore.connection | trace:47 | close.complete
+2025-09-30 00:41:21 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:41:21] "POST /api/process-resume HTTP/1.1" 200 -
+2025-09-30 00:42:48 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:42:48] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:42:48 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:42:48] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:42:53 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:42:53] "OPTIONS /api/process-resume HTTP/1.1" 200 -
+2025-09-30 00:42:53 | DEBUG | urllib3.connectionpool | _new_conn:1051 | Starting new HTTPS connection (1): docs.google.com:443
+2025-09-30 00:42:53 | DEBUG | urllib3.connectionpool | _make_request:546 | https://docs.google.com:443 "GET /document/d/1flfyzOJ_5sOklftoq76HLErYDmEYYdOsEsAB4G4ZMIs/export?format=txt HTTP/11" 307 0
+2025-09-30 00:42:53 | DEBUG | urllib3.connectionpool | _new_conn:1051 | Starting new HTTPS connection (1): doc-0o-bs-docstext.googleusercontent.com:443
+2025-09-30 00:42:54 | DEBUG | urllib3.connectionpool | _make_request:546 | https://doc-0o-bs-docstext.googleusercontent.com:443 "GET /export/e6hpso97lrhpva19l3uocm525o/0hanfaofqsif4poief72isi7ig/1759207370000/106787193062298858211/*/1flfyzOJ_5sOklftoq76HLErYDmEYYdOsEsAB4G4ZMIs?format=txt HTTP/11" 200 None
+2025-09-30 00:42:54 | INFO | root | process_resume:381 | Processing resume with LLM: ﻿Sahil Chordia
+College Park, MD | (240) 610-1453 | chordiasahil24@gmail.com | linkedin/in/sahil–chordia | github/protocorn
+
+PROFILE
+________________
+
+
+AI/ML Engineer & Data Science M.S. candidate delivering AI-powered search and automation systems with 50–80% efficiency gains. Skilled in vector search, multimodal RAG, and production deployment.
+SKILLS
+________________
+
+
+Python, JavaScript, TypeScript | PyTorch, TensorFlow, LangChain | React.js, Node.js, Express.js | MongoDB, PostgreSQL, Pinecone, FAISS, Qdrant | AWS, Docker, Git, Streamlit | Ollama, Gemini API, CLIP
+
+
+EDUCATION
+________________
+
+
+University of Maryland | CGPA: 3.62        College Park, MD
+Master of Science in Data Science        August 2024 - May 2026
+A.P. Shah Institute of Technology | CGPA: 3.52        Thane, MH
+Bachelor of Engineering in Computer Science        June 2020 - May 2024
+
+
+WORK EXPERIENCE
+________________
+
+
+Raising The Floor – Nonprofit focused on accessibility technology        Washington D.C (Remote)
+AI Intern        June 2025 - August 2025
+* Automated AT tool discovery via two-pass Gemini 2.0 Pro pipeline, cutting manual verification time by 50%
+* Resolved 95% of detected dataset inconsistencies (mislabeled categories, duplicates, outdated entries) by automating enrichment workflows for a database of 300+ tools.
+* Built an inclusive chatbot (Ollama Gemma2:9B), improving ambiguous query handling accuracy to 90%
+* Boosted search by integrating cosine similarity–based vector search (Qdrant) for AT tool recommendations.
+* Reduced QA cycles from days to under 2 hours by developing reusable AI audit scripts.
+
+
+PROJECTS
+________________
+
+
+Mimikree - Personalized AI Assistant | mimikree.com        February 2025 - Present
+* Built an AI assistant that ingests diverse content (social media, PDFs, images) to generate personalized LLMs
+* Engineered a hybrid retrieval pipeline (70% expanded query + 30% original), improving RAG accuracy.
+* Integrated Gemini 2.0 Flash with Pinecone for dynamic vector search and real-time responses.
+AI Document Generator – Capital Area Food Bank AI Challenge        February 2025 - May 2025
+* Led a team of 3 to design a RAG engine generating grant proposals, PPTs, & posts from 1,500+ documents.
+* Embedded text and images (CLIP model + Cloudinary) into Pinecone with metadata for multimodal retrieval.
+* Decreased revision time by 60% through AI-assisted selective edits, full-document re-generation from a single prompt, and content suggestions with error detection.
+
+
+Local Document Search Engine        March 2025 - May 2025
+* Built privacy-first vector search (FAISS + Sentence Transformers) with intelligent code-aware chunking.
+* Reduced re-indexing time by ~80% for large repos through caching and parallel indexing.
+* Integrated Ollama Llama3:8B for query expansion, improving semantic relevance by ~20%.
+
+
+PUBLICATIONS
+________________
+
+
+Chordia, S. et al. Cross-Domain Sentiment Analysis: An Extensive Study of Machine Learning and Deep Learning Models, Datasets, and Preprocessing Techniques for Predictive Performance. CSCT 2023,  Link.
+
+
+ACHIEVEMENTS
+________________
+
+
+* Finalist (Top 3%) – i.mobilothon 3.0, Volkswagen Group Technology Solution India (Nov 2023)
+* 3rd Place – Firefly Hackathon, NIT Warangal (Apr 2022)
+2025-09-30 00:42:54 | WARNING | google_genai._api_client | get_env_api_key:104 | Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+2025-09-30 00:42:57 | INFO | google_genai.models | generate_content:6513 | AFC is enabled with max remote calls: 10.
+2025-09-30 00:42:57 | DEBUG | httpcore.connection | trace:47 | connect_tcp.started host='generativelanguage.googleapis.com' port=443 local_address=None timeout=None socket_options=None
+2025-09-30 00:42:57 | DEBUG | httpcore.connection | trace:47 | connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x000001D987153E00>
+2025-09-30 00:42:57 | DEBUG | httpcore.connection | trace:47 | start_tls.started ssl_context=<ssl.SSLContext object at 0x000001D98754C8D0> server_hostname='generativelanguage.googleapis.com' timeout=None
+2025-09-30 00:42:57 | DEBUG | httpcore.connection | trace:47 | start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x000001D987150A70>
+2025-09-30 00:42:57 | DEBUG | httpcore.http11 | trace:47 | send_request_headers.started request=<Request [b'POST']>
+2025-09-30 00:42:57 | DEBUG | httpcore.http11 | trace:47 | send_request_headers.complete
+2025-09-30 00:42:57 | DEBUG | httpcore.http11 | trace:47 | send_request_body.started request=<Request [b'POST']>
+2025-09-30 00:42:57 | DEBUG | httpcore.http11 | trace:47 | send_request_body.complete
+2025-09-30 00:42:57 | DEBUG | httpcore.http11 | trace:47 | receive_response_headers.started request=<Request [b'POST']>
+2025-09-30 00:43:06 | DEBUG | httpcore.http11 | trace:47 | receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Content-Type', b'application/json; charset=UTF-8'), (b'Vary', b'Origin'), (b'Vary', b'X-Origin'), (b'Vary', b'Referer'), (b'Content-Encoding', b'gzip'), (b'Date', b'Tue, 30 Sep 2025 04:43:05 GMT'), (b'Server', b'scaffolding on HTTPServer2'), (b'X-XSS-Protection', b'0'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Content-Type-Options', b'nosniff'), (b'Server-Timing', b'gfet4t7; dur=8480'), (b'Alt-Svc', b'h3=":443"; ma=2592000,h3-29=":443"; ma=2592000'), (b'Transfer-Encoding', b'chunked')])
+2025-09-30 00:43:06 | INFO | httpx | _send_single_request:1025 | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent "HTTP/1.1 200 OK"
+2025-09-30 00:43:06 | DEBUG | httpcore.http11 | trace:47 | receive_response_body.started request=<Request [b'POST']>
+2025-09-30 00:43:06 | DEBUG | httpcore.http11 | trace:47 | receive_response_body.complete
+2025-09-30 00:43:06 | DEBUG | httpcore.http11 | trace:47 | response_closed.started
+2025-09-30 00:43:06 | DEBUG | httpcore.http11 | trace:47 | response_closed.complete
+2025-09-30 00:43:06 | INFO | google_genai.models | generate_content:6524 | AFC remote call 1 is done.
+2025-09-30 00:43:06 | DEBUG | httpcore.connection | trace:47 | close.started
+2025-09-30 00:43:06 | DEBUG | httpcore.connection | trace:47 | close.complete
+2025-09-30 00:43:06 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:43:06] "POST /api/process-resume HTTP/1.1" 200 -

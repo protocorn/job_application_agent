@@ -1,0 +1,332 @@
+{
+  "session_id": "da80abf7-ec3d-4a2c-a84b-63939a9e9d18",
+  "current_url": "https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea/application",
+  "actions": [
+    {
+      "type": "navigate",
+      "timestamp": 1759266703.39363,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1759266714.0099423,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "click",
+      "timestamp": 1759266735.1663232,
+      "selector": "button._button_8wvgw_29",
+      "value": null,
+      "url": null,
+      "element_text": "element",
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1759266739.2433681,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea/application",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "page_state",
+      "timestamp": 1759266741.4648411,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea/application",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "page_title": "Staff Software Engineer, AI Platform @ EvenUp",
+        "page_type": "ai_analysis_checkpoint",
+        "has_clicked_apply": true
+      }
+    },
+    {
+      "type": "upload_file",
+      "timestamp": 1759266765.2437065,
+      "selector": "input[type=\"file\"]",
+      "value": "C:\\Users\\proto\\Job_Application_Agent\\Resumes\\Sahil-Chordia-Resume.pdf",
+      "url": null,
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1759266766.6714578,
+      "selector": "id:_systemfield_email",
+      "value": "chordiasahil2412@gmail.com",
+      "url": null,
+      "element_text": null,
+      "field_label": "Email",
+      "field_type": "email_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "id:_systemfield_email",
+          "label": "Email",
+          "field_category": "email_input",
+          "placeholder": "hello@example.com...",
+          "required": true
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "chordiasahil2412@gmail.com",
+        "verification": {
+          "expected": "chordiasahil2412@gmail.com",
+          "actual": "chordiasahil2412@gmail.com",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1759266766.9168177,
+      "selector": "id:0a50eef9-a0cb-4613-97f2-4d2542676d0f",
+      "value": "(240) 610-1453",
+      "url": null,
+      "element_text": null,
+      "field_label": "Phone Number",
+      "field_type": "tel_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "id:0a50eef9-a0cb-4613-97f2-4d2542676d0f",
+          "label": "Phone Number",
+          "field_category": "tel_input",
+          "placeholder": "1-415-555-1234...",
+          "required": true
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "(240) 610-1453",
+        "verification": {
+          "expected": "(240) 610-1453",
+          "actual": "(240) 610-1453",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1759266772.7740378,
+      "selector": "id:1df7ef8c-c7a5-4b2b-ad6f-e5ecee05f128",
+      "value": "linkedin/in/sahil–chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "LinkedIn Profile Link",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "id:1df7ef8c-c7a5-4b2b-ad6f-e5ecee05f128",
+          "label": "LinkedIn Profile Link",
+          "field_category": "text_input",
+          "placeholder": "Type here...",
+          "required": true
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "linkedin/in/sahil–chordia",
+        "verification": {
+          "expected": "linkedin/in/sahil–chordia",
+          "actual": "linkedin/in/sahil–chordia",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1759266774.2628202,
+      "selector": "label:If hired, in which country will you be based?:input:text",
+      "value": "United States of America",
+      "url": null,
+      "element_text": null,
+      "field_label": "If hired, in which country will you be based?",
+      "field_type": "custom_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label:If hired, in which country will you be based?:input:text",
+          "label": "If hired, in which country will you be based?",
+          "field_category": "custom_dropdown",
+          "placeholder": "Start typing...",
+          "required": false
+        },
+        "interaction_method": "dropdown_selection",
+        "element_attributes": {},
+        "final_value": "United States of America",
+        "verification": {
+          "expected": "United States of America",
+          "actual": "United States of America",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1759266775.2805264,
+      "selector": "id:3a3e1ef9-ee4a-49e5-9884-871f0d6d432e_37add9c5-aeec-49cd-8d31-9af74ff778f3-labeled-radio-0",
+      "value": "Maryland",
+      "url": null,
+      "element_text": null,
+      "field_label": "No, I do not require visa sponsorship to work in the United States",
+      "field_type": "radio",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "id:3a3e1ef9-ee4a-49e5-9884-871f0d6d432e_37add9c5-aeec-49cd-8d31-9af74ff778f3-labeled-radio-0",
+          "label": "No, I do not require visa sponsorship to work in the United States",
+          "field_category": "radio",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "click",
+        "element_attributes": {},
+        "final_value": "Maryland",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1759266776.3163228,
+      "selector": "id:3a3e1ef9-ee4a-49e5-9884-871f0d6d432e_37add9c5-aeec-49cd-8d31-9af74ff778f3-labeled-radio-1",
+      "value": "Maryland",
+      "url": null,
+      "element_text": null,
+      "field_label": "Yes, I require visa sponsorship to work in the United States",
+      "field_type": "radio",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "id:3a3e1ef9-ee4a-49e5-9884-871f0d6d432e_37add9c5-aeec-49cd-8d31-9af74ff778f3-labeled-radio-1",
+          "label": "Yes, I require visa sponsorship to work in the United States",
+          "field_category": "radio",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "click",
+        "element_attributes": {},
+        "final_value": "Maryland",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1759266778.4817069,
+      "selector": "id:_systemfield_name",
+      "value": "Sahil Chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "Full Name",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "id:_systemfield_name",
+          "label": "Full Name",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "Sahil Chordia",
+        "verification": {
+          "expected": "Sahil Chordia",
+          "actual": "Sahil Chordia",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1759266780.9685261,
+      "selector": "id:c5f8aea8-6152-4c5c-8125-e36f7df9220b",
+      "value": "None",
+      "url": null,
+      "element_text": null,
+      "field_label": "[optional] Preferred Name",
+      "field_type": "potential_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "id:c5f8aea8-6152-4c5c-8125-e36f7df9220b",
+          "label": "[optional] Preferred Name",
+          "field_category": "potential_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "dropdown_selection",
+        "element_attributes": {},
+        "final_value": "None",
+        "verification": {
+          "expected": "None",
+          "actual": "None",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "page_state",
+      "timestamp": 1759266789.3001041,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea/application",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "page_title": "Staff Software Engineer, AI Platform @ EvenUp",
+        "page_type": "ai_analysis_checkpoint",
+        "has_clicked_apply": true
+      }
+    }
+  ],
+  "total_actions": 15,
+  "successful_actions": 15,
+  "last_recorded": 1759266814.990163
+}

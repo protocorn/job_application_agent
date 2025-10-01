@@ -1,0 +1,22 @@
+2025-09-30 00:19:02 | INFO | root | setup_file_logging:88 | File logging configured. Logs will be saved to: logs\job_application_agent_20250930_001902.log
+2025-09-30 00:19:02.381 | INFO     | logging_config:setup_file_logging:90 - Loguru logging configured. Logs will be saved to: logs\job_application_agent_20250930_001902.log
+2025-09-30 00:19:02 | INFO | root | <module>:1144 | API Server starting. Logs will be saved to: logs\job_application_agent_20250930_001902.log
+2025-09-30 00:19:02 | INFO | root | <module>:1152 | 🔧 Running in DEVELOPMENT mode
+2025-09-30 00:19:02 | INFO | werkzeug | _log:97 | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://10.4.10.146:5000
+2025-09-30 00:19:02 | INFO | werkzeug | _log:97 | [33mPress CTRL+C to quit[0m
+2025-09-30 00:19:14 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:19:14] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:19:14 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:19:14] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:19:17 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:19:17] "POST /api/profile HTTP/1.1" 200 -
+2025-09-30 00:19:28 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:19:28] "POST /api/profile HTTP/1.1" 200 -
+2025-09-30 00:19:33 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:19:33] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:19:33 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:19:33] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:21:21 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:21:21] "POST /api/profile HTTP/1.1" 200 -
+2025-09-30 00:21:24 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:21:24] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:21:24 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:21:24] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:21:47 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:21:47] "POST /api/profile HTTP/1.1" 200 -
+2025-09-30 00:21:56 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:21:56] "POST /api/profile HTTP/1.1" 200 -
+2025-09-30 00:22:00 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:22:00] "GET /api/profile HTTP/1.1" 200 -
+2025-09-30 00:22:00 | INFO | werkzeug | _log:97 | 127.0.0.1 - - [30/Sep/2025 00:22:00] "GET /api/profile HTTP/1.1" 200 -

@@ -1,0 +1,302 @@
+{
+  "session_id": "621e9ee3-f36a-4d67-88b7-13b7585403b8",
+  "current_url": "https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea/application",
+  "actions": [
+    {
+      "type": "navigate",
+      "timestamp": 1759261061.0357606,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1759261069.191894,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "click",
+      "timestamp": 1759261090.5123684,
+      "selector": "button._button_8wvgw_29",
+      "value": null,
+      "url": null,
+      "element_text": "element",
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1759261094.9129333,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea/application",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "page_state",
+      "timestamp": 1759261097.4082546,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea/application",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "page_title": "Staff Software Engineer, AI Platform @ EvenUp",
+        "page_type": "ai_analysis_checkpoint",
+        "has_clicked_apply": true
+      }
+    },
+    {
+      "type": "upload_file",
+      "timestamp": 1759261122.7413924,
+      "selector": "input[type=\"file\"]",
+      "value": "C:\\Users\\proto\\Job_Application_Agent\\Resumes\\Sahil-Chordia-Resume.pdf",
+      "url": null,
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1759261125.2480228,
+      "selector": "id:_systemfield_email",
+      "value": "chordiasahil2412@gmail.com",
+      "url": null,
+      "element_text": null,
+      "field_label": "Email",
+      "field_type": "email_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "id:_systemfield_email",
+          "label": "Email",
+          "field_category": "email_input",
+          "placeholder": "hello@example.com...",
+          "required": true
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "chordiasahil2412@gmail.com",
+        "verification": {
+          "expected": "chordiasahil2412@gmail.com",
+          "actual": "chordiasahil2412@gmail.com"
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1759261125.2983775,
+      "selector": "id:1d502f74-6aa9-4e2b-a80a-417bcab302c7",
+      "value": "(240) 610-1453",
+      "url": null,
+      "element_text": null,
+      "field_label": "Phone Number",
+      "field_type": "tel_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "id:1d502f74-6aa9-4e2b-a80a-417bcab302c7",
+          "label": "Phone Number",
+          "field_category": "tel_input",
+          "placeholder": "1-415-555-1234...",
+          "required": true
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "(240) 610-1453",
+        "verification": {
+          "expected": "(240) 610-1453",
+          "actual": "(240) 610-1453"
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1759261127.6304467,
+      "selector": "name:communicationConsent",
+      "value": "(240) 610-1453",
+      "url": null,
+      "element_text": null,
+      "field_label": "Phone Number",
+      "field_type": "radio",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:communicationConsent",
+          "label": "Phone Number",
+          "field_category": "radio",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "click",
+        "element_attributes": {},
+        "final_value": "(240) 610-1453",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1759261127.6725996,
+      "selector": "id:8f37eb79-674e-401b-bf3d-b4ba9ae41a10",
+      "value": "linkedin/in/sahil–chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "LinkedIn Profile Link",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "id:8f37eb79-674e-401b-bf3d-b4ba9ae41a10",
+          "label": "LinkedIn Profile Link",
+          "field_category": "text_input",
+          "placeholder": "Type here...",
+          "required": true
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "linkedin/in/sahil–chordia",
+        "verification": {
+          "expected": "linkedin/in/sahil–chordia",
+          "actual": "linkedin/in/sahil–chordia"
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1759261128.9415627,
+      "selector": "label:If hired, in what country will you be based?:input:text",
+      "value": "United States of America",
+      "url": null,
+      "element_text": null,
+      "field_label": "If hired, in what country will you be based?",
+      "field_type": "custom_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label:If hired, in what country will you be based?:input:text",
+          "label": "If hired, in what country will you be based?",
+          "field_category": "custom_dropdown",
+          "placeholder": "Start typing...",
+          "required": false
+        },
+        "interaction_method": "dropdown_selection",
+        "element_attributes": {},
+        "final_value": "United States of America",
+        "verification": {
+          "expected": "United States of America",
+          "actual": "United States of America",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1759261132.1343086,
+      "selector": "id:_systemfield_name",
+      "value": "Sahil Chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "Name",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "id:_systemfield_name",
+          "label": "Name",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "Sahil Chordia",
+        "verification": {
+          "expected": "Sahil Chordia",
+          "actual": "Sahil Chordia"
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1759261132.213421,
+      "selector": "id:db984a1f-eb3b-4eb5-b8d0-136fd4340df5",
+      "value": "Sahil Chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "Preferred Name",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "id:db984a1f-eb3b-4eb5-b8d0-136fd4340df5",
+          "label": "Preferred Name",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "Sahil Chordia",
+        "verification": {
+          "expected": "Sahil Chordia",
+          "actual": "Sahil Chordia"
+        }
+      }
+    },
+    {
+      "type": "page_state",
+      "timestamp": 1759261140.9406428,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/evenup/a71f098a-40f2-41ff-8baf-55c91e7e36ea/application",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "page_title": "Staff Software Engineer, AI Platform @ EvenUp",
+        "page_type": "ai_analysis_checkpoint",
+        "has_clicked_apply": true
+      }
+    }
+  ],
+  "total_actions": 14,
+  "successful_actions": 14,
+  "last_recorded": 1759261164.800847
+}

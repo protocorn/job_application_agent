@@ -1,0 +1,760 @@
+2025-09-25 20:44:01 | INFO | root | setup_file_logging:88 | File logging configured. Logs will be saved to: logs\job_application_agent_20250925_204401.log
+2025-09-25 20:44:01.340 | INFO     | logging_config:setup_file_logging:90 - Loguru logging configured. Logs will be saved to: logs\job_application_agent_20250925_204401.log
+2025-09-25 20:44:01 | INFO | __main__ | main:1966 | Job application agent starting. Logs will be saved to: logs\job_application_agent_20250925_204401.log
+2025-09-25 20:44:01 | DEBUG | asyncio | __init__:634 | Using proactor: IocpProactor
+2025-09-25 20:44:02 | INFO | __main__ | process_link:162 | Processing link with refactored agent: https://jobs.ashbyhq.com/Promise/c3609196-67fb-4750-a8cf-e7013a839d1c?utm_source=7nl8GjynMY
+2025-09-25 20:44:02.732 | INFO     | components.brains.gemini_button_brain:_configure_gemini:33 - ✅ Gemini Button Brain configured from environment
+2025-09-25 20:44:02.734 | INFO     | components.brains.gemini_form_brain:__init__:22 - ✅ Gemini Form Brain configured successfully.
+2025-09-25 20:44:02.735 | INFO     | components.brains.gemini_field_mapper:_configure_gemini:110 - ✅ Gemini API configured from environment
+2025-09-25 20:44:02 | WARNING | __main__ | _initialize_components_for_context:94 | ⚠️ Form filler initialized WITHOUT action recorder
+2025-09-25 20:44:02.736 | INFO     | components.brains.gemini_button_brain:_configure_gemini:33 - ✅ Gemini Button Brain configured from environment
+2025-09-25 20:44:02.737 | INFO     | components.brains.gemini_button_brain:_configure_gemini:33 - ✅ Gemini Button Brain configured from environment
+2025-09-25 20:44:02.738 | INFO     | components.brains.gemini_page_analyzer:_configure_gemini:32 - ✅ Gemini Page Analyzer configured successfully.
+2025-09-25 20:44:06 | INFO | components.router.state_machine | run:71 | 🚀 Entering state: start
+2025-09-25 20:44:06 | INFO | __main__ | _load_profile_data:1922 | ✅ Successfully loaded profile for: Sahil Chordia
+2025-09-25 20:44:06 | INFO | __main__ | _load_profile_data:1923 | 📧 Email: chordiasahil24@gmail.com
+2025-09-25 20:44:06 | INFO | __main__ | _load_profile_data:1924 | 📱 Phone: (240) 610-1453
+2025-09-25 20:44:06 | INFO | __main__ | _load_profile_data:1925 | 📄 Resume: C:\Users\proto\Job_Application_Agent\Resumes\Sahil-Chordia-Resume.pdf
+2025-09-25 20:44:06 | INFO | __main__ | _load_profile_data:1926 | 🔗 LinkedIn: linkedin/in/sahil–chordia
+2025-09-25 20:44:06 | INFO | __main__ | _load_profile_data:1927 | 💻 GitHub: github/protocorn
+2025-09-25 20:44:06 | INFO | __main__ | _load_profile_data:1931 | 🎓 Education entries: 2
+2025-09-25 20:44:06 | INFO | __main__ | _load_profile_data:1933 |    1. Master of Science in Data Science at University of Maryland
+2025-09-25 20:44:06 | INFO | __main__ | _load_profile_data:1933 |    2. Bachelor of Engineering in Computer Science at A.P. Shah Institute of Technology
+2025-09-25 20:44:06 | INFO | __main__ | _load_profile_data:1937 | 💼 Work experience entries: 1
+2025-09-25 20:44:06 | INFO | __main__ | _load_profile_data:1939 |    1. AI Intern (Full Time) at Raising The Floor – Nonprofit focused on accessibility technology
+2025-09-25 20:44:06 | INFO | __main__ | _extract_job_context_from_page:389 | 📋 Extracted job context: ['page_title', 'company', 'title']
+2025-09-25 20:44:06 | INFO | __main__ | _state_start:296 | 📋 Extracted job context: AI Researcher - About the Role
+2025-09-25 20:44:06 | DEBUG | components.router.state_machine | record_transition:28 | History: start -> ai_guided_navigation @ https://jobs.ashbyhq.com/Promise/c3609196-67fb-4750-a8cf-e7013a839d1c?utm_source=7nl8GjynMY
+2025-09-25 20:44:06 | INFO | components.router.state_machine | run:79 | ✅ State 'start' completed, transitioning to 'ai_guided_navigation'.
+2025-09-25 20:44:06 | INFO | components.router.state_machine | run:71 | 🚀 Entering state: ai_guided_navigation
+2025-09-25 20:44:06 | INFO | __main__ | _state_ai_guided_navigation:398 | >>> State: AI_GUIDED_NAVIGATION
+2025-09-25 20:44:06 | INFO | __main__ | _state_ai_guided_navigation:401 | 🔍 Universal Check 1: Detecting popups...
+2025-09-25 20:44:09 | INFO | __main__ | _state_ai_guided_navigation:409 | 🔍 Universal Check 2: Checking for authentication pages...
+2025-09-25 20:44:09.437 | INFO     | components.detectors.auth_page_detector:detect:56 - 🔍 Analyzing page for authentication indicators...
+2025-09-25 20:44:09.461 | INFO     | components.detectors.auth_page_detector:detect:87 - No authentication page detected (confidence below threshold).
+2025-09-25 20:44:09 | INFO | __main__ | _state_ai_guided_navigation:417 | 🔍 Universal Check 3: Checking for cookie consent...
+2025-09-25 20:44:09 | DEBUG | __main__ | _state_ai_guided_navigation:424 | CMP consent check failed: 'CmpConsent' object has no attribute 'detect_and_handle'
+2025-09-25 20:44:09 | INFO | __main__ | _state_ai_guided_navigation:430 | 🔍 Pattern Check: Looking for apply button before AI analysis...
+2025-09-25 20:44:09.462 | INFO     | components.detectors.apply_detector:detect:54 - 🕵️‍♂️ Detecting apply button...
+2025-09-25 20:44:19.482 | WARNING  | components.detectors.apply_detector:detect:62 - No standard apply button appeared within timeout.
+2025-09-25 20:44:21.058 | WARNING  | components.detectors.apply_detector:detect:71 - Pattern matching failed. Attempting AI fallback.
+2025-09-25 20:44:23.764 | INFO     | components.brains.gemini_button_brain:_find_button:73 - 🧠 AI found apply button: Apply for this Job
+2025-09-25 20:44:23.771 | INFO     | components.detectors.apply_detector:detect:74 - ✅ Found apply button via AI fallback. Reason: AI fallback: This element is an anchor tag (<a>) containing a button element. The button's text is 'Apply for this Job', which strongly suggests it is the primary call-to-action for starting the application process. The href attribute points to the application form.
+2025-09-25 20:44:23 | INFO | __main__ | _state_ai_guided_navigation:434 | ✅ Apply button found via pattern matching - proceeding to click
+2025-09-25 20:44:23 | DEBUG | components.router.state_machine | record_transition:28 | History: ai_guided_navigation -> click_apply @ https://jobs.ashbyhq.com/Promise/c3609196-67fb-4750-a8cf-e7013a839d1c?utm_source=7nl8GjynMY
+2025-09-25 20:44:23 | INFO | components.router.state_machine | run:79 | ✅ State 'ai_guided_navigation' completed, transitioning to 'click_apply'.
+2025-09-25 20:44:23 | INFO | components.router.state_machine | run:71 | 🚀 Entering state: click_apply
+2025-09-25 20:44:23 | INFO | __main__ | _state_click_apply:1050 | >>> State: CLICK_APPLY
+2025-09-25 20:44:23 | DEBUG | components.validators.nav_validator | capture_initial_state:24 | Initial pages count: 1
+2025-09-25 20:44:24 | INFO | components.executors.click_executor | execute:44 | ✅ Successfully clicked 'element'.
+2025-09-25 20:44:26 | INFO | __main__ | _state_click_apply:1070 | 🔍 Checking for new tabs opened by Apply button click...
+2025-09-25 20:44:26 | DEBUG | components.validators.nav_validator | detect_new_tab:74 | Current pages count: 1, Initial: 1
+2025-09-25 20:44:26 | INFO | __main__ | _state_click_apply:1081 | 🔍 Checking for popups after Apply button click...
+2025-09-25 20:44:29 | DEBUG | components.router.state_machine | record_transition:28 | History: click_apply -> ai_guided_navigation @ https://jobs.ashbyhq.com/Promise/c3609196-67fb-4750-a8cf-e7013a839d1c/application?utm_source=7nl8GjynMY
+2025-09-25 20:44:29 | INFO | components.router.state_machine | run:79 | ✅ State 'click_apply' completed, transitioning to 'ai_guided_navigation'.
+2025-09-25 20:44:29 | INFO | components.router.state_machine | run:71 | 🚀 Entering state: ai_guided_navigation
+2025-09-25 20:44:29 | INFO | __main__ | _state_ai_guided_navigation:398 | >>> State: AI_GUIDED_NAVIGATION
+2025-09-25 20:44:29 | INFO | __main__ | _state_ai_guided_navigation:401 | 🔍 Universal Check 1: Detecting popups...
+2025-09-25 20:44:32 | INFO | __main__ | _state_ai_guided_navigation:409 | 🔍 Universal Check 2: Checking for authentication pages...
+2025-09-25 20:44:32.175 | INFO     | components.detectors.auth_page_detector:detect:56 - 🔍 Analyzing page for authentication indicators...
+2025-09-25 20:44:32.212 | INFO     | components.detectors.auth_page_detector:detect:87 - No authentication page detected (confidence below threshold).
+2025-09-25 20:44:32 | INFO | __main__ | _state_ai_guided_navigation:417 | 🔍 Universal Check 3: Checking for cookie consent...
+2025-09-25 20:44:32 | DEBUG | __main__ | _state_ai_guided_navigation:424 | CMP consent check failed: 'CmpConsent' object has no attribute 'detect_and_handle'
+2025-09-25 20:44:32 | INFO | __main__ | _state_ai_guided_navigation:440 | 🔍 Skipping apply button check - already in application process
+2025-09-25 20:44:32 | INFO | __main__ | _state_ai_guided_navigation:443 | 🧠 AI Analysis: Determining page state and next action...
+2025-09-25 20:44:32 | DEBUG | PIL.PngImagePlugin | call:191 | STREAM b'IHDR' 16 13
+2025-09-25 20:44:32 | DEBUG | PIL.PngImagePlugin | call:191 | STREAM b'IDAT' 41 4096
+2025-09-25 20:44:32 | DEBUG | PIL.PngImagePlugin | call:191 | STREAM b'IDAT' 64012 6
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing BlpImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing BmpImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing BufrStubImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing CurImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing DcxImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing DdsImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing EpsImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing FitsImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing FliImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing FpxImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:366 | Image: failed to import FpxImagePlugin: No module named 'olefile'
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing FtexImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing GbrImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing GifImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing GribStubImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing Hdf5StubImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing IcnsImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing IcoImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing ImImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing ImtImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing IptcImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing JpegImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing Jpeg2KImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing McIdasImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing MicImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:366 | Image: failed to import MicImagePlugin: No module named 'olefile'
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing MpegImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing MpoImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing MspImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing PalmImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing PcdImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing PcxImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing PdfImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing PixarImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing PngImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing PpmImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing PsdImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing QoiImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing SgiImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing SpiderImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing SunImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing TgaImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing TiffImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing WebPImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing WmfImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing XbmImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing XpmImagePlugin
+2025-09-25 20:44:32 | DEBUG | PIL.Image | init:363 | Importing XVThumbImagePlugin
+2025-09-25 20:44:34 | INFO | __main__ | _state_ai_guided_navigation:446 | 🤖 AI Analysis Result: {'action': 'fill_form', 'confidence': 0.95, 'reason': "The page shows an application form with fields such as Name, Preferred Name, and an option to upload a resume. The form needs to be filled with the user's information.", 'page_type': 'application_form', 'elements_detected': ['Name', 'Preferred Name', 'Resume upload']}
+2025-09-25 20:44:34 | INFO | __main__ | _state_ai_guided_navigation:454 | 📝 AI: Form detected - proceeding to fill
+2025-09-25 20:44:34 | DEBUG | components.router.state_machine | record_transition:28 | History: ai_guided_navigation -> fill_form @ https://jobs.ashbyhq.com/Promise/c3609196-67fb-4750-a8cf-e7013a839d1c/application?utm_source=7nl8GjynMY
+2025-09-25 20:44:34 | INFO | components.router.state_machine | run:79 | ✅ State 'ai_guided_navigation' completed, transitioning to 'fill_form'.
+2025-09-25 20:44:34 | INFO | components.router.state_machine | run:71 | 🚀 Entering state: fill_form
+2025-09-25 20:44:34 | INFO | __main__ | _state_fill_form:1133 | >>> State: ANALYZE_AND_FILL_FORM
+2025-09-25 20:44:34 | INFO | __main__ | _state_fill_form:1136 | 🔍 Checking for popups before form filling...
+2025-09-25 20:44:37.690 | INFO     | components.state.field_completion_tracker:set_current_page:24 - 📍 Tracking new page: https://jobs.ashbyhq.com/Promise/c3609196-67fb-4750-a8cf-e7013a839d1c/application?utm_source=7nl8GjynMY
+2025-09-25 20:44:37 | INFO | __main__ | _state_fill_form:1163 | 📊 Form Progress - Iteration 1: 0 fields completed, 0 successful attempts
+2025-09-25 20:44:37 | INFO | __main__ | _load_profile_data:1922 | ✅ Successfully loaded profile for: Sahil Chordia
+2025-09-25 20:44:37 | INFO | __main__ | _load_profile_data:1923 | 📧 Email: chordiasahil24@gmail.com
+2025-09-25 20:44:37 | INFO | __main__ | _load_profile_data:1924 | 📱 Phone: (240) 610-1453
+2025-09-25 20:44:37 | INFO | __main__ | _load_profile_data:1925 | 📄 Resume: C:\Users\proto\Job_Application_Agent\Resumes\Sahil-Chordia-Resume.pdf
+2025-09-25 20:44:37 | INFO | __main__ | _load_profile_data:1926 | 🔗 LinkedIn: linkedin/in/sahil–chordia
+2025-09-25 20:44:37 | INFO | __main__ | _load_profile_data:1927 | 💻 GitHub: github/protocorn
+2025-09-25 20:44:37 | INFO | __main__ | _load_profile_data:1931 | 🎓 Education entries: 2
+2025-09-25 20:44:37 | INFO | __main__ | _load_profile_data:1933 |    1. Master of Science in Data Science at University of Maryland
+2025-09-25 20:44:37 | INFO | __main__ | _load_profile_data:1933 |    2. Bachelor of Engineering in Computer Science at A.P. Shah Institute of Technology
+2025-09-25 20:44:37 | INFO | __main__ | _load_profile_data:1937 | 💼 Work experience entries: 1
+2025-09-25 20:44:37 | INFO | __main__ | _load_profile_data:1939 |    1. AI Intern (Full Time) at Raising The Floor – Nonprofit focused on accessibility technology
+2025-09-25 20:44:43.539 | INFO     | components.executors.generic_form_filler:fill_form:63 - 🚀 Starting generic form filling process...
+2025-09-25 20:44:43.541 | INFO     | components.state.field_completion_tracker:log_progress:115 - 📊 Form Progress: 0 completed, 0 successful attempts, 0 failed attempts
+2025-09-25 20:44:43.541 | INFO     | components.executors.generic_form_filler:_expand_form_sections_if_needed:768 - 🔍 Preparing section expansion data...
+2025-09-25 20:44:43.541 | INFO     | components.executors.generic_form_filler:_expand_form_sections_if_needed:780 - 📋 Found 2 education entries to potentially add
+2025-09-25 20:44:43.541 | INFO     | components.executors.generic_form_filler:_expand_form_sections_if_needed:780 - 📋 Found 1 work_experience entries to potentially add
+2025-09-25 20:44:43.541 | INFO     | components.executors.generic_form_filler:_expand_form_sections_if_needed:780 - 📋 Found 3 projects entries to potentially add
+2025-09-25 20:44:43.542 | INFO     | components.detectors.sensitive_field_detector:detect:26 - 🛡️ Detecting sensitive fields...
+2025-09-25 20:44:59.470 | DEBUG    | components.executors.field_interactor:upload_resume_if_present:274 - Workday upload strategy failed for button[data-automation-id="select-files"]: Page.wait_for_selector: Timeout 3000ms exceeded.
+Call log:
+  - waiting for locator("button[data-automation-id=\"select-files\"]") to be visible
+
+2025-09-25 20:45:02.506 | DEBUG    | components.executors.field_interactor:upload_resume_if_present:274 - Workday upload strategy failed for [data-automation-id="file-upload-drop-zone"]: Page.wait_for_selector: Timeout 3000ms exceeded.
+Call log:
+  - waiting for locator("[data-automation-id=\"file-upload-drop-zone\"]") to be visible
+
+2025-09-25 20:45:05.523 | DEBUG    | components.executors.field_interactor:upload_resume_if_present:274 - Workday upload strategy failed for input[data-automation-id="file-upload-input-ref"]: Page.wait_for_selector: Timeout 3000ms exceeded.
+Call log:
+  - waiting for locator("input[data-automation-id=\"file-upload-input-ref\"]") to be visible
+
+2025-09-25 20:45:06.027 | INFO     | components.executors.field_interactor:upload_resume:134 - ✅ Resume uploaded successfully using file chooser: C:\Users\proto\Job_Application_Agent\Resumes\Sahil-Chordia-Resume.pdf
+2025-09-25 20:45:06.028 | INFO     | components.executors.generic_form_filler:_decide_next_action:136 - ✅ Resume uploaded directly (avoiding autofill)
+2025-09-25 20:45:06.029 | INFO     | components.executors.generic_form_filler:_fill_remaining_fields:166 - Scanning for remaining fields to fill...
+2025-09-25 20:45:06.029 | INFO     | components.executors.generic_form_filler:_fill_all_fields_sequentially:171 - Executing sequential field filling strategy (Patterns -> Fast Mapping -> AI).
+2025-09-25 20:45:15.157 | INFO     | components.executors.generic_form_filler:_fill_with_patterns:233 - Found match for 'phone' (Label: 'Phone Number')
+2025-09-25 20:45:15.158 | DEBUG    | components.executors.field_interactor:fill_field:22 - Interactor filling 'Phone Number' (Category: tel_input)
+2025-09-25 20:45:15.326 | WARNING  | components.executors.field_interactor:fill_field:107 - ⚠️ No action recorder available for field: Phone Number
+2025-09-25 20:45:15.329 | INFO     | components.executors.generic_form_filler:_fill_with_patterns:233 - Found match for 'linkedin' (Label: 'LinkedIn URL')
+2025-09-25 20:45:15.329 | DEBUG    | components.executors.field_interactor:fill_field:22 - Interactor filling 'LinkedIn URL' (Category: text_input)
+2025-09-25 20:45:15.508 | WARNING  | components.executors.field_interactor:fill_field:107 - ⚠️ No action recorder available for field: LinkedIn URL
+2025-09-25 20:45:15.511 | INFO     | components.executors.generic_form_filler:_fill_all_fields_sequentially:175 - 📊 Pattern matching filled 2 fields.
+2025-09-25 20:45:15.511 | INFO     | components.executors.generic_form_filler:_fill_with_fast_mapping:251 - ⚡ Starting fast profile mapping...
+2025-09-25 20:45:23.615 | INFO     | components.executors.fast_field_mapper:fast_map_field:208 - ⚡ Fast mapped 'Another Gender Identity' → 'Male'
+2025-09-25 20:45:23.619 | INFO     | components.executors.fast_field_mapper:fast_map_field:247 - ⚡ Skipping ethnicity field 'Two or More Races (Not Hispanic or Latino)' - no ethnicity data in profile
+2025-09-25 20:45:23.620 | INFO     | components.executors.fast_field_mapper:fast_map_field:220 - ⚡ Fast Y/N 'I identify as one or more of the classifications of protected veteran listed above' → 'No' (veteran_status)
+2025-09-25 20:45:23.620 | INFO     | components.executors.fast_field_mapper:fast_map_field:220 - ⚡ Fast Y/N 'I am not a protected veteran' → 'No' (veteran_status)
+2025-09-25 20:45:23.622 | INFO     | components.executors.fast_field_mapper:fast_map_field:220 - ⚡ Fast Y/N 'I decline to self-identify for protected veteran status' → 'No' (veteran_status)
+2025-09-25 20:45:23.623 | INFO     | components.executors.fast_field_mapper:batch_map_fields:404 - ⚡ Fast mapper: 4 mapped instantly, 55 need AI
+2025-09-25 20:45:23.624 | DEBUG    | components.executors.field_interactor:fill_field:22 - Interactor filling 'Another Gender Identity' (Category: radio)
+2025-09-25 20:45:23.829 | WARNING  | components.executors.field_interactor:fill_field:107 - ⚠️ No action recorder available for field: Another Gender Identity
+2025-09-25 20:45:23.830 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Another Gender Identity' = 'Male' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_8d7dcc65-3a0b-476a-b679-574b869780bb-labeled-radio-3)
+2025-09-25 20:45:23.830 | INFO     | components.executors.generic_form_filler:_fill_with_fast_mapping:293 - ⚡ Fast filled: Another Gender Identity = Male
+2025-09-25 20:45:23.830 | DEBUG    | components.executors.field_interactor:fill_field:22 - Interactor filling 'I identify as one or more of the classifications of protected veteran listed above' (Category: radio)
+2025-09-25 20:45:24.016 | WARNING  | components.executors.field_interactor:fill_field:107 - ⚠️ No action recorder available for field: I identify as one or more of the classifications of protected veteran listed above
+2025-09-25 20:45:24.021 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'I identify as one or more of the classifications of protected veteran listed above' = 'No' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_veteran_status-labeled-radio-0)
+2025-09-25 20:45:24.024 | INFO     | components.executors.generic_form_filler:_fill_with_fast_mapping:293 - ⚡ Fast filled: I identify as one or more of the classifications of protected veteran listed above = No
+2025-09-25 20:45:24.025 | DEBUG    | components.executors.field_interactor:fill_field:22 - Interactor filling 'I am not a protected veteran' (Category: radio)
+2025-09-25 20:45:24.375 | WARNING  | components.executors.field_interactor:fill_field:107 - ⚠️ No action recorder available for field: I am not a protected veteran
+2025-09-25 20:45:24.375 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'I am not a protected veteran' = 'No' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_veteran_status-labeled-radio-1)
+2025-09-25 20:45:24.376 | INFO     | components.executors.generic_form_filler:_fill_with_fast_mapping:293 - ⚡ Fast filled: I am not a protected veteran = No
+2025-09-25 20:45:24.376 | DEBUG    | components.executors.field_interactor:fill_field:22 - Interactor filling 'I decline to self-identify for protected veteran status' (Category: radio)
+2025-09-25 20:45:24.561 | WARNING  | components.executors.field_interactor:fill_field:107 - ⚠️ No action recorder available for field: I decline to self-identify for protected veteran status
+2025-09-25 20:45:24.561 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'I decline to self-identify for protected veteran status' = 'No' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_veteran_status-labeled-radio-2)
+2025-09-25 20:45:24.563 | INFO     | components.executors.generic_form_filler:_fill_with_fast_mapping:293 - ⚡ Fast filled: I decline to self-identify for protected veteran status = No
+2025-09-25 20:45:24.564 | INFO     | components.executors.generic_form_filler:_fill_with_fast_mapping:298 - ⚡ Fast mapping completed: 4 fields filled instantly
+2025-09-25 20:45:24.565 | INFO     | components.executors.generic_form_filler:_fill_all_fields_sequentially:179 - ⚡ Fast mapping filled 4 fields instantly.
+2025-09-25 20:45:24.565 | INFO     | components.executors.generic_form_filler:_fill_with_ai:311 - Phase 1: Extracting form fields (without expensive dropdown extraction)...
+2025-09-25 20:45:32.268 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I identify as one or more of the classifications of protected veteran listed above' = 'No'
+2025-09-25 20:45:32.269 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I am not a protected veteran' = 'No'
+2025-09-25 20:45:32.269 | INFO     | components.executors.generic_form_filler:_fill_with_ai:321 - 🎯 After filtering completed fields: 55 fields remaining (was 64)
+2025-09-25 20:45:32.269 | INFO     | components.executors.generic_form_filler:_fill_with_ai:330 - Phase 1b: Extracting dropdown options for remaining fields only...
+2025-09-25 20:45:32.271 | INFO     | components.executors.generic_form_filler:_fill_with_ai:347 - Found 55 unfilled fields for enhanced AI mapping.
+2025-09-25 20:45:32.271 | INFO     | components.executors.generic_form_filler:_fill_with_ai:350 - Phase 2: Categorizing fields by interaction type...
+2025-09-25 20:45:32.271 | INFO     | components.executors.generic_form_filler:_categorize_fields_by_type:1227 - 📊 Field categories: 4 standard, 0 dropdowns, 49 checkboxes, 2 complex
+2025-09-25 20:45:32.271 | INFO     | components.executors.generic_form_filler:_fill_with_ai:354 - Phase 3: Processing each field category with AI...
+2025-09-25 20:45:32.272 | INFO     | components.executors.generic_form_filler:_process_standard_fields:1235 - 🔤 Processing 4 standard text fields...
+2025-09-25 20:45:33.945 | DEBUG    | components.brains.gemini_field_mapper:_parse_comprehensive_mapping_response:401 - Mapped id:6b1e70b5-4410-4742-b7de-775a3a018609 -> NEEDS_HUMAN_INPUT: Preferred name not specified in profile
+2025-09-25 20:45:33.946 | DEBUG    | components.brains.gemini_field_mapper:_parse_comprehensive_mapping_response:401 - Mapped id:e3ea30e8-1a38-4481-a90f-16d6c2df22af -> NEEDS_HUMAN_INPUT: Name pronunciation not specified in profile
+2025-09-25 20:45:33.948 | DEBUG    | components.brains.gemini_field_mapper:_parse_comprehensive_mapping_response:401 - Mapped id:8cc7cc3e-55df-4b50-ac5f-9c4b8fc8a5c3 -> NEEDS_HUMAN_INPUT: Pronouns not specified in profile
+2025-09-25 20:45:33.950 | DEBUG    | components.brains.gemini_field_mapper:_parse_comprehensive_mapping_response:401 - Mapped id:2a510efc-09f9-4a51-bfe2-703d00ce4934 -> NEEDS_HUMAN_INPUT: How did you hear about Promise not specified in profile
+2025-09-25 20:45:33.950 | INFO     | components.brains.gemini_field_mapper:_parse_comprehensive_mapping_response:407 - Successfully parsed 4 field mappings from AI response
+2025-09-25 20:45:33.953 | INFO     | components.brains.gemini_field_mapper:map_fields_to_profile:149 - 🧠 Gemini processed 4 fields: 0 simple, 0 dropdown, 0 manual
+2025-09-25 20:45:33.956 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1319 - ☑️ Processing 49 checkbox/radio fields with AI...
+2025-09-25 20:45:55.599 | INFO     | components.executors.generic_form_filler:_get_ai_checkbox_decisions:1703 - 🧠 AI made 49 checkbox decisions
+2025-09-25 20:45:55.604 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_cf0f1bc7-7ce6-4eb3-aebc-b6562141cb68-labeled-radio-0
+2025-09-25 20:45:55.751 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1349 - ✅ AI checked 'Under 30': Sahil's birth year is 2002, making him under 30.
+2025-09-25 20:45:55.752 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Under 30' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_cf0f1bc7-7ce6-4eb3-aebc-b6562141cb68-labeled-radio-0) - Success: True
+2025-09-25 20:45:55.752 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Under 30' = 'checked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_cf0f1bc7-7ce6-4eb3-aebc-b6562141cb68-labeled-radio-0)
+2025-09-25 20:45:55.752 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Under 30 - ✅ SUCCESS
+2025-09-25 20:45:55.756 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_cf0f1bc7-7ce6-4eb3-aebc-b6562141cb68-labeled-radio-1
+2025-09-25 20:45:55.759 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked '30-39': Sahil's birth year is 2002, making him under 30.
+2025-09-25 20:45:55.760 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: '30-39' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_cf0f1bc7-7ce6-4eb3-aebc-b6562141cb68-labeled-radio-1) - Success: True
+2025-09-25 20:45:55.760 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: '30-39' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_cf0f1bc7-7ce6-4eb3-aebc-b6562141cb68-labeled-radio-1)
+2025-09-25 20:45:55.760 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: 30-39 - ✅ SUCCESS
+2025-09-25 20:45:55.766 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_cf0f1bc7-7ce6-4eb3-aebc-b6562141cb68-labeled-radio-2
+2025-09-25 20:45:55.771 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked '40-49': Sahil's birth year is 2002, making him under 30.
+2025-09-25 20:45:55.773 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: '40-49' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_cf0f1bc7-7ce6-4eb3-aebc-b6562141cb68-labeled-radio-2) - Success: True
+2025-09-25 20:45:55.774 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: '40-49' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_cf0f1bc7-7ce6-4eb3-aebc-b6562141cb68-labeled-radio-2)
+2025-09-25 20:45:55.774 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: 40-49 - ✅ SUCCESS
+2025-09-25 20:45:55.778 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_cf0f1bc7-7ce6-4eb3-aebc-b6562141cb68-labeled-radio-3
+2025-09-25 20:45:55.788 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked '50-59': Sahil's birth year is 2002, making him under 30.
+2025-09-25 20:45:55.789 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: '50-59' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_cf0f1bc7-7ce6-4eb3-aebc-b6562141cb68-labeled-radio-3) - Success: True
+2025-09-25 20:45:55.789 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: '50-59' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_cf0f1bc7-7ce6-4eb3-aebc-b6562141cb68-labeled-radio-3)
+2025-09-25 20:45:55.789 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: 50-59 - ✅ SUCCESS
+2025-09-25 20:45:55.794 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_cf0f1bc7-7ce6-4eb3-aebc-b6562141cb68-labeled-radio-4
+2025-09-25 20:45:55.799 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked '60 or older': Sahil's birth year is 2002, making him under 30.
+2025-09-25 20:45:55.800 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: '60 or older' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_cf0f1bc7-7ce6-4eb3-aebc-b6562141cb68-labeled-radio-4) - Success: True
+2025-09-25 20:45:55.800 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: '60 or older' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_cf0f1bc7-7ce6-4eb3-aebc-b6562141cb68-labeled-radio-4)
+2025-09-25 20:45:55.800 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: 60 or older - ✅ SUCCESS
+2025-09-25 20:45:55.805 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_cf0f1bc7-7ce6-4eb3-aebc-b6562141cb68-labeled-radio-5
+2025-09-25 20:45:55.818 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'I prefer not to answer': Candidate's age can be determined
+2025-09-25 20:45:55.818 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'I prefer not to answer' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_cf0f1bc7-7ce6-4eb3-aebc-b6562141cb68-labeled-radio-5) - Success: True
+2025-09-25 20:45:55.819 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'I prefer not to answer' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_cf0f1bc7-7ce6-4eb3-aebc-b6562141cb68-labeled-radio-5)
+2025-09-25 20:45:55.819 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: I prefer not to answer - ✅ SUCCESS
+2025-09-25 20:45:55.826 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_8d7dcc65-3a0b-476a-b679-574b869780bb-labeled-radio-0
+2025-09-25 20:45:55.983 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1349 - ✅ AI checked 'Man': Gender is Male
+2025-09-25 20:45:55.984 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Man' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_8d7dcc65-3a0b-476a-b679-574b869780bb-labeled-radio-0) - Success: True
+2025-09-25 20:45:55.984 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Man' = 'checked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_8d7dcc65-3a0b-476a-b679-574b869780bb-labeled-radio-0)
+2025-09-25 20:45:55.985 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Man - ✅ SUCCESS
+2025-09-25 20:45:55.991 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_8d7dcc65-3a0b-476a-b679-574b869780bb-labeled-radio-1
+2025-09-25 20:45:55.996 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Woman': Gender is Male
+2025-09-25 20:45:55.997 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Woman' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_8d7dcc65-3a0b-476a-b679-574b869780bb-labeled-radio-1) - Success: True
+2025-09-25 20:45:55.997 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Woman' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_8d7dcc65-3a0b-476a-b679-574b869780bb-labeled-radio-1)
+2025-09-25 20:45:55.998 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Woman - ✅ SUCCESS
+2025-09-25 20:45:56.003 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_8d7dcc65-3a0b-476a-b679-574b869780bb-labeled-radio-2
+2025-09-25 20:45:56.006 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Non-Binary': Gender is Male
+2025-09-25 20:45:56.007 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Non-Binary' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_8d7dcc65-3a0b-476a-b679-574b869780bb-labeled-radio-2) - Success: True
+2025-09-25 20:45:56.007 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Non-Binary' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_8d7dcc65-3a0b-476a-b679-574b869780bb-labeled-radio-2)
+2025-09-25 20:45:56.007 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Non-Binary - ✅ SUCCESS
+2025-09-25 20:45:56.014 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_8d7dcc65-3a0b-476a-b679-574b869780bb-labeled-radio-4
+2025-09-25 20:45:56.019 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'I prefer not to answer': Gender is Male
+2025-09-25 20:45:56.019 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'I prefer not to answer' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_8d7dcc65-3a0b-476a-b679-574b869780bb-labeled-radio-4) - Success: True
+2025-09-25 20:45:56.020 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'I prefer not to answer' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_8d7dcc65-3a0b-476a-b679-574b869780bb-labeled-radio-4)
+2025-09-25 20:45:56.020 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: I prefer not to answer - ✅ SUCCESS
+2025-09-25 20:45:56.025 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_0a90dc7e-908c-449f-9151-95612d844b10-labeled-radio-0
+2025-09-25 20:45:56.171 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1349 - ✅ AI checked 'Yes': Requires Sponsorship: Yes
+2025-09-25 20:45:56.171 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Yes' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_0a90dc7e-908c-449f-9151-95612d844b10-labeled-radio-0) - Success: True
+2025-09-25 20:45:56.172 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Yes' = 'checked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_0a90dc7e-908c-449f-9151-95612d844b10-labeled-radio-0)
+2025-09-25 20:45:56.172 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Yes - ✅ SUCCESS
+2025-09-25 20:45:56.177 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_0a90dc7e-908c-449f-9151-95612d844b10-labeled-radio-1
+2025-09-25 20:45:56.184 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'No': Requires Sponsorship: Yes
+2025-09-25 20:45:56.185 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'No' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_0a90dc7e-908c-449f-9151-95612d844b10-labeled-radio-1) - Success: True
+2025-09-25 20:45:56.185 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'No' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_0a90dc7e-908c-449f-9151-95612d844b10-labeled-radio-1)
+2025-09-25 20:45:56.186 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: No - ✅ SUCCESS
+2025-09-25 20:45:56.191 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_0a90dc7e-908c-449f-9151-95612d844b10-labeled-radio-2
+2025-09-25 20:45:56.197 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'I prefer not to answer': Requires Sponsorship: Yes
+2025-09-25 20:45:56.198 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'I prefer not to answer' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_0a90dc7e-908c-449f-9151-95612d844b10-labeled-radio-2) - Success: True
+2025-09-25 20:45:56.199 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'I prefer not to answer' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_0a90dc7e-908c-449f-9151-95612d844b10-labeled-radio-2)
+2025-09-25 20:45:56.199 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: I prefer not to answer - ✅ SUCCESS
+2025-09-25 20:45:56.206 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-0
+2025-09-25 20:45:56.212 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Bisexual': Sexual orientation is not specified.
+2025-09-25 20:45:56.212 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Bisexual' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-0) - Success: True
+2025-09-25 20:45:56.213 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Bisexual' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-0)
+2025-09-25 20:45:56.213 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Bisexual - ✅ SUCCESS
+2025-09-25 20:45:56.220 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-1
+2025-09-25 20:45:56.227 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Lesbian': Sexual orientation is not specified.
+2025-09-25 20:45:56.227 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Lesbian' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-1) - Success: True
+2025-09-25 20:45:56.228 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Lesbian' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-1)
+2025-09-25 20:45:56.229 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Lesbian - ✅ SUCCESS
+2025-09-25 20:45:56.234 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-2
+2025-09-25 20:45:56.239 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Gay': Sexual orientation is not specified.
+2025-09-25 20:45:56.239 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Gay' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-2) - Success: True
+2025-09-25 20:45:56.240 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Gay' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-2)
+2025-09-25 20:45:56.240 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Gay - ✅ SUCCESS
+2025-09-25 20:45:56.246 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-3
+2025-09-25 20:45:56.252 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Queer': Sexual orientation is not specified.
+2025-09-25 20:45:56.252 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Queer' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-3) - Success: True
+2025-09-25 20:45:56.253 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Queer' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-3)
+2025-09-25 20:45:56.253 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Queer - ✅ SUCCESS
+2025-09-25 20:45:56.257 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-4
+2025-09-25 20:45:56.263 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Heterosexual / straight': Sexual orientation is not specified.
+2025-09-25 20:45:56.263 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Heterosexual / straight' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-4) - Success: True
+2025-09-25 20:45:56.263 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Heterosexual / straight' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-4)
+2025-09-25 20:45:56.264 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Heterosexual / straight - ✅ SUCCESS
+2025-09-25 20:45:56.268 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-5
+2025-09-25 20:45:56.275 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Other': Sexual orientation is not specified.
+2025-09-25 20:45:56.275 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Other' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-5) - Success: True
+2025-09-25 20:45:56.276 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Other' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-5)
+2025-09-25 20:45:56.276 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Other - ✅ SUCCESS
+2025-09-25 20:45:56.281 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-6
+2025-09-25 20:45:56.286 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'I prefer not to answer': Sexual orientation is not specified.
+2025-09-25 20:45:56.286 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'I prefer not to answer' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-6) - Success: True
+2025-09-25 20:45:56.287 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'I prefer not to answer' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a63b6f87-d090-40f0-a462-bf5bb03f5e45-labeled-checkbox-6)
+2025-09-25 20:45:56.287 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: I prefer not to answer - ✅ SUCCESS
+2025-09-25 20:45:56.293 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-0
+2025-09-25 20:45:56.449 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1349 - ✅ AI checked 'Asian or Asian American': Nationality is Indian, inferring Asian ethnicity.
+2025-09-25 20:45:56.450 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Asian or Asian American' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-0) - Success: True
+2025-09-25 20:45:56.451 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Asian or Asian American' = 'checked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-0)
+2025-09-25 20:45:56.451 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Asian or Asian American - ✅ SUCCESS
+2025-09-25 20:45:56.457 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-1
+2025-09-25 20:45:56.463 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Black or African American': Nationality is Indian, inferring Asian ethnicity.
+2025-09-25 20:45:56.464 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Black or African American' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-1) - Success: True
+2025-09-25 20:45:56.465 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Black or African American' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-1)
+2025-09-25 20:45:56.465 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Black or African American - ✅ SUCCESS
+2025-09-25 20:45:56.472 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-2
+2025-09-25 20:45:56.477 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Hispanic or Latine': Nationality is Indian, inferring not Hispanic.
+2025-09-25 20:45:56.478 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Hispanic or Latine' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-2) - Success: True
+2025-09-25 20:45:56.479 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Hispanic or Latine' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-2)
+2025-09-25 20:45:56.479 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Hispanic or Latine - ✅ SUCCESS
+2025-09-25 20:45:56.486 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-3
+2025-09-25 20:45:56.492 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Indigenous or Native American': Nationality is Indian, inferring Asian ethnicity.
+2025-09-25 20:45:56.493 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Indigenous or Native American' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-3) - Success: True
+2025-09-25 20:45:56.493 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Indigenous or Native American' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-3)
+2025-09-25 20:45:56.494 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Indigenous or Native American - ✅ SUCCESS
+2025-09-25 20:45:56.498 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-4
+2025-09-25 20:45:56.504 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Native Hawaiian or Other Pacific Islander': Nationality is Indian, inferring Asian ethnicity.
+2025-09-25 20:45:56.504 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Native Hawaiian or Other Pacific Islander' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-4) - Success: True
+2025-09-25 20:45:56.505 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Native Hawaiian or Other Pacific Islander' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-4)
+2025-09-25 20:45:56.505 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Native Hawaiian or Other Pacific Islander - ✅ SUCCESS
+2025-09-25 20:45:56.511 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-5
+2025-09-25 20:45:56.517 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'White': Nationality is Indian, inferring Asian ethnicity.
+2025-09-25 20:45:56.517 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'White' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-5) - Success: True
+2025-09-25 20:45:56.518 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'White' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-5)
+2025-09-25 20:45:56.518 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: White - ✅ SUCCESS
+2025-09-25 20:45:56.524 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-6
+2025-09-25 20:45:56.529 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Other': Nationality is Indian, inferring Asian ethnicity.
+2025-09-25 20:45:56.530 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Other' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-6) - Success: True
+2025-09-25 20:45:56.530 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Other' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-6)
+2025-09-25 20:45:56.530 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Other - ✅ SUCCESS
+2025-09-25 20:45:56.534 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-7
+2025-09-25 20:45:56.541 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'I prefer not to answer': Candidate's ethnicity can be determined.
+2025-09-25 20:45:56.542 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'I prefer not to answer' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-7) - Success: True
+2025-09-25 20:45:56.542 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'I prefer not to answer' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_1e21d43f-548e-481a-aa5f-f048c73f3de3-labeled-checkbox-7)
+2025-09-25 20:45:56.542 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: I prefer not to answer - ✅ SUCCESS
+2025-09-25 20:45:56.548 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-0
+2025-09-25 20:45:56.553 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Person with disability': Disability status is not specified.
+2025-09-25 20:45:56.554 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Person with disability' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-0) - Success: True
+2025-09-25 20:45:56.554 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Person with disability' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-0)
+2025-09-25 20:45:56.554 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Person with disability - ✅ SUCCESS
+2025-09-25 20:45:56.559 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-1
+2025-09-25 20:45:56.565 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Neurodiverse': Disability status is not specified.
+2025-09-25 20:45:56.565 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Neurodiverse' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-1) - Success: True
+2025-09-25 20:45:56.565 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Neurodiverse' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-1)
+2025-09-25 20:45:56.566 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Neurodiverse - ✅ SUCCESS
+2025-09-25 20:45:56.571 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-2
+2025-09-25 20:45:56.577 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Veteran': Veteran status is not specified.
+2025-09-25 20:45:56.579 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Veteran' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-2) - Success: True
+2025-09-25 20:45:56.579 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Veteran' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-2)
+2025-09-25 20:45:56.579 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Veteran - ✅ SUCCESS
+2025-09-25 20:45:56.583 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-3
+2025-09-25 20:45:56.588 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Parent': Parent status is not specified.
+2025-09-25 20:45:56.588 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Parent' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-3) - Success: True
+2025-09-25 20:45:56.589 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Parent' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-3)
+2025-09-25 20:45:56.589 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Parent - ✅ SUCCESS
+2025-09-25 20:45:56.594 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-4
+2025-09-25 20:45:56.744 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1349 - ✅ AI checked 'Refugee or immigrant': Candidate is an F-1 visa holder.
+2025-09-25 20:45:56.745 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Refugee or immigrant' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-4) - Success: True
+2025-09-25 20:45:56.746 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Refugee or immigrant' = 'checked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-4)
+2025-09-25 20:45:56.746 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Refugee or immigrant - ✅ SUCCESS
+2025-09-25 20:45:56.753 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-5
+2025-09-25 20:45:56.760 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'None of the above': Other demographic information available.
+2025-09-25 20:45:56.760 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'None of the above' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-5) - Success: True
+2025-09-25 20:45:56.760 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'None of the above' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-5)
+2025-09-25 20:45:56.761 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: None of the above - ✅ SUCCESS
+2025-09-25 20:45:56.767 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-6
+2025-09-25 20:45:56.773 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'I prefer not to answer': Other demographic information available.
+2025-09-25 20:45:56.774 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'I prefer not to answer' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-6) - Success: True
+2025-09-25 20:45:56.774 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'I prefer not to answer' = 'unchecked' (ID: id:6026f105-21f9-403a-821b-bac03df5e753_a76e67f9-eeb8-4d06-a9a5-b1596a9726e7-labeled-checkbox-6)
+2025-09-25 20:45:56.776 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: I prefer not to answer - ✅ SUCCESS
+2025-09-25 20:45:56.781 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_gender-labeled-radio-0
+2025-09-25 20:45:56.947 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1349 - ✅ AI checked 'Male': Gender is Male.
+2025-09-25 20:45:56.948 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Male' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_gender-labeled-radio-0) - Success: True
+2025-09-25 20:45:56.948 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Male' = 'checked' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_gender-labeled-radio-0)
+2025-09-25 20:45:56.948 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Male - ✅ SUCCESS
+2025-09-25 20:45:56.953 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_gender-labeled-radio-1
+2025-09-25 20:45:56.958 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Female': Gender is Male.
+2025-09-25 20:45:56.960 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Female' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_gender-labeled-radio-1) - Success: True
+2025-09-25 20:45:56.960 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Female' = 'unchecked' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_gender-labeled-radio-1)
+2025-09-25 20:45:56.960 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Female - ✅ SUCCESS
+2025-09-25 20:45:56.966 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_gender-labeled-radio-2
+2025-09-25 20:45:56.972 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Decline to self-identify': Gender is Male.
+2025-09-25 20:45:56.972 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Decline to self-identify' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_gender-labeled-radio-2) - Success: True
+2025-09-25 20:45:56.973 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Decline to self-identify' = 'unchecked' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_gender-labeled-radio-2)
+2025-09-25 20:45:56.974 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Decline to self-identify - ✅ SUCCESS
+2025-09-25 20:45:56.978 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-0
+2025-09-25 20:45:56.984 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Hispanic or Latino': Nationality is Indian, inferring not Hispanic.
+2025-09-25 20:45:56.984 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Hispanic or Latino' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-0) - Success: True
+2025-09-25 20:45:56.984 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Hispanic or Latino' = 'unchecked' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-0)
+2025-09-25 20:45:56.984 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Hispanic or Latino - ✅ SUCCESS
+2025-09-25 20:45:56.990 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-1
+2025-09-25 20:45:56.995 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'White (Not Hispanic or Latino)': Nationality is Indian, inferring Asian ethnicity.
+2025-09-25 20:45:56.995 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'White (Not Hispanic or Latino)' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-1) - Success: True
+2025-09-25 20:45:56.996 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'White (Not Hispanic or Latino)' = 'unchecked' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-1)
+2025-09-25 20:45:56.996 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: White (Not Hispanic or Latino) - ✅ SUCCESS
+2025-09-25 20:45:57.001 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-2
+2025-09-25 20:45:57.006 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Black or African American (Not Hispanic or Latino)': Nationality is Indian, inferring Asian ethnicity.
+2025-09-25 20:45:57.007 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Black or African American (Not Hispanic or Latino)' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-2) - Success: True
+2025-09-25 20:45:57.007 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Black or African American (Not Hispanic or Latino)' = 'unchecked' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-2)
+2025-09-25 20:45:57.007 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Black or African American (Not Hispanic or Latino) - ✅ SUCCESS
+2025-09-25 20:45:57.013 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-3
+2025-09-25 20:45:57.019 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino)': Nationality is Indian, inferring Asian ethnicity.
+2025-09-25 20:45:57.019 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino)' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-3) - Success: True
+2025-09-25 20:45:57.020 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino)' = 'unchecked' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-3)
+2025-09-25 20:45:57.020 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino) - ✅ SUCCESS
+2025-09-25 20:45:57.026 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-4
+2025-09-25 20:45:57.178 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1349 - ✅ AI checked 'Asian (Not Hispanic or Latino)': Nationality is Indian, inferring Asian ethnicity.
+2025-09-25 20:45:57.179 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Asian (Not Hispanic or Latino)' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-4) - Success: True
+2025-09-25 20:45:57.179 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Asian (Not Hispanic or Latino)' = 'checked' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-4)
+2025-09-25 20:45:57.179 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Asian (Not Hispanic or Latino) - ✅ SUCCESS
+2025-09-25 20:45:57.183 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-5
+2025-09-25 20:45:57.189 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'American Indian or Alaska Native (Not Hispanic or Latino)': Nationality is Indian, inferring Asian ethnicity.
+2025-09-25 20:45:57.189 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'American Indian or Alaska Native (Not Hispanic or Latino)' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-5) - Success: True
+2025-09-25 20:45:57.190 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'American Indian or Alaska Native (Not Hispanic or Latino)' = 'unchecked' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-5)
+2025-09-25 20:45:57.190 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: American Indian or Alaska Native (Not Hispanic or Latino) - ✅ SUCCESS
+2025-09-25 20:45:57.195 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-6
+2025-09-25 20:45:57.201 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Two or More Races (Not Hispanic or Latino)': Nationality is Indian, inferring Asian ethnicity.
+2025-09-25 20:45:57.202 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Two or More Races (Not Hispanic or Latino)' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-6) - Success: True
+2025-09-25 20:45:57.202 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Two or More Races (Not Hispanic or Latino)' = 'unchecked' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-6)
+2025-09-25 20:45:57.202 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Two or More Races (Not Hispanic or Latino) - ✅ SUCCESS
+2025-09-25 20:45:57.209 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-7
+2025-09-25 20:45:57.214 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Decline to self-identify': Candidate's race can be determined.
+2025-09-25 20:45:57.214 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Decline to self-identify' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-7) - Success: True
+2025-09-25 20:45:57.215 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Decline to self-identify' = 'unchecked' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_race-labeled-radio-7)
+2025-09-25 20:45:57.215 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Decline to self-identify - ✅ SUCCESS
+2025-09-25 20:45:57.219 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_disability_status-labeled-radio-0
+2025-09-25 20:45:57.226 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'Yes, I have a disability, or have had one in the past': Disability status is not specified.
+2025-09-25 20:45:57.226 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Yes, I have a disability, or have had one in the past' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_disability_status-labeled-radio-0) - Success: True
+2025-09-25 20:45:57.227 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Yes, I have a disability, or have had one in the past' = 'unchecked' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_disability_status-labeled-radio-0)
+2025-09-25 20:45:57.227 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Yes, I have a disability, or have had one in the past - ✅ SUCCESS
+2025-09-25 20:45:57.231 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_disability_status-labeled-radio-1
+2025-09-25 20:45:57.238 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'No, I don't have a disability and have not had one in the past': Disability status is not specified.
+2025-09-25 20:45:57.239 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'No, I don't have a disability and have not had one in the past' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_disability_status-labeled-radio-1) - Success: True
+2025-09-25 20:45:57.239 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'No, I don't have a disability and have not had one in the past' = 'unchecked' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_disability_status-labeled-radio-1)
+2025-09-25 20:45:57.239 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: No, I don't have a disability and have not had one in the past - ✅ SUCCESS
+2025-09-25 20:45:57.244 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: 97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_disability_status-labeled-radio-2
+2025-09-25 20:45:57.250 | INFO     | components.executors.generic_form_filler:_process_checkbox_fields:1353 - ⬜ AI left unchecked 'I do not want to answer': Disability status is not specified.
+2025-09-25 20:45:57.250 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'I do not want to answer' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_disability_status-labeled-radio-2) - Success: True
+2025-09-25 20:45:57.251 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'I do not want to answer' = 'unchecked' (ID: id:97ee25bd-424c-42bc-92cb-235f2abea18e__systemfield_eeoc_disability_status-labeled-radio-2)
+2025-09-25 20:45:57.251 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: I do not want to answer - ✅ SUCCESS
+2025-09-25 20:45:57.251 | INFO     | components.executors.generic_form_filler:_process_complex_fields:1370 - 🔧 Processing 2 complex fields...
+2025-09-25 20:45:57.256 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:463 - Found element by ID: bdb433c4-4a6f-4082-ac6c-5cb4ee8f25d1
+2025-09-25 20:45:57.257 | INFO     | components.brains.gemini_field_mapper:_configure_gemini:110 - ✅ Gemini API configured from environment
+2025-09-25 20:45:58.958 | DEBUG    | components.state.field_completion_tracker:mark_field_attempted:64 - ✅ Attempted field: 'Why do you want to join Promise?' (ID: id:bdb433c4-4a6f-4082-ac6c-5cb4ee8f25d1) - Success: True
+2025-09-25 20:45:58.959 | INFO     | components.state.field_completion_tracker:mark_field_completed:45 - ✅ Marked field completed: 'Why do you want to join Promise?' = 'filled' (ID: id:bdb433c4-4a6f-4082-ac6c-5cb4ee8f25d1)
+2025-09-25 20:45:58.959 | DEBUG    | components.executors.generic_form_filler:_mark_field_attempted:823 - 🔖 Marked field as attempted: Why do you want to join Promise? - ✅ SUCCESS
+2025-09-25 20:45:58.959 | INFO     | components.executors.generic_form_filler:_process_complex_fields:1408 - ✅ AI wrote content for 'Why do you want to join Promise?'
+2025-09-25 20:45:58.968 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:466 - Failed to find element by ID 45f0c39f-2c11-4963-9da6-09eac1915f1f: Locator.is_visible: SyntaxError: Failed to execute 'querySelectorAll' on 'Document': '#45f0c39f-2c11-4963-9da6-09eac1915f1f' is not a valid selector.
+    at query (<anonymous>:5031:41)
+    at <anonymous>:5041:7
+    at SelectorEvaluatorImpl._cached (<anonymous>:4818:20)
+    at SelectorEvaluatorImpl._queryCSS (<anonymous>:5028:17)
+    at SelectorEvaluatorImpl._querySimple (<anonymous>:4908:19)
+    at <anonymous>:4856:29
+    at SelectorEvaluatorImpl._cached (<anonymous>:4818:20)
+    at SelectorEvaluatorImpl.query (<anonymous>:4849:19)
+    at Object.query (<anonymous>:5063:44)
+    at <anonymous>:5021:21
+Call log:
+    - checking visibility of locator("#45f0c39f-2c11-4963-9da6-09eac1915f1f").first
+
+2025-09-25 20:45:58.968 | WARNING  | components.executors.generic_form_filler:_get_fresh_element_reference:526 - Could not find fresh element reference for stable_id: id:45f0c39f-2c11-4963-9da6-09eac1915f1f
+2025-09-25 20:45:58.969 | INFO     | components.executors.generic_form_filler:_fill_with_ai:370 - ✅ Generic AI processing filled 50 fields successfully
+2025-09-25 20:45:58.969 | INFO     | components.executors.generic_form_filler:_fill_all_fields_sequentially:183 - 🧠 AI mapping filled 50 additional fields.
+2025-09-25 20:45:58.969 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:848 - 🔄 Expanding sections after filling existing fields...
+2025-09-25 20:45:58.970 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:854 - 📝 Processing education sections...
+2025-09-25 20:45:59.296 | DEBUG    | components.executors.generic_form_filler:_count_existing_sections:1060 - Final section count: 1 (capped from 0)
+2025-09-25 20:45:59.296 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:866 - 📊 Found 1 existing education sections, need 2
+2025-09-25 20:45:59.297 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:870 - ➕ Adding education section 2/2
+2025-09-25 20:45:59.325 | WARNING  | components.executors.generic_form_filler:_click_single_add_button:917 - ❌ Could not find Add button for education
+2025-09-25 20:45:59.325 | WARNING  | components.executors.generic_form_filler:_expand_sections_after_filling:875 - ❌ Failed to add education section 2
+2025-09-25 20:45:59.325 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:854 - 📝 Processing work_experience sections...
+2025-09-25 20:45:59.522 | DEBUG    | components.executors.generic_form_filler:_count_existing_sections:1002 - Found 6 job sections using pattern: div[class*="job"]
+2025-09-25 20:45:59.713 | DEBUG    | components.executors.generic_form_filler:_count_existing_sections:1060 - Final section count: 6 (capped from 6)
+2025-09-25 20:45:59.714 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:866 - 📊 Found 6 existing work_experience sections, need 1
+2025-09-25 20:45:59.714 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:854 - 📝 Processing projects sections...
+2025-09-25 20:45:59.928 | DEBUG    | components.executors.generic_form_filler:_count_existing_sections:1060 - Final section count: 1 (capped from 0)
+2025-09-25 20:45:59.928 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:866 - 📊 Found 1 existing projects sections, need 3
+2025-09-25 20:45:59.928 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:870 - ➕ Adding projects section 2/3
+2025-09-25 20:45:59.966 | WARNING  | components.executors.generic_form_filler:_click_single_add_button:917 - ❌ Could not find Add button for projects
+2025-09-25 20:45:59.966 | WARNING  | components.executors.generic_form_filler:_expand_sections_after_filling:875 - ❌ Failed to add projects section 2
+2025-09-25 20:45:59.966 | INFO     | components.executors.generic_form_filler:fill_form:109 - 🏁 Form filling process completed. Success: True
+2025-09-25 20:45:59 | INFO | __main__ | _fill_sections_if_needed:1236 | 🔍 Checking for education and work experience sections...
+2025-09-25 20:45:59.967 | INFO     | components.detectors.section_detector:detect:46 - 🔎 Detecting 'education' section...
+2025-09-25 20:45:59.977 | INFO     | components.detectors.section_detector:detect:57 - No 'education' section container found.
+2025-09-25 20:45:59 | INFO | __main__ | _fill_sections_if_needed:1254 | 📝 No education section detected
+2025-09-25 20:45:59.977 | INFO     | components.detectors.section_detector:detect:46 - 🔎 Detecting 'work_experience' section...
+2025-09-25 20:45:59.983 | INFO     | components.detectors.section_detector:detect:57 - No 'work_experience' section container found.
+2025-09-25 20:45:59 | INFO | __main__ | _fill_sections_if_needed:1272 | 📝 No work experience section detected
+2025-09-25 20:45:59 | DEBUG | components.router.state_machine | record_transition:28 | History: fill_form -> ai_guided_navigation @ https://jobs.ashbyhq.com/Promise/c3609196-67fb-4750-a8cf-e7013a839d1c/application?utm_source=7nl8GjynMY
+2025-09-25 20:45:59 | INFO | components.router.state_machine | run:79 | ✅ State 'fill_form' completed, transitioning to 'ai_guided_navigation'.
+2025-09-25 20:45:59 | INFO | components.router.state_machine | run:71 | 🚀 Entering state: ai_guided_navigation
+2025-09-25 20:45:59 | INFO | __main__ | _state_ai_guided_navigation:398 | >>> State: AI_GUIDED_NAVIGATION
+2025-09-25 20:45:59 | INFO | __main__ | _state_ai_guided_navigation:401 | 🔍 Universal Check 1: Detecting popups...
+2025-09-25 20:46:03 | INFO | __main__ | _state_ai_guided_navigation:409 | 🔍 Universal Check 2: Checking for authentication pages...
+2025-09-25 20:46:03.008 | INFO     | components.detectors.auth_page_detector:detect:56 - 🔍 Analyzing page for authentication indicators...
+2025-09-25 20:46:03.032 | INFO     | components.detectors.auth_page_detector:detect:87 - No authentication page detected (confidence below threshold).
+2025-09-25 20:46:03 | INFO | __main__ | _state_ai_guided_navigation:417 | 🔍 Universal Check 3: Checking for cookie consent...
+2025-09-25 20:46:03 | DEBUG | __main__ | _state_ai_guided_navigation:424 | CMP consent check failed: 'CmpConsent' object has no attribute 'detect_and_handle'
+2025-09-25 20:46:03 | INFO | __main__ | _state_ai_guided_navigation:440 | 🔍 Skipping apply button check - already in application process
+2025-09-25 20:46:03 | INFO | __main__ | _state_ai_guided_navigation:443 | 🧠 AI Analysis: Determining page state and next action...
+2025-09-25 20:46:03 | DEBUG | PIL.PngImagePlugin | call:191 | STREAM b'IHDR' 16 13
+2025-09-25 20:46:03 | DEBUG | PIL.PngImagePlugin | call:191 | STREAM b'IDAT' 41 4096
+2025-09-25 20:46:03 | DEBUG | PIL.PngImagePlugin | call:191 | STREAM b'IDAT' 92385 6
+2025-09-25 20:46:06 | INFO | __main__ | _state_ai_guided_navigation:446 | 🤖 AI Analysis Result: {'action': 'fill_form', 'confidence': 0.95, 'reason': 'The page presents a form with multiple fields to be filled out, including text input fields for location, how the applicant heard about the position, and a text area for explaining why they want to join Promise.', 'page_type': 'application_form', 'elements_detected': ['location field', 'how did you hear about Promise field', 'why do you want to join promise field']}
+2025-09-25 20:46:06 | INFO | __main__ | _state_ai_guided_navigation:454 | 📝 AI: Form detected - proceeding to fill
+2025-09-25 20:46:06 | DEBUG | components.router.state_machine | record_transition:28 | History: ai_guided_navigation -> fill_form @ https://jobs.ashbyhq.com/Promise/c3609196-67fb-4750-a8cf-e7013a839d1c/application?utm_source=7nl8GjynMY
+2025-09-25 20:46:06 | INFO | components.router.state_machine | run:79 | ✅ State 'ai_guided_navigation' completed, transitioning to 'fill_form'.
+2025-09-25 20:46:06 | INFO | components.router.state_machine | run:71 | 🚀 Entering state: fill_form
+2025-09-25 20:46:06 | INFO | __main__ | _state_fill_form:1133 | >>> State: ANALYZE_AND_FILL_FORM
+2025-09-25 20:46:06 | INFO | __main__ | _state_fill_form:1136 | 🔍 Checking for popups before form filling...
+2025-09-25 20:46:09 | INFO | __main__ | _state_fill_form:1163 | 📊 Form Progress - Iteration 2: 54 fields completed, 50 successful attempts
+2025-09-25 20:46:09 | INFO | __main__ | _load_profile_data:1922 | ✅ Successfully loaded profile for: Sahil Chordia
+2025-09-25 20:46:09 | INFO | __main__ | _load_profile_data:1923 | 📧 Email: chordiasahil24@gmail.com
+2025-09-25 20:46:09 | INFO | __main__ | _load_profile_data:1924 | 📱 Phone: (240) 610-1453
+2025-09-25 20:46:09 | INFO | __main__ | _load_profile_data:1925 | 📄 Resume: C:\Users\proto\Job_Application_Agent\Resumes\Sahil-Chordia-Resume.pdf
+2025-09-25 20:46:09 | INFO | __main__ | _load_profile_data:1926 | 🔗 LinkedIn: linkedin/in/sahil–chordia
+2025-09-25 20:46:09 | INFO | __main__ | _load_profile_data:1927 | 💻 GitHub: github/protocorn
+2025-09-25 20:46:09 | INFO | __main__ | _load_profile_data:1931 | 🎓 Education entries: 2
+2025-09-25 20:46:09 | INFO | __main__ | _load_profile_data:1933 |    1. Master of Science in Data Science at University of Maryland
+2025-09-25 20:46:09 | INFO | __main__ | _load_profile_data:1933 |    2. Bachelor of Engineering in Computer Science at A.P. Shah Institute of Technology
+2025-09-25 20:46:09 | INFO | __main__ | _load_profile_data:1937 | 💼 Work experience entries: 1
+2025-09-25 20:46:09 | INFO | __main__ | _load_profile_data:1939 |    1. AI Intern (Full Time) at Raising The Floor – Nonprofit focused on accessibility technology
+2025-09-25 20:46:13.835 | INFO     | components.executors.generic_form_filler:fill_form:63 - 🚀 Starting generic form filling process...
+2025-09-25 20:46:13.836 | INFO     | components.state.field_completion_tracker:log_progress:115 - 📊 Form Progress: 54 completed, 50 successful attempts, 0 failed attempts
+2025-09-25 20:46:13.836 | INFO     | components.state.field_completion_tracker:log_progress:120 - ✅ Completed fields:
+2025-09-25 20:46:13.836 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Another Gender Identity: Male
+2025-09-25 20:46:13.837 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • I identify as one or more of the classifications of protected veteran listed above: No
+2025-09-25 20:46:13.837 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • I am not a protected veteran: No
+2025-09-25 20:46:13.838 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • I decline to self-identify for protected veteran status: No
+2025-09-25 20:46:13.838 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Under 30: checked
+2025-09-25 20:46:13.838 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • 30-39: unchecked
+2025-09-25 20:46:13.838 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • 40-49: unchecked
+2025-09-25 20:46:13.839 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • 50-59: unchecked
+2025-09-25 20:46:13.839 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • 60 or older: unchecked
+2025-09-25 20:46:13.839 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • I prefer not to answer: unchecked
+2025-09-25 20:46:13.840 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Man: checked
+2025-09-25 20:46:13.840 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Woman: unchecked
+2025-09-25 20:46:13.841 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Non-Binary: unchecked
+2025-09-25 20:46:13.841 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • I prefer not to answer: unchecked
+2025-09-25 20:46:13.841 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Yes: checked
+2025-09-25 20:46:13.841 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • No: unchecked
+2025-09-25 20:46:13.842 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • I prefer not to answer: unchecked
+2025-09-25 20:46:13.842 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Bisexual: unchecked
+2025-09-25 20:46:13.843 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Lesbian: unchecked
+2025-09-25 20:46:13.843 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Gay: unchecked
+2025-09-25 20:46:13.843 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Queer: unchecked
+2025-09-25 20:46:13.843 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Heterosexual / straight: unchecked
+2025-09-25 20:46:13.843 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Other: unchecked
+2025-09-25 20:46:13.843 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • I prefer not to answer: unchecked
+2025-09-25 20:46:13.843 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Asian or Asian American: checked
+2025-09-25 20:46:13.845 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Black or African American: unchecked
+2025-09-25 20:46:13.845 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Hispanic or Latine: unchecked
+2025-09-25 20:46:13.845 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Indigenous or Native American: unchecked
+2025-09-25 20:46:13.846 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Native Hawaiian or Other Pacific Islander: unchecked
+2025-09-25 20:46:13.846 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • White: unchecked
+2025-09-25 20:46:13.847 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Other: unchecked
+2025-09-25 20:46:13.847 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • I prefer not to answer: unchecked
+2025-09-25 20:46:13.848 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Person with disability: unchecked
+2025-09-25 20:46:13.848 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Neurodiverse: unchecked
+2025-09-25 20:46:13.848 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Veteran: unchecked
+2025-09-25 20:46:13.849 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Parent: unchecked
+2025-09-25 20:46:13.849 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Refugee or immigrant: checked
+2025-09-25 20:46:13.849 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • None of the above: unchecked
+2025-09-25 20:46:13.850 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • I prefer not to answer: unchecked
+2025-09-25 20:46:13.850 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Male: checked
+2025-09-25 20:46:13.850 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Female: unchecked
+2025-09-25 20:46:13.851 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Decline to self-identify: unchecked
+2025-09-25 20:46:13.851 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Hispanic or Latino: unchecked
+2025-09-25 20:46:13.852 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • White (Not Hispanic or Latino): unchecked
+2025-09-25 20:46:13.852 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Black or African American (Not Hispanic or Latino): unchecked
+2025-09-25 20:46:13.852 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino): unchecked
+2025-09-25 20:46:13.853 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Asian (Not Hispanic or Latino): checked
+2025-09-25 20:46:13.853 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • American Indian or Alaska Native (Not Hispanic or Latino): unchecked
+2025-09-25 20:46:13.853 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Two or More Races (Not Hispanic or Latino): unchecked
+2025-09-25 20:46:13.853 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Decline to self-identify: unchecked
+2025-09-25 20:46:13.853 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Yes, I have a disability, or have had one in the past: unchecked
+2025-09-25 20:46:13.854 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • No, I don't have a disability and have not had one in the past: unchecked
+2025-09-25 20:46:13.854 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • I do not want to answer: unchecked
+2025-09-25 20:46:13.854 | INFO     | components.state.field_completion_tracker:log_progress:122 -    • Why do you want to join Promise?: filled
+2025-09-25 20:46:13.855 | INFO     | components.executors.generic_form_filler:_expand_form_sections_if_needed:768 - 🔍 Preparing section expansion data...
+2025-09-25 20:46:13.855 | INFO     | components.executors.generic_form_filler:_expand_form_sections_if_needed:780 - 📋 Found 2 education entries to potentially add
+2025-09-25 20:46:13.855 | INFO     | components.executors.generic_form_filler:_expand_form_sections_if_needed:780 - 📋 Found 1 work_experience entries to potentially add
+2025-09-25 20:46:13.856 | INFO     | components.executors.generic_form_filler:_expand_form_sections_if_needed:780 - 📋 Found 3 projects entries to potentially add
+2025-09-25 20:46:13.856 | INFO     | components.detectors.sensitive_field_detector:detect:26 - 🛡️ Detecting sensitive fields...
+2025-09-25 20:46:22.613 | INFO     | components.executors.field_interactor:_is_resume_already_uploaded:203 - 🔍 Found uploaded file: Sahil-Chordia-Resume.pdf
+2025-09-25 20:46:22.613 | INFO     | components.executors.field_interactor:upload_resume_if_present:231 - ✅ Resume already uploaded, skipping re-upload
+2025-09-25 20:46:22.619 | INFO     | components.executors.generic_form_filler:_decide_next_action:136 - ✅ Resume uploaded directly (avoiding autofill)
+2025-09-25 20:46:22.637 | INFO     | components.executors.generic_form_filler:_fill_remaining_fields:166 - Scanning for remaining fields to fill...
+2025-09-25 20:46:22.654 | INFO     | components.executors.generic_form_filler:_fill_all_fields_sequentially:171 - Executing sequential field filling strategy (Patterns -> Fast Mapping -> AI).
+2025-09-25 20:46:27.056 | INFO     | components.executors.generic_form_filler:_fill_all_fields_sequentially:175 - 📊 Pattern matching filled 0 fields.
+2025-09-25 20:46:27.056 | INFO     | components.executors.generic_form_filler:_fill_with_fast_mapping:251 - ⚡ Starting fast profile mapping...
+2025-09-25 20:46:31.437 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: '30-39' = 'unchecked'
+2025-09-25 20:46:31.437 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: '40-49' = 'unchecked'
+2025-09-25 20:46:31.437 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: '50-59' = 'unchecked'
+2025-09-25 20:46:31.438 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: '60 or older' = 'unchecked'
+2025-09-25 20:46:31.438 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I prefer not to answer' = 'unchecked'
+2025-09-25 20:46:31.438 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Woman' = 'unchecked'
+2025-09-25 20:46:31.438 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Non-Binary' = 'unchecked'
+2025-09-25 20:46:31.438 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Another Gender Identity' = 'Male'
+2025-09-25 20:46:31.440 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I prefer not to answer' = 'unchecked'
+2025-09-25 20:46:31.440 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'No' = 'unchecked'
+2025-09-25 20:46:31.440 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I prefer not to answer' = 'unchecked'
+2025-09-25 20:46:31.440 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Bisexual' = 'unchecked'
+2025-09-25 20:46:31.440 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Lesbian' = 'unchecked'
+2025-09-25 20:46:31.440 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Gay' = 'unchecked'
+2025-09-25 20:46:31.441 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Queer' = 'unchecked'
+2025-09-25 20:46:31.441 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Heterosexual / straight' = 'unchecked'
+2025-09-25 20:46:31.441 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Other' = 'unchecked'
+2025-09-25 20:46:31.442 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I prefer not to answer' = 'unchecked'
+2025-09-25 20:46:31.442 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Black or African American' = 'unchecked'
+2025-09-25 20:46:31.442 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Hispanic or Latine' = 'unchecked'
+2025-09-25 20:46:31.443 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Indigenous or Native American' = 'unchecked'
+2025-09-25 20:46:31.443 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Native Hawaiian or Other Pacific Islander' = 'unchecked'
+2025-09-25 20:46:31.443 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'White' = 'unchecked'
+2025-09-25 20:46:31.443 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Other' = 'unchecked'
+2025-09-25 20:46:31.444 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I prefer not to answer' = 'unchecked'
+2025-09-25 20:46:31.444 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Person with disability' = 'unchecked'
+2025-09-25 20:46:31.444 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Neurodiverse' = 'unchecked'
+2025-09-25 20:46:31.444 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Veteran' = 'unchecked'
+2025-09-25 20:46:31.445 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Parent' = 'unchecked'
+2025-09-25 20:46:31.445 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'None of the above' = 'unchecked'
+2025-09-25 20:46:31.445 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I prefer not to answer' = 'unchecked'
+2025-09-25 20:46:31.446 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Female' = 'unchecked'
+2025-09-25 20:46:31.446 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Decline to self-identify' = 'unchecked'
+2025-09-25 20:46:31.446 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Hispanic or Latino' = 'unchecked'
+2025-09-25 20:46:31.447 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'White (Not Hispanic or Latino)' = 'unchecked'
+2025-09-25 20:46:31.447 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Black or African American (Not Hispanic or Latino)' = 'unchecked'
+2025-09-25 20:46:31.447 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino)' = 'unchecked'
+2025-09-25 20:46:31.448 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'American Indian or Alaska Native (Not Hispanic or Latino)' = 'unchecked'
+2025-09-25 20:46:31.448 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Two or More Races (Not Hispanic or Latino)' = 'unchecked'
+2025-09-25 20:46:31.448 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Decline to self-identify' = 'unchecked'
+2025-09-25 20:46:31.448 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I identify as one or more of the classifications of protected veteran listed above' = 'No'
+2025-09-25 20:46:31.449 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I am not a protected veteran' = 'No'
+2025-09-25 20:46:31.449 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Yes, I have a disability, or have had one in the past' = 'unchecked'
+2025-09-25 20:46:31.449 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'No, I don't have a disability and have not had one in the past' = 'unchecked'
+2025-09-25 20:46:31.449 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I do not want to answer' = 'unchecked'
+2025-09-25 20:46:31.450 | INFO     | components.executors.fast_field_mapper:batch_map_fields:404 - ⚡ Fast mapper: 0 mapped instantly, 5 need AI
+2025-09-25 20:46:31.450 | INFO     | components.executors.generic_form_filler:_fill_with_fast_mapping:298 - ⚡ Fast mapping completed: 0 fields filled instantly
+2025-09-25 20:46:31.450 | INFO     | components.executors.generic_form_filler:_fill_all_fields_sequentially:179 - ⚡ Fast mapping filled 0 fields instantly.
+2025-09-25 20:46:31.451 | INFO     | components.executors.generic_form_filler:_fill_with_ai:311 - Phase 1: Extracting form fields (without expensive dropdown extraction)...
+2025-09-25 20:46:35.825 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: '30-39' = 'unchecked'
+2025-09-25 20:46:35.827 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: '40-49' = 'unchecked'
+2025-09-25 20:46:35.828 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: '50-59' = 'unchecked'
+2025-09-25 20:46:35.828 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: '60 or older' = 'unchecked'
+2025-09-25 20:46:35.828 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I prefer not to answer' = 'unchecked'
+2025-09-25 20:46:35.829 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Woman' = 'unchecked'
+2025-09-25 20:46:35.831 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Non-Binary' = 'unchecked'
+2025-09-25 20:46:35.840 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Another Gender Identity' = 'Male'
+2025-09-25 20:46:35.844 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I prefer not to answer' = 'unchecked'
+2025-09-25 20:46:35.852 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'No' = 'unchecked'
+2025-09-25 20:46:35.852 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I prefer not to answer' = 'unchecked'
+2025-09-25 20:46:35.853 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Bisexual' = 'unchecked'
+2025-09-25 20:46:35.853 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Lesbian' = 'unchecked'
+2025-09-25 20:46:35.853 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Gay' = 'unchecked'
+2025-09-25 20:46:35.854 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Queer' = 'unchecked'
+2025-09-25 20:46:35.854 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Heterosexual / straight' = 'unchecked'
+2025-09-25 20:46:35.854 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Other' = 'unchecked'
+2025-09-25 20:46:35.854 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I prefer not to answer' = 'unchecked'
+2025-09-25 20:46:35.861 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Black or African American' = 'unchecked'
+2025-09-25 20:46:35.866 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Hispanic or Latine' = 'unchecked'
+2025-09-25 20:46:35.888 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Indigenous or Native American' = 'unchecked'
+2025-09-25 20:46:35.888 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Native Hawaiian or Other Pacific Islander' = 'unchecked'
+2025-09-25 20:46:35.889 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'White' = 'unchecked'
+2025-09-25 20:46:35.889 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Other' = 'unchecked'
+2025-09-25 20:46:35.889 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I prefer not to answer' = 'unchecked'
+2025-09-25 20:46:35.889 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Person with disability' = 'unchecked'
+2025-09-25 20:46:35.889 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Neurodiverse' = 'unchecked'
+2025-09-25 20:46:35.889 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Veteran' = 'unchecked'
+2025-09-25 20:46:35.891 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Parent' = 'unchecked'
+2025-09-25 20:46:35.891 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'None of the above' = 'unchecked'
+2025-09-25 20:46:35.891 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I prefer not to answer' = 'unchecked'
+2025-09-25 20:46:35.892 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Female' = 'unchecked'
+2025-09-25 20:46:35.892 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Decline to self-identify' = 'unchecked'
+2025-09-25 20:46:35.893 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Hispanic or Latino' = 'unchecked'
+2025-09-25 20:46:35.895 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'White (Not Hispanic or Latino)' = 'unchecked'
+2025-09-25 20:46:35.896 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Black or African American (Not Hispanic or Latino)' = 'unchecked'
+2025-09-25 20:46:35.896 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino)' = 'unchecked'
+2025-09-25 20:46:35.898 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'American Indian or Alaska Native (Not Hispanic or Latino)' = 'unchecked'
+2025-09-25 20:46:35.898 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Two or More Races (Not Hispanic or Latino)' = 'unchecked'
+2025-09-25 20:46:35.898 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Decline to self-identify' = 'unchecked'
+2025-09-25 20:46:35.899 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I identify as one or more of the classifications of protected veteran listed above' = 'No'
+2025-09-25 20:46:35.901 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I am not a protected veteran' = 'No'
+2025-09-25 20:46:35.903 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'Yes, I have a disability, or have had one in the past' = 'unchecked'
+2025-09-25 20:46:35.903 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'No, I don't have a disability and have not had one in the past' = 'unchecked'
+2025-09-25 20:46:35.903 | INFO     | components.state.field_completion_tracker:should_skip_field:128 - ⏭️ Skipping already completed field: 'I do not want to answer' = 'unchecked'
+2025-09-25 20:46:35.903 | INFO     | components.executors.generic_form_filler:_fill_with_ai:321 - 🎯 After filtering completed fields: 5 fields remaining (was 64)
+2025-09-25 20:46:35.903 | INFO     | components.executors.generic_form_filler:_fill_with_ai:330 - Phase 1b: Extracting dropdown options for remaining fields only...
+2025-09-25 20:46:35.903 | INFO     | components.executors.generic_form_filler:_fill_with_ai:347 - Found 5 unfilled fields for enhanced AI mapping.
+2025-09-25 20:46:35.905 | INFO     | components.executors.generic_form_filler:_fill_with_ai:350 - Phase 2: Categorizing fields by interaction type...
+2025-09-25 20:46:35.905 | INFO     | components.executors.generic_form_filler:_categorize_fields_by_type:1227 - 📊 Field categories: 4 standard, 0 dropdowns, 0 checkboxes, 1 complex
+2025-09-25 20:46:35.905 | INFO     | components.executors.generic_form_filler:_fill_with_ai:354 - Phase 3: Processing each field category with AI...
+2025-09-25 20:46:35.905 | INFO     | components.executors.generic_form_filler:_process_standard_fields:1235 - 🔤 Processing 4 standard text fields...
+2025-09-25 20:46:37.495 | DEBUG    | components.brains.gemini_field_mapper:_parse_comprehensive_mapping_response:401 - Mapped id:6b1e70b5-4410-4742-b7de-775a3a018609 -> NEEDS_HUMAN_INPUT: Preferred Name not specified in profile
+2025-09-25 20:46:37.496 | DEBUG    | components.brains.gemini_field_mapper:_parse_comprehensive_mapping_response:401 - Mapped id:e3ea30e8-1a38-4481-a90f-16d6c2df22af -> NEEDS_HUMAN_INPUT: Name Pronunciation not specified in profile
+2025-09-25 20:46:37.497 | DEBUG    | components.brains.gemini_field_mapper:_parse_comprehensive_mapping_response:401 - Mapped id:8cc7cc3e-55df-4b50-ac5f-9c4b8fc8a5c3 -> NEEDS_HUMAN_INPUT: Pronouns not specified in profile
+2025-09-25 20:46:37.497 | DEBUG    | components.brains.gemini_field_mapper:_parse_comprehensive_mapping_response:401 - Mapped id:2a510efc-09f9-4a51-bfe2-703d00ce4934 -> NEEDS_HUMAN_INPUT: How did you hear about Promise? not specified in profile
+2025-09-25 20:46:37.497 | INFO     | components.brains.gemini_field_mapper:_parse_comprehensive_mapping_response:407 - Successfully parsed 4 field mappings from AI response
+2025-09-25 20:46:37.499 | INFO     | components.brains.gemini_field_mapper:map_fields_to_profile:149 - 🧠 Gemini processed 4 fields: 0 simple, 0 dropdown, 0 manual
+2025-09-25 20:46:37.500 | INFO     | components.executors.generic_form_filler:_process_complex_fields:1370 - 🔧 Processing 1 complex fields...
+2025-09-25 20:46:37.514 | DEBUG    | components.executors.generic_form_filler:_get_fresh_element_reference:466 - Failed to find element by ID 45f0c39f-2c11-4963-9da6-09eac1915f1f: Locator.is_visible: SyntaxError: Failed to execute 'querySelectorAll' on 'Document': '#45f0c39f-2c11-4963-9da6-09eac1915f1f' is not a valid selector.
+    at query (<anonymous>:5031:41)
+    at <anonymous>:5041:7
+    at SelectorEvaluatorImpl._cached (<anonymous>:4818:20)
+    at SelectorEvaluatorImpl._queryCSS (<anonymous>:5028:17)
+    at SelectorEvaluatorImpl._querySimple (<anonymous>:4908:19)
+    at <anonymous>:4856:29
+    at SelectorEvaluatorImpl._cached (<anonymous>:4818:20)
+    at SelectorEvaluatorImpl.query (<anonymous>:4849:19)
+    at Object.query (<anonymous>:5063:44)
+    at <anonymous>:5021:21
+Call log:
+    - checking visibility of locator("#45f0c39f-2c11-4963-9da6-09eac1915f1f").first
+
+2025-09-25 20:46:37.516 | WARNING  | components.executors.generic_form_filler:_get_fresh_element_reference:526 - Could not find fresh element reference for stable_id: id:45f0c39f-2c11-4963-9da6-09eac1915f1f
+2025-09-25 20:46:37.517 | INFO     | components.executors.generic_form_filler:_fill_with_ai:370 - ✅ Generic AI processing filled 0 fields successfully
+2025-09-25 20:46:37.517 | INFO     | components.executors.generic_form_filler:_fill_all_fields_sequentially:183 - 🧠 AI mapping filled 0 additional fields.
+2025-09-25 20:46:37.517 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:848 - 🔄 Expanding sections after filling existing fields...
+2025-09-25 20:46:37.518 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:854 - 📝 Processing education sections...
+2025-09-25 20:46:37.837 | DEBUG    | components.executors.generic_form_filler:_count_existing_sections:1060 - Final section count: 1 (capped from 0)
+2025-09-25 20:46:37.838 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:866 - 📊 Found 1 existing education sections, need 2
+2025-09-25 20:46:37.841 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:870 - ➕ Adding education section 2/2
+2025-09-25 20:46:37.877 | WARNING  | components.executors.generic_form_filler:_click_single_add_button:917 - ❌ Could not find Add button for education
+2025-09-25 20:46:37.878 | WARNING  | components.executors.generic_form_filler:_expand_sections_after_filling:875 - ❌ Failed to add education section 2
+2025-09-25 20:46:37.879 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:854 - 📝 Processing work_experience sections...
+2025-09-25 20:46:38.100 | DEBUG    | components.executors.generic_form_filler:_count_existing_sections:1002 - Found 6 job sections using pattern: div[class*="job"]
+2025-09-25 20:46:38.287 | DEBUG    | components.executors.generic_form_filler:_count_existing_sections:1060 - Final section count: 6 (capped from 6)
+2025-09-25 20:46:38.287 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:866 - 📊 Found 6 existing work_experience sections, need 1
+2025-09-25 20:46:38.287 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:854 - 📝 Processing projects sections...
+2025-09-25 20:46:38.513 | DEBUG    | components.executors.generic_form_filler:_count_existing_sections:1060 - Final section count: 1 (capped from 0)
+2025-09-25 20:46:38.513 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:866 - 📊 Found 1 existing projects sections, need 3
+2025-09-25 20:46:38.513 | INFO     | components.executors.generic_form_filler:_expand_sections_after_filling:870 - ➕ Adding projects section 2/3
+2025-09-25 20:46:38.537 | WARNING  | components.executors.generic_form_filler:_click_single_add_button:917 - ❌ Could not find Add button for projects
+2025-09-25 20:46:38.537 | WARNING  | components.executors.generic_form_filler:_expand_sections_after_filling:875 - ❌ Failed to add projects section 2
+2025-09-25 20:46:38.539 | INFO     | components.executors.generic_form_filler:fill_form:109 - 🏁 Form filling process completed. Success: False
+2025-09-25 20:46:38 | INFO | __main__ | _state_fill_form:1218 | 🎯 Form appears complete: 54 fields filled
+2025-09-25 20:46:38 | INFO | __main__ | _state_fill_form:1219 | 👤 Ready for human review and submission
+2025-09-25 20:46:38 | DEBUG | components.router.state_machine | record_transition:28 | History: fill_form -> human_intervention @ https://jobs.ashbyhq.com/Promise/c3609196-67fb-4750-a8cf-e7013a839d1c/application?utm_source=7nl8GjynMY
+2025-09-25 20:46:38 | INFO | components.router.state_machine | run:79 | ✅ State 'fill_form' completed, transitioning to 'human_intervention'.
+2025-09-25 20:46:38 | INFO | components.router.state_machine | run:71 | 🚀 Entering state: human_intervention
+2025-09-25 20:46:38 | CRITICAL | __main__ | _state_human_intervention:1631 | ================================================================================
+2025-09-25 20:46:38 | WARNING | __main__ | _notify_intervention_needed:1719 | No job_id available for intervention notification
+2025-09-25 20:46:38 | INFO | __main__ | _state_human_intervention:1670 | 💾 Session state saved! Browser will stay open for manual completion.
+2025-09-25 20:46:38 | INFO | __main__ | _state_human_intervention:1673 | 👤 Browser staying open for human intervention
+2025-09-25 20:46:38 | INFO | __main__ | _state_human_intervention:1688 | 🔍 --debug flag detected: waiting for user to complete manual steps...
+2025-09-25 20:56:11 | INFO | __main__ | process_link:248 | 👤 Keeping browser open indefinitely for human intervention...
+2025-09-25 20:56:11 | INFO | __main__ | run_links_with_refactored_agent:1959 | 🔒 Keeping Playwright instance alive for human intervention - browser will stay open

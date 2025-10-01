@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 from google import genai
 from dotenv import load_dotenv
@@ -7,7 +8,11 @@ import logging
 import http.client
 import urllib.parse
 
-# Configure logging
+# Add parent directory to path for logging_config import
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from logging_config import setup_file_logging
+
+# Configure logging (will be overridden if setup_file_logging is called elsewhere)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -31,24 +36,32 @@ class JobDiscoveryAgent:
         "required": ["limit", "advanced_title_filter", "location_filter", "description_type", "date_filter"]
     }
 
-    def __init__(self):
-        self.profile_path = os.path.join(os.path.dirname(__file__), '..', 'ProfileBuilder', 'profile_data.json')
+    def __init__(self, user_id=None):
+        self.user_id = user_id
         self.profile_data = self._load_profile_data()
         self.gemini_client = self._initialize_gemini()
         self.active_jobs_data = {}
 
     def _load_profile_data(self):
-        """Load profile data from profile_data.json"""
+        """Load profile data from PostgreSQL database"""
         try:
-            with open(self.profile_path, 'r', encoding='utf-8') as file:
-                profile = json.load(file)
-                logger.info(f"Successfully loaded profile for {profile.get('first name', 'N/A')} {profile.get('last name', 'N/A')}")
+            from agent_profile_service import AgentProfileService
+
+            if self.user_id:
+                profile = AgentProfileService.get_profile_by_user_id(self.user_id)
+            else:
+                # For backward compatibility, get the latest user's profile
+                profile = AgentProfileService.get_latest_user_profile()
+
+            if profile:
+                logger.info(f"Successfully loaded profile for {profile.get('first name', 'N/A')} {profile.get('last name', 'N/A')} from database")
                 return profile
-        except FileNotFoundError:
-            logger.error(f"Profile file not found: {self.profile_path}")
-            return {}
-        except json.JSONDecodeError as e:
-            logger.error(f"Error parsing profile file: {e}")
+            else:
+                logger.error("No profile data found in database")
+                return {}
+
+        except Exception as e:
+            logger.error(f"Error loading profile from database: {e}")
             return {}
     
     def _initialize_gemini(self):
