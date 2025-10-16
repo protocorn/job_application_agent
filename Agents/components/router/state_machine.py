@@ -18,14 +18,22 @@ class ApplicationState:
         """Update the shared context available to all states."""
         self.context.update(updates)
 
-    def record_transition(self, from_state: str, to_state: str, url: str):
-        """Record a state transition in the history for debugging and loop detection."""
+    def record_transition(self, from_state: str, to_state: str, url: str, progress_made: bool = False):
+        """Record a state transition in the history for debugging and loop detection.
+
+        Args:
+            from_state: The state we're transitioning from
+            to_state: The state we're transitioning to
+            url: The current page URL
+            progress_made: Whether meaningful progress was made (e.g., clicked button, filled form, dismissed blocker)
+        """
         self.history.append({
             'from': from_state,
             'to': to_state,
-            'url': url
+            'url': url,
+            'progress': progress_made
         })
-        logger.debug(f"History: {from_state} -> {to_state} @ {url}")
+        logger.debug(f"History: {from_state} -> {to_state} @ {url} [progress: {progress_made}]")
 
 class StateMachine:
     """A robust, deterministic state machine for orchestrating the job application flow."""
@@ -74,8 +82,11 @@ class StateMachine:
             try:
                 previous_state_name = self._current_state_name
                 next_state_name = await handler(self.app_state)
-                
-                self.app_state.record_transition(previous_state_name, next_state_name, self.page.url)
+
+                # Check if progress was made during this transition
+                progress_made = self.app_state.context.pop('progress_made', False)
+
+                self.app_state.record_transition(previous_state_name, next_state_name, self.page.url, progress_made)
                 logger.info(f"✅ State '{previous_state_name}' completed, transitioning to '{next_state_name}'.")
                 self._current_state_name = next_state_name
 
@@ -96,21 +107,76 @@ class StateMachine:
         return self.app_state
 
     def _is_stuck_in_loop(self) -> bool:
-        """A more intelligent loop detector."""
-        if len(self.app_state.history) < 4:
-            return False # Not enough history to detect a loop
+        """
+        Enhanced loop detector that catches:
+        - Short loops (A→B→A→B)
+        - Long loops (A→B→C→D→A→B→C→D)
+        - Partial progress loops (filling same field repeatedly)
+        - Silent failure loops (no net progress despite activity)
+        """
+        if len(self.app_state.history) < 6:
+            return False  # Need at least 6 entries to detect meaningful loops
 
-        # A simple but effective loop is A -> B -> A -> B on the same URL.
-        last_four = self.app_state.history[-4:]
-        
-        is_loop = (
-            last_four[0]['from'] == last_four[2]['from'] and
-            last_four[1]['from'] == last_four[3]['from'] and
-            last_four[0]['to'] == last_four[2]['to'] and
-            last_four[1]['to'] == last_four[3]['to']
-        )
-        
-        # Crucially, check if the URL has changed. If it has, we are making progress.
-        urls_are_the_same = (last_four[0]['url'] == last_four[2]['url'] and last_four[1]['url'] == last_four[3]['url'])
+        # Strategy 1: Check for repeated state signatures
+        # Signature = (from_state, to_state, URL, fields_filled_count)
+        recent_history = self.app_state.history[-10:]  # Last 10 transitions
 
-        return is_loop and urls_are_the_same
+        state_signatures = []
+        for entry in recent_history:
+            signature = (
+                entry['from'],
+                entry['to'],
+                entry['url'],
+                entry.get('fields_filled', 0)  # Track actual progress
+            )
+            state_signatures.append(signature)
+
+        # Count occurrences of each signature
+        signature_counts = {}
+        for sig in state_signatures:
+            signature_counts[sig] = signature_counts.get(sig, 0) + 1
+
+        # If any signature appears 3+ times, we're stuck
+        for sig, count in signature_counts.items():
+            if count >= 3:
+                logger.critical(f"🔁 Loop detected: State signature repeated {count} times: {sig}")
+                return True
+
+        # Strategy 2: Check for URL + field_count stagnation
+        # If we've been on the same URL with same field count for 4+ transitions, we're stuck
+        if len(recent_history) >= 4:
+            last_four = recent_history[-4:]
+            urls = [entry['url'] for entry in last_four]
+            field_counts = [entry.get('fields_filled', 0) for entry in last_four]
+
+            # All same URL and same field count = stuck
+            if len(set(urls)) == 1 and len(set(field_counts)) == 1:
+                # Check if any real progress was made
+                any_progress = any(entry.get('progress', False) for entry in last_four)
+                if not any_progress:
+                    logger.critical(f"🔁 Stagnation detected: Same URL and field count for 4 transitions without progress")
+                    return True
+
+        # Strategy 3: Classic A→B→A→B pattern detection (backward compatibility)
+        if len(recent_history) >= 4:
+            last_four = recent_history[-4:]
+
+            is_ab_loop = (
+                last_four[0]['from'] == last_four[2]['from'] and
+                last_four[1]['from'] == last_four[3]['from'] and
+                last_four[0]['to'] == last_four[2]['to'] and
+                last_four[1]['to'] == last_four[3]['to']
+            )
+
+            urls_same = (
+                last_four[0]['url'] == last_four[2]['url'] and
+                last_four[1]['url'] == last_four[3]['url']
+            )
+
+            any_progress = any(entry.get('progress', False) for entry in last_four)
+
+            if is_ab_loop and urls_same and not any_progress:
+                logger.critical(f"🔁 Classic A→B→A→B loop detected without progress")
+                return True
+
+        return False

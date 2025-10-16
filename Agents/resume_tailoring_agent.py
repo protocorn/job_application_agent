@@ -23,28 +23,37 @@ SCOPES = [
 ]
 
 
-def get_google_services():
-    """Shows basic usage of the Docs and Drive APIs.
-    Prints the title of a sample document.
+def get_google_services(credentials=None):
+    """Get Google Docs and Drive services.
+
+    Args:
+        credentials: Optional Google OAuth2 Credentials object. If not provided,
+                    falls back to token.json file.
+
+    Returns:
+        Tuple of (docs_service, drive_service)
     """
-    creds = None
-    # The file token.json stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
-    if os.path.exists("token.json"):
-        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
-    # If there are no (valid) credentials available, let the user log in.
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                "../credentials.json", SCOPES
-            )
-            creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
-        with open("token.json", "w") as token:
-            token.write(creds.to_json())
+    creds = credentials
+
+    # If no credentials provided, use legacy token.json file
+    if not creds:
+        # The file token.json stores the user's access and refresh tokens, and is
+        # created automatically when the authorization flow completes for the first
+        # time.
+        if os.path.exists("token.json"):
+            creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+        # If there are no (valid) credentials available, let the user log in.
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    "../credentials.json", SCOPES
+                )
+                creds = flow.run_local_server(port=0)
+            # Save the credentials for the next run
+            with open("token.json", "w") as token:
+                token.write(creds.to_json())
 
     try:
         docs_service = build("docs", "v1", credentials=creds)
@@ -664,11 +673,19 @@ JOB DESCRIPTION:
     )
     return response.candidates[0].content.parts[0].text
 
-def tailor_resume_and_return_url(original_resume_url, job_description, job_title, company):
-    """Tailor resume and return publicly accessible Google Doc URL"""
+def tailor_resume_and_return_url(original_resume_url, job_description, job_title, company, credentials=None):
+    """Tailor resume and return publicly accessible Google Doc URL
+
+    Args:
+        original_resume_url: URL to the original Google Doc resume
+        job_description: Job description text
+        job_title: Job title
+        company: Company name
+        credentials: Optional Google OAuth2 Credentials object for user-specific access
+    """
     try:
-        # Get Google Services
-        docs_service, drive_service = get_google_services()
+        # Get Google Services (with user-specific credentials if provided)
+        docs_service, drive_service = get_google_services(credentials)
         if not all([docs_service, drive_service]):
             raise ValueError("Failed to authenticate with Google services")
 

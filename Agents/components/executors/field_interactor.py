@@ -12,14 +12,34 @@ class FieldInteractor:
         self.action_recorder = action_recorder
         self._cached_fields: Optional[List[Dict[str, Any]]] = None
 
-    async def fill_field(self, field_data: Dict[str, Any], value: Any, profile: Optional[Dict[str, Any]] = None, max_retries: int = 3) -> None:
+    async def fill_field(self, field_data: Dict[str, Any], value: Any, profile: Optional[Dict[str, Any]] = None, max_retries: int = 2) -> None:
         """Fills a single field with verification and retry logic."""
         element = field_data['element']
         category = field_data.get('field_category', 'text_input')
         field_label = field_data.get('label', '')
         stable_id = field_data.get('stable_id', '')
+        input_type = field_data.get('input_type', 'text')
 
         logger.debug(f"Interactor filling '{field_label}' (Category: {category})")
+
+        # Check if field is already filled - skip if it is
+        try:
+            is_already_filled = await self._check_if_filled(element, input_type, category)
+            if is_already_filled:
+                logger.info(f"⏭️ Field '{field_label}' is already filled, skipping")
+                # Return success without action
+                if self.action_recorder:
+                    self.action_recorder.record_enhanced_field_interaction(field_data, value, {
+                        "success": True,
+                        "method": "skipped_already_filled",
+                        "final_value": "already_filled",
+                        "error": None,
+                        "verification": {},
+                        "retry_count": 0
+                    })
+                return
+        except Exception as e:
+            logger.debug(f"Error checking if field '{field_label}' is filled: {e}, continuing with fill attempt")
 
         # Enhanced action recording with full context
         interaction_result = {
@@ -132,7 +152,7 @@ class FieldInteractor:
                     await element.fill(str(value))
 
                     # Wait briefly for value to settle
-                    await self.page.wait_for_timeout(200)
+                    await self.page.wait_for_timeout(100)
 
                     # Verify the value was actually filled
                     filled_value = await element.input_value()
@@ -154,7 +174,7 @@ class FieldInteractor:
 
                 if attempt < max_retries - 1:
                     # Wait before retry with exponential backoff
-                    wait_time = 500 * (attempt + 1)
+                    wait_time = 300 * (attempt + 1)
                     await self.page.wait_for_timeout(wait_time)
                     logger.debug(f"Retrying field '{field_label}' after {wait_time}ms...")
                 else:
@@ -393,12 +413,51 @@ class FieldInteractor:
         """Gets metadata for all visible and interactive form fields, with stable element identification."""
         # Don't use caching for now to avoid stale references
         form_fields = []
-        selector = 'input:not([type="hidden"]), select, textarea'
+
+        # Expanded selector to include custom form components used by Greenhouse, Workday, etc.
+        selector = '''
+            input:not([type="hidden"]):not([type="submit"]):not([type="button"]),
+            select,
+            textarea,
+            [contenteditable="true"],
+            [role="combobox"],
+            [role="textbox"],
+            [role="listbox"],
+            [data-provides="typeahead"]
+        '''
         elements = await self.page.locator(selector).all()
+        logger.info(f"🔍 Found {len(elements)} potential form fields using standard selectors")
+
+        visible_count = 0
+        skipped_count = 0
+        error_count = 0
 
         for i, element in enumerate(elements):
             try:
-                if not await element.is_visible(): continue
+                # Relaxed visibility check: Check if element has non-zero dimensions
+                # This catches Greenhouse/Workday fields that use CSS tricks
+                try:
+                    box = await element.bounding_box()
+                    if box is None:
+                        # Element not in viewport or detached - try is_visible as fallback
+                        try:
+                            if not await element.is_visible(timeout=100):
+                                skipped_count += 1
+                                continue
+                        except:
+                            # If both fail, skip
+                            skipped_count += 1
+                            continue
+                    elif box['width'] == 0 or box['height'] == 0:
+                        # Element has zero size - likely hidden
+                        skipped_count += 1
+                        continue
+                except Exception as e:
+                    logger.debug(f"Visibility check failed for element {i}: {e}")
+                    skipped_count += 1
+                    continue
+
+                visible_count += 1
                 
                 label = await self._get_field_label(element)
                 tag_name = await element.evaluate('el => el.tagName.toLowerCase()')
@@ -435,8 +494,16 @@ class FieldInteractor:
                     'element_index': i,  # Original index for reference
                 })
             except Exception as e:
-                logger.debug(f"Skipping a problematic element: {e}")
-        
+                error_count += 1
+                logger.warning(f"⚠️ Error processing element {i}: {e}")
+                import traceback
+                logger.debug(f"Traceback: {traceback.format_exc()}")
+
+        logger.info(f"📊 Field detection results: {len(form_fields)} fields returned, {visible_count} visible, {skipped_count} not visible, {error_count} errors")
+
+        if len(form_fields) == 0 and visible_count == 0 and error_count > 0:
+            logger.error(f"❌ All {error_count} fields failed to process! Check errors above.")
+
         return form_fields
 
     async def _create_stable_field_id(self, element: Locator, index: int, label: str) -> str:
@@ -655,11 +722,11 @@ class FieldInteractor:
                 try:
                     # Scroll element into view first
                     await element.scroll_into_view_if_needed()
-                    await self.page.wait_for_timeout(500)
-                    
+                    await self.page.wait_for_timeout(200)
+
                     # Click to open dropdown with more lenient conditions
                     await element.click(timeout=5000, force=True)
-                    await self.page.wait_for_timeout(1500)  # Give more time for dropdown to open
+                    await self.page.wait_for_timeout(200)  # Wait for dropdown to open
                     
                     # Look for options with various selectors
                     option_selectors = [
@@ -710,7 +777,7 @@ class FieldInteractor:
                         except Exception:
                             pass  # Ignore if can't close
                     
-                    await self.page.wait_for_timeout(500)
+                    await self.page.wait_for_timeout(200)
                     
                     if not options_found:
                         logger.debug("Could not extract options from Greenhouse dropdown - may be empty or still loading")
@@ -732,6 +799,44 @@ class FieldInteractor:
                 return files > 0
             elif field_category in ['checkbox', 'radio']:
                 return await element.is_checked()
+            elif 'dropdown' in field_category:
+                # For dropdowns, check both input value and displayed value
+                # Check standard input value first
+                try:
+                    value = await element.input_value()
+                    if value and value.strip():
+                        return True
+                except Exception:
+                    pass
+
+                # For Greenhouse/custom dropdowns, check the displayed value
+                if field_category in ['greenhouse_dropdown', 'custom_dropdown']:
+                    try:
+                        # Check if there's a visible selected value displayed
+                        parent = element.locator('..')
+                        display_selectors = [
+                            '[class*="singleValue"]',
+                            '[class*="value"]',
+                            '.select__single-value'
+                        ]
+
+                        for selector in display_selectors:
+                            try:
+                                display_element = parent.locator(selector).first
+                                if await display_element.count() > 0:
+                                    selected_text = await display_element.text_content()
+                                    if selected_text and selected_text.strip():
+                                        # Check if it's not a placeholder
+                                        placeholder_keywords = ['select', 'choose', 'pick']
+                                        if not any(keyword in selected_text.lower() for keyword in placeholder_keywords):
+                                            logger.debug(f"Found filled dropdown with value: '{selected_text.strip()}'")
+                                            return True
+                            except Exception:
+                                continue
+                    except Exception:
+                        pass
+
+                return False
             else:
                 value = await element.input_value()
                 return value is not None and value.strip() != ""
@@ -763,15 +868,15 @@ class FieldInteractor:
                 return
             
             # Generic custom dropdown handling
-            await element.click() # Open the dropdown
-            await self.page.wait_for_timeout(1000) # Wait for options to appear
+            await element.click(timeout=5000) # Open the dropdown
+            await self.page.wait_for_timeout(300) # Wait for options to appear
             
             # Look for an option that exactly matches the text.
             # This is a common pattern in React/Vue dropdown libraries.
             option_locator = self.page.get_by_role("option", name=value).first
             
-            if await option_locator.is_visible():
-                await option_locator.click()
+            if await option_locator.is_visible(timeout=2000):
+                await option_locator.click(timeout=3000)
                 logger.info(f"✅ Clicked custom dropdown option '{value}'.")
             else: # Fallback if direct match isn't found
                  await element.fill(value)
@@ -779,9 +884,15 @@ class FieldInteractor:
                  logger.info(f"Typed '{value}' into dropdown and pressed Enter.")
 
         except Exception as e:
-            logger.error(f"❌ All dropdown interaction methods failed for value '{value}': {e}")
-            # Try AI-assisted dropdown selection as last resort
-            await self._ai_assisted_dropdown_selection(element, value, profile)
+            logger.error(f"❌ All standard dropdown interaction methods failed for value '{value}': {e}")
+            # Extract dropdown options and use AI to select the best match
+            dropdown_options = await self._extract_visible_dropdown_options()
+            if dropdown_options:
+                logger.info(f"🤖 Found {len(dropdown_options)} dropdown options, using AI to select best match")
+                await self._ai_assisted_dropdown_selection(element, value, dropdown_options, profile)
+            else:
+                logger.warning(f"⚠️ No dropdown options found, trying AI with HTML context")
+                await self._ai_assisted_dropdown_selection(element, value, [], profile)
 
     async def _is_workday_dropdown(self, element: Locator) -> bool:
         """Check if element is a Workday dropdown field."""
@@ -1171,7 +1282,7 @@ class FieldInteractor:
             for skill in skills_to_add:
                 try:
                     await self._add_skill_to_workday_multiselect(search_input, skill)
-                    await self.page.wait_for_timeout(500)  # Small delay between additions
+                    await self.page.wait_for_timeout(200)  # Small delay between additions
                 except Exception as e:
                     logger.warning(f"Failed to add skill '{skill}': {e}")
                     continue
@@ -1315,7 +1426,7 @@ class FieldInteractor:
                 await search_input.press('Control+A')
                 await search_input.press('Backspace')
             await search_input.type(skill, delay=50)
-            await self.page.wait_for_timeout(1000)  # Wait for search results
+            await self.page.wait_for_timeout(300)  # Wait for search results
             
             # First, try to click on an exact or close match option
             skill_selected = await self._try_click_skill_option(skill)
@@ -1385,7 +1496,7 @@ class FieldInteractor:
         try:
             # Press Enter first time to trigger suggestions
             await search_input.press('Enter')
-            await self.page.wait_for_timeout(1000)  # Wait longer for suggestions to appear
+            await self.page.wait_for_timeout(300)  # Wait longer for suggestions to appear
             
             # Try multiple times to get suggestions (they might take time to load)
             max_attempts = 3
@@ -1397,7 +1508,7 @@ class FieldInteractor:
                     break
                 if attempt < max_attempts - 1:
                     logger.debug(f"No suggestions found on attempt {attempt + 1} for '{skill}', waiting...")
-                    await self.page.wait_for_timeout(500)
+                    await self.page.wait_for_timeout(200)
             
             if top_suggestion:
                 logger.info(f"🔍 Top suggestion for '{skill}': '{top_suggestion}'")
@@ -1406,7 +1517,7 @@ class FieldInteractor:
                 if self._is_good_skill_match(skill, top_suggestion):
                     logger.info(f"✅ Top suggestion '{top_suggestion}' is a good match for '{skill}', pressing Enter again")
                     await search_input.press('Enter')  # Second Enter to confirm
-                    await self.page.wait_for_timeout(500)
+                    await self.page.wait_for_timeout(200)
                     return
                 else:
                     logger.warning(f"❌ Top suggestion '{top_suggestion}' is not a good match for '{skill}' (< 80% match)")
@@ -1420,14 +1531,14 @@ class FieldInteractor:
             else:
                 logger.warning(f"❌ No top suggestion found for '{skill}', pressing Enter anyway")
                 await search_input.press('Enter')  # Second Enter to add whatever is there
-                await self.page.wait_for_timeout(500)
+                await self.page.wait_for_timeout(200)
                 
         except Exception as e:
             logger.warning(f"Error in intelligent Enter approach for '{skill}': {e}")
             # Fallback: just press Enter again
             try:
                 await search_input.press('Enter')
-                await self.page.wait_for_timeout(500)
+                await self.page.wait_for_timeout(200)
             except:
                 pass
 
@@ -1618,13 +1729,16 @@ class FieldInteractor:
     async def _handle_workday_dropdown(self, element: Locator, value: str) -> None:
         """Handle Workday dropdown selection."""
         try:
-            # Ensure element is in view and stable before clicking
-            await element.scroll_into_view_if_needed()
-            await self.page.wait_for_timeout(300)
+            # Ensure element is in view and stable before clicking (with timeout to prevent hanging)
+            try:
+                await element.scroll_into_view_if_needed(timeout=3000)
+                await self.page.wait_for_timeout(300)
+            except Exception as scroll_error:
+                logger.debug(f"Scroll into view failed or timed out: {scroll_error}, continuing anyway")
             
             # Click to open the Workday dropdown
             await element.click(timeout=5000)
-            await self.page.wait_for_timeout(1000)  # Wait for dropdown to open
+            await self.page.wait_for_timeout(300)  # Wait for dropdown to open
             
             # Look for dropdown options in Workday-style containers
             option_selectors = [
@@ -1673,12 +1787,60 @@ class FieldInteractor:
                     continue
             
             if not option_found:
-                logger.warning(f"❌ Could not find matching Workday option for '{value}'")
-                # Try to close dropdown by pressing Escape
-                try:
-                    await element.press("Escape")
-                except Exception:
-                    pass
+                logger.warning(f"Standard Workday logic failed for '{value}', extracting options for AI selection")
+                # Extract all available options for AI to choose from
+                dropdown_options = await self._extract_visible_dropdown_options()
+                
+                if dropdown_options:
+                    logger.info(f"🤖 Found {len(dropdown_options)} Workday options, using AI to select best match")
+                    # Close dropdown first
+                    try:
+                        await self.page.keyboard.press("Escape")
+                        await self.page.wait_for_timeout(200)
+                    except Exception:
+                        pass
+                    
+                    # Use AI to select the best option
+                    from components.brains.gemini_field_mapper import GeminiFieldMapper
+                    field_mapper = GeminiFieldMapper()
+                    
+                    ai_result = await field_mapper.select_best_dropdown_option_from_list(
+                        target_value=value,
+                        available_options=dropdown_options,
+                        profile=None  # Profile will be passed from higher level if available
+                    )
+                    
+                    if ai_result and ai_result.get('best_option_text'):
+                        best_option = ai_result['best_option_text']
+                        logger.info(f"🧠 AI selected: '{best_option}' for Workday dropdown")
+                        
+                        # Reopen dropdown and try to select AI's choice
+                        await element.click(timeout=5000)
+                        await self.page.wait_for_timeout(300)
+                        
+                        # Try to find and click the AI-suggested option
+                        for selector in option_selectors:
+                            try:
+                                options = await self.page.locator(selector).all()
+                                for option in options:
+                                    option_text = await option.text_content()
+                                    if option_text and option_text.strip().lower() == best_option.lower():
+                                        await option.click(timeout=3000)
+                                        logger.info(f"✅ Selected AI-suggested Workday option: '{best_option}'")
+                                        option_found = True
+                                        break
+                                if option_found:
+                                    break
+                            except Exception:
+                                continue
+                
+                # If AI also failed, close dropdown
+                if not option_found:
+                    logger.warning(f"❌ Could not find matching Workday option for '{value}' even with AI")
+                    try:
+                        await element.press("Escape")
+                    except Exception:
+                        pass
                     
         except Exception as e:
             logger.error(f"❌ Error handling Workday dropdown: {e}")
@@ -1686,13 +1848,48 @@ class FieldInteractor:
     async def _handle_greenhouse_dropdown(self, element: Locator, value: str) -> None:
         """Handle Greenhouse-style dropdown selection."""
         try:
-            # Ensure element is in view and stable before clicking
-            await element.scroll_into_view_if_needed()
-            await self.page.wait_for_timeout(500)
-            
-            # Click to open the dropdown with force and reduced timeout for speed
-            await element.click(timeout=5000, force=True)
-            await self.page.wait_for_timeout(800)  # Reduced wait time for speed
+            # Ensure element is in view and stable before clicking (with timeout to prevent hanging)
+            try:
+                await element.scroll_into_view_if_needed(timeout=3000)
+                await self.page.wait_for_timeout(200)
+            except Exception as scroll_error:
+                logger.debug(f"Scroll into view failed or timed out: {scroll_error}, continuing anyway")
+
+            # For Greenhouse dropdowns, find the clickable control container (not the hidden input)
+            # The hidden input has aria-hidden="true", we need the visible control
+            clickable_element = element
+            try:
+                parent = element.locator('..')
+                # Look for the visible control container
+                control_selectors = [
+                    '[class*="control"]',
+                    '.select__control',
+                    '[class*="select"]',
+                    'div[role="combobox"]'
+                ]
+                for selector in control_selectors:
+                    control = parent.locator(selector).first
+                    if await control.count() > 0:
+                        # Verify it's visible and clickable
+                        try:
+                            if await control.is_visible(timeout=1000):
+                                clickable_element = control
+                                logger.debug(f"🏢 Found clickable Greenhouse control with {selector}")
+                                break
+                        except:
+                            continue
+            except Exception as e:
+                logger.debug(f"Could not find Greenhouse control container, using element directly: {e}")
+
+            # Click to open the dropdown
+            try:
+                await clickable_element.click(timeout=5000)
+            except Exception as click_error:
+                # If normal click fails, try with force
+                logger.debug(f"Normal click failed, trying with force: {click_error}")
+                await clickable_element.click(timeout=5000, force=True)
+
+            await self.page.wait_for_timeout(800)  # Wait for dropdown to open
             
             # Look for dropdown options in various possible locations
             option_selectors = [
@@ -1713,80 +1910,44 @@ class FieldInteractor:
                     if options:
                         logger.debug(f"🔍 Found {len(options)} options with selector '{selector}'")
 
-                        # SPEED OPTIMIZATION: Smart candidate matching first (UNIVERSAL patterns only)
-                        smart_patterns = {
-                            # Universal Yes/No
-                            'yes': ['^yes$', '^y$', 'yes.*'],
-                            'no': ['^no$', '^n$', 'no.*'],
-
-                            # Universal Country (most common)
-                            'united states': ['united states', 'usa', 'us', 'america', 'united.*states'],
-
-                            # Universal Education Levels
-                            'bachelor': ['bachelor', 'bs', 'ba', 'be', 'b\\.', '.*bachelor.*'],
-                            'master': ['master', 'ms', 'ma', 'me', 'm\\.', '.*master.*'],
-                            'phd': ['phd', 'ph\\.d\\.', 'doctorate', 'doctoral'],
-
-                            # Universal Work Authorization
-                            'authorized': ['yes', 'authorized', 'eligible', 'citizen'],
-                            'not authorized': ['no', 'not.*authorized', 'require.*sponsor'],
-
-                            # Universal Gender Options
-                            'male': ['^male$', '^m$', 'man'],
-                            'female': ['^female$', '^f$', 'woman'],
-
-                            # Universal Preferences
-                            'required': ['yes', 'required', 'need.*sponsor'],
-                            'not required': ['no', 'not.*required', 'not.*need'],
-                            'prefer not': ['prefer.*not', 'decline', 'not.*specified'],
-                        }
-
+                        # Try exact text matching FIRST (most reliable)
                         value_lower = value.lower()
-                        for key, patterns in smart_patterns.items():
-                            if key in value_lower or value_lower in key:
-                                for pattern in patterns:
-                                    try:
-                                        smart_locator = self.page.locator(selector).filter(has_text=re.compile(pattern, re.IGNORECASE))
-                                        if await smart_locator.count() > 0:
-                                            first_match = smart_locator.first
-                                            match_text = await first_match.text_content()
-                                            await first_match.click(timeout=3000, force=True)
-                                            logger.info(f"⚡ Smart Greenhouse match: {value} → {match_text.strip()}")
-                                            option_found = True
-                                            break
-                                    except Exception:
-                                        continue
-                                if option_found:
+                        for option in options:
+                            try:
+                                option_text = await option.text_content()
+                                if option_text and option_text.strip().lower() == value_lower:
+                                    await option.click(timeout=3000, force=True)
+                                    logger.info(f"✅ Exact match: '{option_text.strip()}'")
+                                    option_found = True
                                     break
-                            if option_found:
-                                break
-
-                        # If smart matching didn't work, fall back to traditional matching
+                            except Exception:
+                                continue
+                        
+                        # If exact match didn't work, try partial matching with strict validation
                         if not option_found:
                             for option in options:
                                 try:
                                     option_text = await option.text_content()
                                     if option_text:
                                         option_text = option_text.strip()
-                                        # Try exact match first
-                                        if value.lower() == option_text.lower():
+                                        option_text_lower = option_text.lower()
+                                        
+                                        # Partial match WITH length similarity check to avoid "United States +1" matching "United States of America"
+                                        if value_lower in option_text_lower or option_text_lower in value_lower:
+                                            # Require similar lengths (within 2x) to avoid phone codes matching countries
+                                            len_ratio = max(len(option_text), len(value)) / min(len(option_text), len(value))
+                                            if len_ratio < 2.5:  # Not too different in length
+                                                await option.click(timeout=3000, force=True)
+                                                logger.info(f"✅ Partial match: '{option_text}' for '{value}'")
+                                                option_found = True
+                                                break
+                                        
+                                        # For years, match digits
+                                        elif value.isdigit() and value in option_text:
                                             await option.click(timeout=3000, force=True)
-                                            logger.info(f"✅ Selected Greenhouse option '{option_text}' (exact match)")
+                                            logger.info(f"✅ Year match: '{option_text}' for '{value}'")
                                             option_found = True
                                             break
-                                    # Try partial match
-                                    elif value.lower() in option_text.lower() or option_text.lower() in value.lower():
-                                        if len(option_text) > len(value) * 0.6:  # Avoid very short matches
-                                            await option.click(timeout=3000, force=True)
-                                            logger.info(f"✅ Selected Greenhouse option '{option_text}' (partial match)")
-                                            option_found = True
-                                            break
-                                    # For years, try to find the year in the option
-                                    elif value.isdigit() and value in option_text:
-                                        await option.click(timeout=3000, force=True)
-                                        logger.info(f"✅ Selected Greenhouse option '{option_text}' (year match)")
-                                        option_found = True
-                                        break
                                 except Exception as e:
                                     logger.debug(f"Error processing option: {e}")
                                     continue
@@ -1798,50 +1959,160 @@ class FieldInteractor:
                     continue
             
             if not option_found:
-                logger.warning(f"Could not find option '{value}' in Greenhouse dropdown")
-                # Close dropdown first if open
-                try:
-                    await self.page.keyboard.press("Escape")
-                    await self.page.wait_for_timeout(500)
-                except Exception:
-                    pass
+                logger.warning(f"Standard logic failed for '{value}', extracting options for intelligent selection")
                 
-                # Try typing the value as fallback
-                try:
-                    await element.click(timeout=3000, force=True)
-                    await element.clear()
-                    await element.fill(value)
-                    await element.press("Enter")
-                    logger.info(f"Typed '{value}' into Greenhouse dropdown as fallback")
-                except Exception as fallback_error:
-                    logger.error(f"Even fallback typing failed: {fallback_error}")
+                # Dropdown should still be open from earlier, extract options now
+                dropdown_options = await self._extract_visible_dropdown_options()
+                
+                if dropdown_options and len(dropdown_options) > 0:
+                    option_texts = [opt['text'] for opt in dropdown_options]
+                    logger.info(f"📋 Found {len(option_texts)} options, trying intelligent selection")
+                    
+                    # TRY INTELLIGENT PROFILE-BASED SELECTION FIRST
+                    from components.executors.intelligent_dropdown_selector import IntelligentDropdownSelector
+                    selector_instance = IntelligentDropdownSelector()
+                    
+                    # Try to get field label for context
+                    field_label = await self._get_field_label(element) if hasattr(self, '_get_field_label') else ""
+                    
+                    intelligent_choice = selector_instance.select_from_options(
+                        question=field_label or "",
+                        options=option_texts,
+                        profile=None,  # Will be passed from higher level
+                        target_value=value
+                    )
+                    
+                    if intelligent_choice:
+                        logger.info(f"🎯 Intelligent selector chose: '{intelligent_choice}'")
+                        best_option = intelligent_choice
+                    else:
+                        # FALLBACK TO AI if intelligent selector couldn't decide
+                        logger.info(f"🤖 Intelligent selector failed, using AI")
+                        from components.brains.gemini_field_mapper import GeminiFieldMapper
+                        field_mapper = GeminiFieldMapper()
+                        
+                        ai_result = await field_mapper.select_best_dropdown_option_from_list(
+                            target_value=value,
+                            available_options=dropdown_options,
+                            profile=None  # Profile will be passed from higher level if available
+                        )
+                        
+                        if ai_result and ai_result.get('best_option_text'):
+                            best_option = ai_result['best_option_text']
+                            logger.info(f"🧠 AI selected: '{best_option}'")
+                        else:
+                            best_option = None
+                    
+                    # Try to click the selected option
+                    if best_option:
+                        for selector in option_selectors:
+                            try:
+                                options = await self.page.locator(selector).all()
+                                for option in options:
+                                    option_text = await option.text_content()
+                                    if option_text and option_text.strip().lower() == best_option.lower():
+                                        await option.click(timeout=3000, force=True)
+                                        logger.info(f"✅ Selected: '{best_option}'")
+                                        option_found = True
+                                        break
+                                if option_found:
+                                    break
+                            except Exception:
+                                continue
+                else:
+                    logger.warning(f"Could not extract dropdown options (found {len(dropdown_options) if dropdown_options else 0}), dropdown might not be open")
+                
+                # If AI also failed, try typing as last resort
+                if not option_found:
+                    logger.warning(f"AI selection also failed, trying typing as final fallback")
+                    try:
+                        await element.click(timeout=3000, force=True)
+                        await element.clear()
+                        await element.fill(value)
+                        await element.press("Enter")
+                        logger.info(f"Typed '{value}' into Greenhouse dropdown as final fallback")
+                    except Exception as fallback_error:
+                        logger.error(f"Even fallback typing failed: {fallback_error}")
                 
         except Exception as e:
             logger.error(f"❌ Greenhouse dropdown selection failed: {e}")
             raise
 
-    async def _ai_assisted_dropdown_selection(self, element: Locator, value: str, profile: Optional[Dict[str, Any]] = None) -> None:
+    async def _extract_visible_dropdown_options(self) -> List[Dict[str, str]]:
+        """Extract all visible dropdown options from the page."""
+        options = []
+        try:
+            # Look for visible dropdown options using common selectors
+            option_selectors = [
+                '[role="option"]',
+                '.select__option',
+                '.dropdown-option',
+                '[class*="option"]',
+                'li[role="option"]',
+                'div[role="option"]'
+            ]
+
+            for selector in option_selectors:
+                try:
+                    option_elements = await self.page.locator(selector).all()
+                    for option in option_elements:
+                        # Only process visible options (use short timeout to avoid hanging)
+                        try:
+                            if await option.is_visible(timeout=200):
+                                text = await option.text_content()
+                                if text and text.strip():
+                                    # Try to get the value attribute if available
+                                    value = await option.get_attribute('data-value') or await option.get_attribute('value')
+                                    options.append({
+                                        'text': text.strip(),
+                                        'value': value or text.strip()
+                                    })
+                        except Exception:
+                            # Skip options that timeout on visibility check
+                            continue
+                except Exception:
+                    continue
+
+            # Remove duplicates based on text
+            seen_texts = set()
+            unique_options = []
+            for opt in options:
+                if opt['text'] not in seen_texts:
+                    seen_texts.add(opt['text'])
+                    unique_options.append(opt)
+
+            logger.debug(f"Extracted {len(unique_options)} unique dropdown options from page")
+            return unique_options
+
+        except Exception as e:
+            logger.debug(f"Error extracting dropdown options: {e}")
+            return []
+
+    async def _ai_assisted_dropdown_selection(self, element: Locator, value: str, dropdown_options: List[Dict[str, str]] = None, profile: Optional[Dict[str, Any]] = None) -> None:
         """Use AI to help select dropdown options when standard methods fail."""
         try:
             logger.info(f"🤖 Using AI to help select dropdown option '{value}'")
-            
-            # Get the dropdown context (parent container)
-            dropdown_context = element.locator('..')
-            context_html = await dropdown_context.inner_html()
-            
-            # Use Gemini to analyze the dropdown and suggest the best option
+
+            # Use Gemini to select the best option from the available options
             from components.brains.gemini_field_mapper import GeminiFieldMapper
             field_mapper = GeminiFieldMapper()
-            
-            # Get AI analysis of dropdown options with profile context
-            ai_result = await field_mapper.analyze_dropdown_options(context_html, value, profile)
+
+            if dropdown_options is None:
+                dropdown_options = []
+
+            # Get AI to select the best option from the list
+            ai_result = await field_mapper.select_best_dropdown_option_from_list(
+                target_value=value,
+                available_options=dropdown_options,
+                profile=profile
+            )
             
             if ai_result and ai_result.get('best_option_text'):
                 best_option = ai_result['best_option_text']
                 confidence = ai_result.get('confidence', 0)
                 reason = ai_result.get('reason', 'No reason provided')
                 
-                logger.info(f"🧠 AI suggests option '{best_option}' (confidence: {confidence:.2f}) - {reason}")
+                logger.info(f"🧠 AI selected option '{best_option}' (confidence: {confidence:.2f}) - {reason}")
                 
                 # Try to find and click the AI-suggested option
                 if await self._try_click_option_by_text(best_option):
@@ -1849,9 +2120,8 @@ class FieldInteractor:
                     return
                 else:
                     logger.warning(f"⚠️ Could not click AI-suggested option '{best_option}'")
-            
-            # If AI didn't help, try final fallback
-            logger.warning("AI-assisted dropdown selection could not find a suitable option")
+            else:
+                logger.warning("AI could not select a suitable option from the available choices")
             
         except Exception as e:
             logger.error(f"❌ AI-assisted dropdown selection failed: {e}")
@@ -1926,9 +2196,60 @@ class FieldInteractor:
     async def _verify_dropdown_selection(self, element: Locator, expected_value: str) -> tuple[bool, str]:
         """Verify dropdown selection. Returns (success, actual_value)."""
         try:
-            await self.page.wait_for_timeout(300)  # Wait for selection to settle
+            await self.page.wait_for_timeout(200)  # Wait for selection to settle
 
-            # Try to get the selected value
+            # Special handling for Greenhouse dropdowns - check the visible display value
+            if await self._is_greenhouse_style_dropdown(element):
+                try:
+                    # Greenhouse dropdowns show selected value in a sibling div with class containing "value" or "placeholder"
+                    parent = element.locator('..')
+                    # Try multiple selectors for the display element
+                    display_selectors = [
+                        '[class*="singleValue"]',
+                        '[class*="value"]',
+                        '[class*="placeholder"]',
+                        '.select__single-value',
+                        'div[data-value]'
+                    ]
+
+                    selected_value = None
+                    for selector in display_selectors:
+                        try:
+                            display_element = parent.locator(selector).first
+                            if await display_element.count() > 0:
+                                selected_value = await display_element.text_content()
+                                if selected_value:
+                                    selected_value = selected_value.strip()
+                                    if selected_value:  # Not empty
+                                        logger.debug(f"🏢 Greenhouse dropdown verification: found '{selected_value}' via {selector}")
+                                        break
+                        except Exception:
+                            continue
+
+                    if selected_value:
+                        # Exact match
+                        if selected_value == expected_value:
+                            return (True, selected_value)
+                        # Case-insensitive match
+                        if selected_value.lower() == expected_value.lower():
+                            return (True, selected_value)
+                        # Partial match (Greenhouse often shows country codes like "United States +1" when we want "United States of America")
+                        if expected_value.lower() in selected_value.lower() or selected_value.lower() in expected_value.lower():
+                            logger.debug(f"🏢 Greenhouse dropdown partial match: expected '{expected_value}', got '{selected_value}'")
+                            return (True, selected_value)
+                        # For country codes, check if the country name is in the beginning
+                        if ' ' in selected_value:
+                            country_part = selected_value.split('+')[0].strip()  # "United States +1" -> "United States"
+                            if expected_value.lower().startswith(country_part.lower()) or country_part.lower() in expected_value.lower():
+                                logger.debug(f"🏢 Greenhouse country code match: expected '{expected_value}', got '{selected_value}'")
+                                return (True, selected_value)
+
+                        return (False, selected_value)
+                except Exception as gh_error:
+                    logger.debug(f"Greenhouse-specific verification failed: {gh_error}")
+                    # Fall through to standard verification
+
+            # Standard dropdown verification
             try:
                 selected_value = await element.input_value()
             except Exception:

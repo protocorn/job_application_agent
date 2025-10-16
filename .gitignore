@@ -1,9 +1,113 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+Agents/logs/
+server/logs/
+
+# Sessions and Screenshots
+server/sessions/
+server/sessions/action_logs/
+server/sessions/browser_states/
+server/sessions/screenshots/
+sessions.json
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Resumes (if you don't want to track them)
+Resumes/*.pdf
+Resumes/*.docx
+Resumes/*.doc
+
+# Temporary files
+*.tmp
+*.temp
+nul
+
+# Node modules (for Website/job-agent-frontend)
 node_modules/
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Frontend build
+Website/job-agent-frontend/dist/
+Website/job-agent-frontend/build/
+Website/job-agent-frontend/.next/
+Website/job-agent-frontend/out/
+
+# Test coverage
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Secrets and credentials
+credentials.json
+token.json
+*.pem
+*.key
+
+# OS
+Thumbs.db

@@ -21,7 +21,7 @@ from components.detectors.apply_detector import ApplyDetector
 from components.executors.popup_executor import PopupExecutor
 from components.executors.click_executor import ClickExecutor
 from components.validators.nav_validator import NavValidator
-from components.executors.generic_form_filler import GenericFormFiller
+from components.executors.generic_form_filler_v2_enhanced import GenericFormFillerV2Enhanced as GenericFormFiller
 from components.custom_exceptions import HumanInterventionRequired
 from components.detectors.submit_detector import SubmitDetector
 from components.detectors.next_button_detector import NextButtonDetector
@@ -287,15 +287,15 @@ class RefactoredJobAgent:
                 return
 
             elif self.keep_open or self.debug:
+                # --keep-open or --debug flag: keep browser open indefinitely
                 if self.debug:
                     logger.info("🐛 Debug mode: Keeping browser open indefinitely...")
                     self._log_to_jobs("info", "🐛 Debug mode: Browser staying open indefinitely. Close manually when done.")
-                    # Don't close browser in debug mode - let user handle it
-                    return
                 else:
-                    logger.info(f"Keeping browser open for {self.hold_seconds} seconds...")
-                    self._log_to_jobs("info", f"⏳ Keeping browser open for {self.hold_seconds} seconds...")
-                    await asyncio.sleep(self.hold_seconds)
+                    logger.info("🔒 Keep-open mode: Keeping browser open indefinitely...")
+                    self._log_to_jobs("info", "🔒 Browser staying open indefinitely (--keep-open flag). Close manually when done.")
+                # Don't close browser - let user handle it
+                return
 
             try:
                 if self.page and not self.page.is_closed():
@@ -449,15 +449,22 @@ class RefactoredJobAgent:
             state.context['human_intervention_reason'] = auth_result['reason']
             return 'human_intervention'
         
-        # UNIVERSAL CHECK 3: Check for CMP/Cookie consent
-        logger.info("🔍 Universal Check 3: Checking for cookie consent...")
-        try:
-            cmp_consent = CmpConsent(self.page)
-            if await cmp_consent.detect_and_handle():
-                logger.info("✅ Handled cookie consent, re-analyzing page...")
-                return 'ai_guided_navigation'  # Re-analyze after handling consent
-        except Exception as e:
-            logger.debug(f"CMP consent check failed: {e}")
+        # UNIVERSAL CHECK 3: Check for CMP/Cookie consent (only once per session)
+        if not state.context.get('cookie_consent_checked', False):
+            logger.info("🔍 Universal Check 3: Checking for cookie consent...")
+            try:
+                cmp_consent = CmpConsent(self.page)
+                if await cmp_consent.detect_and_handle():
+                    logger.info("✅ Handled cookie consent, re-analyzing page...")
+                    state.context['cookie_consent_checked'] = True  # Mark as checked
+                    state.context['progress_made'] = True  # Mark that we made progress
+                    return 'ai_guided_navigation'  # Re-analyze after handling consent
+                else:
+                    logger.debug("No cookie consent detected or already handled")
+                    state.context['cookie_consent_checked'] = True  # Mark as checked even if not found
+            except Exception as e:
+                logger.debug(f"CMP consent check failed: {e}")
+                state.context['cookie_consent_checked'] = True  # Don't retry on error
         
         # PATTERN-BASED DETECTION: Only check for apply button if we haven't started the application process
         has_clicked_apply = state.context.get('has_clicked_apply', False)
@@ -474,9 +481,17 @@ class RefactoredJobAgent:
                 logger.debug(f"Apply button pattern detection failed: {e}")
         else:
             logger.info("🔍 Skipping apply button check - already in application process")
-        
-        # AI ANALYSIS: Only if no apply button found, let AI determine the page state and next action
-        logger.info("🧠 AI Analysis: Determining page state and next action...")
+
+        # DETERMINISTIC ANALYSIS: Check page state using fast, rule-based detection
+        logger.info("🔍 Deterministic Check: Analyzing page state without AI...")
+        deterministic_action = await self._deterministic_page_analysis(state)
+
+        if deterministic_action:
+            logger.info(f"✅ Deterministic analysis determined action: {deterministic_action}")
+            return deterministic_action
+
+        # AI ANALYSIS: Only as last resort when deterministic checks fail
+        logger.info("🧠 AI Analysis: Deterministic checks inconclusive, using AI vision...")
         try:
             page_analysis = await self._comprehensive_page_analysis(state)
             logger.info(f"🤖 AI Analysis Result: {page_analysis}")
@@ -528,11 +543,81 @@ class RefactoredJobAgent:
             state.context['human_intervention_reason'] = f"AI page analysis failed: {str(e)}. Please review the page and determine next steps."
             return 'human_intervention'
 
+    async def _deterministic_page_analysis(self, state: ApplicationState) -> Optional[str]:
+        """
+        Fast, rule-based page analysis without AI.
+        Returns the next state if confidently determined, None if uncertain.
+        """
+        try:
+            # Check 1: Look for form fields - if found, go to fill_form
+            form_fields = await self.form_filler._get_all_form_fields()
+            if form_fields and len(form_fields) > 0:
+                logger.info(f"📝 Deterministic: Found {len(form_fields)} form fields -> fill_form")
+                return 'fill_form'
+
+            # Check 2: Look for Next/Continue button - if found, it's a multi-page form
+            from components.detectors.next_button_detector import NextButtonDetector
+            next_detector = NextButtonDetector(self.current_context)
+            # Quick check without AI fallback
+            try:
+                next_button = await next_detector.detect()
+                if next_button:
+                    logger.info("➡️ Deterministic: Found Next button -> likely need to fill form first")
+                    return 'fill_form'  # We should fill before clicking next
+            except:
+                pass
+
+            # Check 3: Look for Submit button - if found and no fields, might be done
+            from components.detectors.submit_detector import SubmitDetector
+            submit_detector = SubmitDetector(self.current_context)
+            try:
+                submit_button = await submit_detector.detect()
+                if submit_button:
+                    logger.info("📤 Deterministic: Found Submit button -> check for completion")
+                    # Check if there are success indicators
+                    if await self._verify_application_success(state):
+                        return 'success'
+                    # Otherwise, might need human verification
+                    return None  # Let AI decide
+            except:
+                pass
+
+            # Check 4: URL-based detection (success/confirmation pages)
+            current_url = self.page.url.lower()
+            if any(keyword in current_url for keyword in ['success', 'confirmation', 'thank', 'submitted', 'complete']):
+                logger.info("✅ Deterministic: URL indicates success page")
+                return 'success'
+
+            # If we can't determine confidently, return None to trigger AI
+            logger.info("❓ Deterministic: Cannot confidently determine page state")
+            return None
+
+        except Exception as e:
+            logger.debug(f"Deterministic analysis error: {e}")
+            return None
+
     async def _comprehensive_page_analysis(self, state: ApplicationState) -> Dict[str, Any]:
         """Uses AI to comprehensively analyze the current page and determine the best next action."""
         try:
-            # Take screenshot for AI analysis
-            screenshot = await self.page.screenshot()
+            # Take screenshot for AI analysis with optimized settings
+            from PIL import Image
+            from io import BytesIO
+
+            screenshot_bytes = await self.page.screenshot(quality=50, type='jpeg')
+            image = Image.open(BytesIO(screenshot_bytes))
+
+            # Resize to max 1024px width for even more token savings
+            max_width = 1024
+            if image.width > max_width:
+                ratio = max_width / image.width
+                new_size = (max_width, int(image.height * ratio))
+                image = image.resize(new_size, Image.Resampling.LANCZOS)
+                logger.debug(f"📐 Resized screenshot: {image.width}x{image.height} -> {new_size[0]}x{new_size[1]}")
+
+            # Convert back to bytes
+            buffer = BytesIO()
+            image.save(buffer, format='JPEG', quality=50)
+            screenshot = buffer.getvalue()
 
             # Get page context
             url = self.page.url
@@ -568,17 +653,20 @@ IMPORTANT CONTEXT RULES:
 POSSIBLE ACTIONS (choose exactly ONE):
 
 1. "find_apply_button" - If this is a job listing page and you need to find/click an Apply button (especially after authentication)
-2. "fill_form" - ONLY if there are actual form fields (text inputs, dropdowns, etc.) that need to be filled
+2. "fill_form" - If there are actual form fields (text inputs, dropdowns, resume upload fields, etc.) that need to be filled
 3. "handle_iframe" - If there's an iframe that contains the application form
 4. "submit_form" - If form is filled and ready for submission (Next/Submit button visible)
 5. "application_complete" - ONLY if you see explicit success confirmation messages ("Application submitted", "Thank you for applying", etc.)
 6. "navigate_to_next_page" - If you see application start options like "Autofill with Resume", "Apply Manually", or need to click buttons to proceed
-7. "need_human_intervention" - If the page requires human attention (captcha, file upload, complex forms) - DO NOT use this for simple chatbots or help widgets
+7. "need_human_intervention" - If the page requires human attention (captcha, broken pages, authentication failures) - DO NOT use this for resume uploads, chatbots, or help widgets
 
 ANALYSIS CRITERIA:
 - DISTINGUISH CAREFULLY: "Application start page" vs "Actual form page"
   * Application start page: Shows options like "Autofill with Resume", "Apply Manually", "Use Last Application" → use "navigate_to_next_page"
-  * Actual form page: Shows text inputs, dropdowns, checkboxes that need filling → use "fill_form"
+  * Actual form page: Shows text inputs, dropdowns, checkboxes, OR resume/CV upload fields that need filling → use "fill_form"
+- IMPORTANT: Resume/CV upload fields (like "Upload Resume", "Upload CV", file upload for resume) should trigger "fill_form", NOT "need_human_intervention"
+  * The agent CAN automatically upload resumes - this is a standard form filling operation
+  * Only request human intervention for file uploads of UNKNOWN types (not resume/CV/cover letter)
 - After authentication, you should typically return to the job listing to find the Apply button
 - Look for job application forms, apply buttons, user profiles indicating successful login
 - Check for popups, overlays, or blocking elements
@@ -586,7 +674,7 @@ ANALYSIS CRITERIA:
 - Be VERY conservative about declaring "application_complete" - only if explicit success indicators
 - Consider if forms need filling or if submission is ready
 - IMPORTANT: Chatbots, help widgets, or AI assistants (like "Electra") are NOT blocking elements - ignore them and focus on the main content
-- Only use "need_human_intervention" for actual blockers like CAPTCHAs, broken pages, or authentication failures
+- Only use "need_human_intervention" for actual blockers like CAPTCHAs, broken pages, or authentication failures - NOT for resume uploads
 
 Return ONLY a JSON object:
 {{
@@ -1008,14 +1096,17 @@ Return ONLY a JSON object:
                 return 'human_intervention'
         else:
             logger.info("No blocker to resolve.")
-        
+
+        # Mark that we made progress by resolving a blocker
+        state.context['progress_made'] = True
+
         # After resolving, check where we should go next
         if state.context.get('post_apply_popup'):
             # This was a popup after clicking Apply, continue with validation
             state.context.pop('post_apply_popup', None)  # Remove the flag
             return 'validate_apply'
         else:
-            # Regular popup detection flow  
+            # Regular popup detection flow
             return 'ai_guided_navigation'
 
     async def _state_find_apply(self, state: ApplicationState) -> str:
@@ -1160,6 +1251,18 @@ Return ONLY a JSON object:
                 self.action_recorder.record_navigation(current_url, success=True)
                 logger.info(f"🎬 Recorded navigation after apply click: {current_url}")
 
+            # CRITICAL: Check for iframe and switch context if needed (Greenhouse, Workday, etc.)
+            logger.info("🖼️ Checking for application iframe...")
+            actionable_frame = await self.iframe_helper.find_actionable_frame()
+            if actionable_frame:
+                logger.info(f"✅ Found application iframe: {actionable_frame.url}")
+                # Switch all components to use the iframe
+                self.current_context = actionable_frame
+                self._initialize_components_for_context(actionable_frame)
+                logger.info("🔄 All components re-initialized for iframe context")
+            else:
+                logger.info("No iframe detected - using main page context")
+
             # Set the flag to remember we're inside the application now.
             state.context['has_clicked_apply'] = True
             return 'ai_guided_navigation'  # Let AI analyze what to do next
@@ -1250,21 +1353,37 @@ Return ONLY a JSON object:
         profile = _load_profile_data()
         
         try:
-            # Step 1: Check if there are any form fields to fill
-            form_fields = await self.form_filler._get_all_form_fields()
-            if not form_fields:
-                logger.info("📝 No form fields found on the page.")
-                # Check if we're coming back from human intervention
-                if state.context.get('came_from_human_intervention'):
-                    logger.info("🔄 Resuming after human intervention - checking page state before proceeding")
-                    state.context.pop('came_from_human_intervention', None)  # Clear the flag
-                    return 'ai_analyze_page'  # Let AI analyze what to do next
-                else:
-                    logger.info("⏭️ Proceeding to form submission logic")
-                    return await self._handle_form_submission_with_error_recovery(state, profile)
-            
-            # Step 2: Attempt to fill fields. This will raise an error for sensitive fields.
-            await self.form_filler.fill_form(profile)
+            # Step 1 & 2: V2 form filler handles field detection and filling together
+            # It returns a detailed result dict instead of just True/False
+            result = await self.form_filler.fill_form(profile)
+
+            # Check result from V2 form filler
+            if not result.get('success'):
+                # Check if no fields were found
+                if result.get('total_fields_filled', 0) == 0 and result.get('iterations', 0) == 1:
+                    logger.info("📝 No form fields found on the page.")
+                    # Check if we're coming back from human intervention
+                    if state.context.get('came_from_human_intervention'):
+                        logger.info("🔄 Resuming after human intervention - checking page state before proceeding")
+                        state.context.pop('came_from_human_intervention', None)  # Clear the flag
+                        return 'ai_analyze_page'  # Let AI analyze what to do next
+                    else:
+                        logger.info("⏭️ Proceeding to form submission logic")
+                        return await self._handle_form_submission_with_error_recovery(state, profile)
+
+                # Check if human input is required
+                if result.get('requires_human'):
+                    logger.warning(f"👤 {len(result['requires_human'])} fields require human input")
+                    state.context['human_intervention_reason'] = f"Fields requiring input: {[f['field'] for f in result['requires_human']]}"
+                    return 'human_intervention'
+
+                # Other failure
+                logger.error(f"❌ Form filling failed: {result.get('errors', [])}")
+                return 'fail'
+            else:
+                # Success! Log the results
+                logger.info(f"✅ Form filled successfully: {result['total_fields_filled']} fields in {result['iterations']} iterations")
+                logger.info(f"📊 Deterministic: {result.get('deterministic_count', 0)}, AI: {result.get('ai_count', 0)}")
         except HumanInterventionRequired as e:
             logger.warning(f"⏸️ Human intervention required: {e}")
             state.context['human_intervention_reason'] = str(e)
@@ -1527,14 +1646,206 @@ Return ONLY a JSON object:
         return unique_errors
 
     async def _fill_missing_fields_with_ai(self, profile: Dict[str, Any], errors: List[str]) -> bool:
-        """Use AI to fill missing fields based on detected errors."""
+        """
+        Use AI to fill missing fields based on detected errors.
+
+        This method:
+        1. Takes a screenshot of the current form
+        2. Asks Gemini to identify which fields need filling
+        3. Uses JavaScript injection to fill fields (bypasses Playwright interaction blockers)
+        """
         try:
-            # This would use the Gemini form brain to analyze errors and fill fields
-            # For now, return False to indicate AI couldn't help
-            logger.info("AI field filling not yet implemented.")
-            return False
+            import base64
+            import json
+            from google import genai
+            from PIL import Image
+            from io import BytesIO
+
+            logger.info("🧠 Using AI vision to identify and fill missing required fields...")
+
+            # Step 1: Take screenshot of current form state
+            screenshot_bytes = await self.page.screenshot(quality=50, type='jpeg')
+            image = Image.open(BytesIO(screenshot_bytes))
+
+            # Resize for token efficiency
+            max_width = 1024
+            if image.width > max_width:
+                ratio = max_width / image.width
+                new_size = (max_width, int(image.height * ratio))
+                image = image.resize(new_size, Image.Resampling.LANCZOS)
+
+            buffer = BytesIO()
+            image.save(buffer, format='JPEG', quality=50)
+            screenshot = buffer.getvalue()
+            screenshot_b64 = base64.b64encode(screenshot).decode('utf-8')
+
+            # Step 2: Extract form field information from DOM
+            form_fields_info = await self.page.evaluate("""
+                () => {
+                    const fields = [];
+                    const inputs = document.querySelectorAll('input, select, textarea');
+
+                    inputs.forEach((el, index) => {
+                        const label = el.getAttribute('aria-label') ||
+                                    el.getAttribute('placeholder') ||
+                                    el.getAttribute('name') ||
+                                    el.id ||
+                                    'field_' + index;
+
+                        const rect = el.getBoundingClientRect();
+                        const isVisible = rect.width > 0 && rect.height > 0 &&
+                                        window.getComputedStyle(el).display !== 'none';
+
+                        if (isVisible) {
+                            fields.push({
+                                selector: el.id ? `#${el.id}` : null,
+                                label: label,
+                                type: el.type || el.tagName.toLowerCase(),
+                                value: el.value || '',
+                                required: el.required || el.getAttribute('aria-required') === 'true',
+                                name: el.getAttribute('name'),
+                                id: el.id
+                            });
+                        }
+                    });
+
+                    return fields;
+                }
+            """)
+
+            # Filter to only required empty fields
+            empty_required_fields = [f for f in form_fields_info if f['required'] and not f['value']]
+
+            if not empty_required_fields:
+                logger.info("No empty required fields found via DOM inspection")
+                return False
+
+            logger.info(f"📋 Found {len(empty_required_fields)} empty required fields")
+
+            # Step 3: Ask Gemini to map profile data to these fields
+            fields_description = "\n".join([
+                f"- {f['label']} (type: {f['type']}, id: {f['id']}, name: {f['name']})"
+                for f in empty_required_fields
+            ])
+
+            prompt = f"""
+You are looking at a job application form with validation errors. The user has this profile data:
+
+Name: {profile.get('first_name', '')} {profile.get('last_name', '')}
+Email: {profile.get('email', '')}
+Phone: {profile.get('phone', '')}
+Address: {profile.get('address', '')}
+City: {profile.get('city', '')}
+State: {profile.get('state', '')}
+Zip: {profile.get('zip_code', '')}
+Country: {profile.get('country', '')}
+
+Empty required fields on the form:
+{fields_description}
+
+Based on the screenshot and field information, provide filling instructions for each empty required field.
+
+Return JSON format:
+{{
+  "field_fills": [
+    {{
+      "field_identifier": "id or name of the field",
+      "value_to_fill": "the value from profile to use",
+      "field_label": "human readable label"
+    }}
+  ]
+}}
+
+IMPORTANT:
+- Only include fields you can confidently map to profile data
+- Use exact field IDs or names from the list above
+- For dropdowns, provide the exact option text that should be selected
+- Skip fields if you're unsure what data to use
+"""
+
+            # Create Gemini client
+            client = genai.Client(api_key=os.getenv('GOOGLE_API_KEY'))
+
+            # Send screenshot + prompt to Gemini
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=[
+                    {
+                        "role": "user",
+                        "parts": [
+                            {"inline_data": {"mime_type": "image/jpeg", "data": screenshot_b64}},
+                            {"text": prompt}
+                        ]
+                    }
+                ],
+                config={"response_mime_type": "application/json"}
+            )
+
+            fill_instructions = json.loads(response.text)
+            field_fills = fill_instructions.get('field_fills', [])
+
+            if not field_fills:
+                logger.warning("AI could not suggest any field fills")
+                return False
+
+            logger.info(f"🎯 AI suggested {len(field_fills)} field fills")
+
+            # Step 4: Execute fills using JavaScript (bypasses Playwright interaction blockers)
+            fills_succeeded = 0
+
+            for fill in field_fills:
+                field_id = fill.get('field_identifier')
+                value = fill.get('value_to_fill')
+                label = fill.get('field_label', field_id)
+
+                if not field_id or not value:
+                    continue
+
+                logger.info(f"🔧 Filling '{label}' with '{value}'")
+
+                # Use JavaScript to fill the field directly (bypasses overlays, etc.)
+                try:
+                    success = await self.page.evaluate("""
+                        ({fieldId, value}) => {
+                            // Try by ID first
+                            let element = document.getElementById(fieldId);
+
+                            // Try by name if ID didn't work
+                            if (!element) {
+                                element = document.querySelector(`[name="${fieldId}"]`);
+                            }
+
+                            if (!element) return false;
+
+                            // Set value directly
+                            element.value = value;
+
+                            // Trigger events to notify the page
+                            element.dispatchEvent(new Event('input', { bubbles: true }));
+                            element.dispatchEvent(new Event('change', { bubbles: true }));
+                            element.dispatchEvent(new Event('blur', { bubbles: true }));
+
+                            return true;
+                        }
+                    """, {"fieldId": field_id, "value": value})
+
+                    if success:
+                        fills_succeeded += 1
+                        logger.info(f"✅ Filled '{label}' successfully")
+                    else:
+                        logger.warning(f"⚠️ Could not find element for '{label}'")
+
+                except Exception as e:
+                    logger.warning(f"⚠️ Error filling '{label}': {e}")
+
+            logger.info(f"📊 AI field filling completed: {fills_succeeded}/{len(field_fills)} successful")
+
+            return fills_succeeded > 0
+
         except Exception as e:
             logger.error(f"AI field filling failed: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
             return False
 
     async def _analyze_popup_with_ai(self, screenshot_bytes: bytes) -> Optional[Dict[str, Any]]:
@@ -1948,6 +2259,23 @@ def _load_profile_data(user_id=None):
         current_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.dirname(current_dir)  # Go up one level from Agents/
 
+        # Handle resume - convert Google Docs URL to PDF if needed
+        from components.utils.google_docs_converter import GoogleDocsConverter
+
+        resume_url_or_path = profile_data.get('resume_url', '')
+        if not resume_url_or_path:
+            # Fallback to default resume path
+            resume_url_or_path = os.path.join(project_root, 'Resumes', 'Sahil-Chordia-Resume.pdf')
+
+        # Convert to PDF if it's a Google Docs URL
+        resumes_dir = os.path.join(project_root, 'Resumes')
+        resume_path = GoogleDocsConverter.convert_to_pdf_if_needed(resume_url_or_path, resumes_dir)
+
+        if resume_path and os.path.exists(resume_path):
+            logger.info(f"📄 Resume ready: {resume_path}")
+        else:
+            logger.warning(f"⚠️ Resume not found or conversion failed: {resume_url_or_path}")
+
         # Map the profile data to our expected format
         mapped_profile = {
             # Personal Information
@@ -1964,7 +2292,7 @@ def _load_profile_data(user_id=None):
             'country_code': profile_data.get('country_code', '+1' if profile_data.get('country_code') == 'US' else ''),
             'linkedin': profile_data.get('linkedin', ''),
             'github': profile_data.get('github', ''),
-            'resume_path': os.path.join(project_root, 'Resumes', 'Sahil-Chordia-Resume.pdf'),  # Actual resume path
+            'resume_path': resume_path,  # Converted or original resume path
 
             # Demographic and EEO Information (using actual data when available)
             'gender': profile_data.get('gender', 'Prefer not to say'),
@@ -2041,11 +2369,25 @@ async def run_links_with_refactored_agent(links: list[str], headless: bool, keep
         for link in links:
             await agent.process_link(link)
     finally:
-        # Only stop Playwright if browser is not being kept open for human intervention
-        if not hasattr(agent, 'keep_browser_open_for_human') or not agent.keep_browser_open_for_human:
+        # Only stop Playwright if browser should not be kept open
+        should_keep_open = (
+            (hasattr(agent, 'keep_browser_open_for_human') and agent.keep_browser_open_for_human) or
+            keep_open or
+            debug
+        )
+
+        if not should_keep_open:
             await p.stop()
         else:
-            logger.info("🔒 Keeping Playwright instance alive for human intervention - browser will stay open")
+            logger.info("🔒 Keeping Playwright instance alive - browser will stay open (close manually when done)")
+            logger.info("⏸️  Press Ctrl+C to exit and close the browser...")
+            try:
+                # Keep the script running indefinitely until user interrupts
+                while True:
+                    await asyncio.sleep(1)
+            except KeyboardInterrupt:
+                logger.info("👋 User interrupted - closing browser...")
+                await p.stop()
 
 def main():
     import argparse

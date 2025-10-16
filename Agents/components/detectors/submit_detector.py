@@ -33,13 +33,34 @@ class SubmitDetector:
         try:
             # This single locator efficiently checks all patterns at once.
             button = self.page.get_by_role("button", name=self.SUBMIT_PATTERNS_REGEX).first
-            
+
             if await button.is_visible(timeout=1500) and await button.is_enabled():
                 button_text = await button.inner_text()
                 logger.success(f"✅ Found enabled 'Submit' button via pattern: '{button_text}'")
                 return button
         except Error:
             logger.debug("No enabled button found matching the primary submit patterns.")
+
+        # --- Strategy 1.5: Greenhouse-specific patterns ---
+        try:
+            greenhouse_selectors = [
+                'button[data-action="submit"]',
+                'button#submit_app',
+                'input[type="submit"][id*="submit" i]',
+                'input[type="submit"][value*="Submit" i]',
+                'button.button--submit:has-text("Submit")',
+            ]
+
+            for selector in greenhouse_selectors:
+                try:
+                    button = self.page.locator(selector).first
+                    if await button.is_visible(timeout=500) and await button.is_enabled():
+                        logger.success(f"✅ Found 'Submit' button via Greenhouse pattern: {selector}")
+                        return button
+                except:
+                    continue
+        except Exception as e:
+            logger.debug(f"Greenhouse submit pattern matching failed: {e}")
 
         # --- Strategy 2: AI Fallback (For non-standard buttons) ---
         logger.warning("Pattern matching failed. Attempting AI fallback.")

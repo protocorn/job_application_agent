@@ -444,23 +444,30 @@ class GenericFormFiller:
                 element_id = stable_id[3:]  # Remove 'id:' prefix
                 try:
                     # Check if ID contains characters that are invalid in CSS selectors
-                    # Invalid characters include: brackets, spaces, underscores in long UUIDs, etc.
+                    # Invalid characters include: brackets, spaces, starting with digit, etc.
                     has_invalid_css_chars = (
-                        '[' in element_id or ']' in element_id or 
+                        '[' in element_id or ']' in element_id or
                         ' ' in element_id or
+                        element_id[0].isdigit() if element_id else False or  # IDs cannot start with digit
                         len(element_id) > 50 or  # Very long IDs are often problematic
                         element_id.count('-') > 5  # Multiple hyphens suggest complex generated IDs
                     )
-                    
+
                     if has_invalid_css_chars:
                         # Use attribute selector for complex IDs
                         element = self.interactor.page.locator(f'[id="{element_id}"]').first
                     else:
                         # Use CSS ID selector for simple IDs
                         element = self.interactor.page.locator(f'#{element_id}').first
-                    
-                    if await element.is_visible():
-                        logger.debug(f"Found element by ID: {element_id}")
+
+                    # Try to get element regardless of visibility - let FieldInteractor handle it
+                    try:
+                        if await element.is_visible(timeout=2000):
+                            logger.debug(f"Found element by ID: {element_id}")
+                            return element
+                    except Exception:
+                        # Element exists but visibility check failed - return it anyway
+                        logger.debug(f"Found element by ID (visibility uncertain): {element_id}")
                         return element
                 except Exception as e:
                     logger.debug(f"Failed to find element by ID {element_id}: {e}")

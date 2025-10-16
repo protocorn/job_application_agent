@@ -27,6 +27,7 @@ from components.session.session_manager import SessionManager
 from auth import AuthService, require_auth
 from profile_service import ProfileService
 from job_search_service import JobSearchService
+from google_oauth_service import GoogleOAuthService
 
 
 #Initialize the app
@@ -690,9 +691,11 @@ def get_recent_job_listings():
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/tailor-resume", methods=['POST'])
+@require_auth
 def tailor_resume():
     """Tailor resume for a specific job using the resume tailor agent"""
     try:
+        user_id = request.current_user['id']
         data = request.json
         job_id = data.get('job_id')
         job_description = data.get('job_description')
@@ -701,10 +704,31 @@ def tailor_resume():
 
         if not job_description or not resume_url:
             return jsonify({"error": "Job description and resume URL are required"}), 400
-        
+
+        # Check if user has connected Google account
+        if not GoogleOAuthService.is_connected(user_id):
+            return jsonify({
+                "error": "Please connect your Google account first to tailor resumes",
+                "needs_google_auth": True
+            }), 403
+
         try:
+            # Get user's Google credentials
+            credentials = GoogleOAuthService.get_credentials(user_id)
+            if not credentials:
+                return jsonify({
+                    "error": "Failed to retrieve Google credentials. Please reconnect your account.",
+                    "needs_google_auth": True
+                }), 403
+
             # Use the resume tailor agent to create tailored Google Doc
-            tailored_url = tailor_resume_and_return_url(resume_url, job_description, job_id, company_name)
+            tailored_url = tailor_resume_and_return_url(
+                resume_url,
+                job_description,
+                job_id,
+                company_name,
+                credentials=credentials
+            )
             return jsonify({
                 "tailored_document_id": tailored_url,
                 "success": True,
@@ -1078,6 +1102,105 @@ def logout():
     except Exception as e:
         logging.error(f"Error in logout endpoint: {e}")
         return jsonify({"error": "Logout failed"}), 500
+
+# Google OAuth Routes
+@app.route("/api/oauth/authorize", methods=['GET'])
+@require_auth
+def oauth_authorize():
+    """Get Google OAuth authorization URL"""
+    try:
+        user_id = request.current_user['id']
+        auth_url = GoogleOAuthService.get_authorization_url(user_id)
+        return jsonify({
+            "success": True,
+            "authorization_url": auth_url
+        }), 200
+    except Exception as e:
+        logging.error(f"Error generating OAuth URL: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/oauth/callback", methods=['GET'])
+def oauth_callback():
+    """Handle Google OAuth callback"""
+    try:
+        code = request.args.get('code')
+        state = request.args.get('state')  # user_id
+
+        if not code or not state:
+            return jsonify({"error": "Missing code or state parameter"}), 400
+
+        user_id = int(state)
+        result = GoogleOAuthService.handle_oauth_callback(code, user_id)
+
+        if result['success']:
+            # Redirect to frontend with success message
+            return f"""
+                <html>
+                    <script>
+                        window.opener.postMessage({{
+                            type: 'GOOGLE_AUTH_SUCCESS',
+                            email: '{result.get('google_email', '')}'
+                        }}, '*');
+                        window.close();
+                    </script>
+                    <body>
+                        <h2>Authorization successful! You can close this window.</h2>
+                    </body>
+                </html>
+            """
+        else:
+            return f"""
+                <html>
+                    <script>
+                        window.opener.postMessage({{
+                            type: 'GOOGLE_AUTH_ERROR',
+                            error: '{result.get('error', 'Unknown error')}'
+                        }}, '*');
+                        window.close();
+                    </script>
+                    <body>
+                        <h2>Authorization failed. Please try again.</h2>
+                        <p>{result.get('error', '')}</p>
+                    </body>
+                </html>
+            """
+    except Exception as e:
+        logging.error(f"Error in OAuth callback: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/oauth/status", methods=['GET'])
+@require_auth
+def oauth_status():
+    """Check if user has connected Google account"""
+    try:
+        user_id = request.current_user['id']
+        is_connected = GoogleOAuthService.is_connected(user_id)
+        google_email = GoogleOAuthService.get_google_email(user_id) if is_connected else None
+
+        return jsonify({
+            "success": True,
+            "is_connected": is_connected,
+            "google_email": google_email
+        }), 200
+    except Exception as e:
+        logging.error(f"Error checking OAuth status: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/oauth/disconnect", methods=['POST'])
+@require_auth
+def oauth_disconnect():
+    """Disconnect Google account"""
+    try:
+        user_id = request.current_user['id']
+        result = GoogleOAuthService.disconnect_google_account(user_id)
+
+        if result['success']:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        logging.error(f"Error disconnecting Google account: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/health", methods=['GET'])
 def health():

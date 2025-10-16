@@ -71,9 +71,28 @@ class ActionRecorder:
         self.current_url = url
         logger.debug(f"Recorded navigation to: {url}")
     
-    def record_field_fill(self, selector: str, value: str, field_label: str = "", 
+    def record_field_fill(self, selector: str, value: str, field_label: str = "",
                          field_type: str = "", success: bool = True, error: Optional[str] = None):
-        """Record filling a form field"""
+        """
+        Record filling a form field.
+
+        Automatically deduplicates: removes any previous actions for the same field
+        and keeps only the latest attempt.
+        """
+        # Remove any previous actions for this same field (deduplication)
+        if selector or field_label:
+            original_count = len(self.actions)
+            self.actions = [
+                action for action in self.actions
+                if not (
+                    action.type == "fill_field" and
+                    (action.selector == selector or action.field_label == field_label)
+                )
+            ]
+            removed_count = original_count - len(self.actions)
+            if removed_count > 0:
+                logger.debug(f"Deduplicated {removed_count} previous fill action(s) for field '{field_label}'")
+
         action = ActionStep(
             type="fill_field",
             timestamp=time.time(),
@@ -105,7 +124,25 @@ class ActionRecorder:
                            success: bool = True, error: Optional[str] = None,
                            element_type: str = "select", interaction_method: str = "select_option",
                            option_attributes: Dict[str, Any] = None):
-        """Record selecting an option from dropdown with complete context"""
+        """
+        Record selecting an option from dropdown with complete context.
+
+        Automatically deduplicates: removes any previous select actions for the same field.
+        """
+        # Remove any previous actions for this same field (deduplication)
+        if selector or field_label:
+            original_count = len(self.actions)
+            self.actions = [
+                action for action in self.actions
+                if not (
+                    action.type == "select_option" and
+                    (action.selector == selector or action.field_label == field_label)
+                )
+            ]
+            removed_count = original_count - len(self.actions)
+            if removed_count > 0:
+                logger.debug(f"Deduplicated {removed_count} previous select action(s) for field '{field_label}'")
+
         metadata = {
             "element_type": element_type,  # select, div, custom dropdown, etc.
             "interaction_method": interaction_method,  # select_option, click, type_and_select
@@ -116,7 +153,7 @@ class ActionRecorder:
                 "has_search": False  # TODO: detect searchable dropdowns
             }
         }
-        
+
         action = ActionStep(
             type="select_option",
             timestamp=time.time(),
@@ -215,9 +252,15 @@ class ActionRecorder:
         self.actions.append(action)
         logger.debug(f"Recorded iframe switch: {iframe_selector}")
     
-    def record_enhanced_field_interaction(self, field_info: Dict[str, Any], value: Any, 
+    def record_enhanced_field_interaction(self, field_info: Dict[str, Any], value: Any,
                                         interaction_result: Dict[str, Any]):
-        """Record field interaction with complete context"""
+        """
+        Record field interaction with complete context.
+
+        Automatically deduplicates: removes any previous actions for the same field
+        (identified by stable_id or selector) and keeps only the latest attempt.
+        This ensures action log only contains the final successful state of each field.
+        """
         # Clean field_info to remove non-serializable objects
         clean_field_info = {
             "stable_id": field_info.get("stable_id", ""),
@@ -226,7 +269,7 @@ class ActionRecorder:
             "placeholder": field_info.get("placeholder", ""),
             "required": field_info.get("required", False)
         }
-        
+
         # Clean attributes to only include serializable data
         attributes = field_info.get("attributes", {})
         clean_attributes = {}
@@ -235,7 +278,26 @@ class ActionRecorder:
                 clean_attributes[key] = attr_value
             else:
                 clean_attributes[key] = str(attr_value)
-        
+
+        # Get field identifier for deduplication
+        field_selector = field_info.get("stable_id", "")
+        field_label = field_info.get("label", "")
+
+        # Remove any previous actions for this same field (deduplication)
+        # This ensures we only store the final successful action for each field
+        if field_selector or field_label:
+            original_count = len(self.actions)
+            self.actions = [
+                action for action in self.actions
+                if not (
+                    action.type == "enhanced_field_fill" and
+                    (action.selector == field_selector or action.field_label == field_label)
+                )
+            ]
+            removed_count = original_count - len(self.actions)
+            if removed_count > 0:
+                logger.debug(f"Deduplicated {removed_count} previous action(s) for field '{field_label}'")
+
         action = ActionStep(
             type="enhanced_field_fill",
             timestamp=time.time(),
@@ -392,7 +454,13 @@ class ActionReplay:
                     interaction_method = action.metadata.get("interaction_method", "text_fill")
                     field_type = action.field_type or "text_input"
 
-                    if interaction_method == "file_upload":
+                    # For Greenhouse/custom dropdowns, ALWAYS use dropdown selection method regardless of interaction_method
+                    # This is critical because even if the field was "skipped_already_filled", we still need to replay it correctly
+                    if field_type in ["greenhouse_dropdown", "workday_dropdown", "lever_dropdown", "dropdown"]:
+                        # Handle dropdown selections with click-based approach
+                        await self._replay_dropdown_selection(css_selector, action)
+                        logger.debug(f"✓ Dropdown selected: {action.value}")
+                    elif interaction_method == "file_upload":
                         # Handle file uploads
                         try:
                             await element.set_input_files(action.value)
@@ -417,7 +485,7 @@ class ActionReplay:
                         await element.click()
                         logger.debug(f"✓ Clicked: {action.field_label}")
                     elif interaction_method == "dropdown_selection":
-                        # Handle dropdown selections
+                        # Handle dropdown selections (fallback for non-enhanced dropdowns)
                         await self._replay_dropdown_selection(css_selector, action)
                         logger.debug(f"✓ Dropdown selected: {action.value}")
                     elif interaction_method == "workday_multiselect":

@@ -33,7 +33,7 @@ class NextButtonDetector:
         try:
             # This single locator is more efficient than looping through each pattern.
             button = self.page.get_by_role("button", name=self.NEXT_PATTERNS_REGEX).first
-            
+
             # Check if the found button is visible and enabled before returning it.
             if await button.is_visible(timeout=1500) and await button.is_enabled():
                 button_text = await button.inner_text()
@@ -41,6 +41,27 @@ class NextButtonDetector:
                 return button
         except Error:
             logger.debug("No enabled button found matching the primary patterns.")
+
+        # --- Strategy 1.5: Greenhouse-specific patterns ---
+        try:
+            greenhouse_selectors = [
+                'button[data-action="continue"]',
+                'button.button--submit',
+                'button#submit_app',
+                'input[type="submit"][value*="Next" i]',
+                'input[type="submit"][value*="Continue" i]',
+            ]
+
+            for selector in greenhouse_selectors:
+                try:
+                    button = self.page.locator(selector).first
+                    if await button.is_visible(timeout=500) and await button.is_enabled():
+                        logger.success(f"✅ Found 'Next' button via Greenhouse pattern: {selector}")
+                        return button
+                except:
+                    continue
+        except Exception as e:
+            logger.debug(f"Greenhouse pattern matching failed: {e}")
 
         # --- Strategy 2: AI Fallback (For non-standard buttons) ---
         logger.warning("Pattern matching failed. Attempting AI fallback.")

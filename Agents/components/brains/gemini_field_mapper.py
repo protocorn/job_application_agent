@@ -242,7 +242,7 @@ Use the profile data with CONFIDENCE. If the profile contains information, USE I
      * DISABILITY: If not specified in profile -> ONLY THEN use "No" or "Prefer not to say"
      * VETERAN: If not specified in profile -> ONLY THEN use "No" or "Prefer not to say"
      * VISA/WORK AUTH: Use visa_status="F-1" + require_sponsorship="Yes" with confidence
-     * COUNTRY/STATE: Use exact matches from profile (United States, Maryland, MD)
+     * COUNTRY/STATE: Use exact matches from profile 
      * EDUCATION: Map to education array data when relevant
      * NOTICE PERIOD: For students -> "Immediately", "Upon graduation", "Flexible"
 
@@ -1027,6 +1027,115 @@ Return ONLY valid JSON, no other text:
                 return ""  # Let it be handled as needs_human_input
         
         return value
+
+    async def select_best_dropdown_option_from_list(
+        self, 
+        target_value: str, 
+        available_options: List[Dict[str, str]], 
+        profile: Optional[Dict[str, Any]] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Use AI to intelligently select the best option from a list of available dropdown options."""
+        try:
+            if not target_value:
+                return None
+            
+            if not available_options:
+                logger.warning("No dropdown options provided to AI for selection")
+                return None
+            
+            # Create profile context for AI
+            profile_context = ""
+            if profile:
+                profile_context = f"""
+USER PROFILE CONTEXT:
+- Name: {profile.get('first_name', '')} {profile.get('last_name', '')}
+- Email: {profile.get('email', '')}
+- Phone: {profile.get('phone', '')}
+- Country: {profile.get('country', '')}
+- State: {profile.get('state', '')}
+- City: {profile.get('city', '')}
+- Work Authorization: {profile.get('work_authorization', '')}
+- Visa Status: {profile.get('visa_status', '')}
+- Gender: {profile.get('gender', '')}
+- Veteran Status: {profile.get('veteran_status', '')}
+- Disability Status: {profile.get('disability_status', '')}
+- Race/Ethnicity: {profile.get('race_ethnicity', '')}
+"""
+            
+            # Format the available options
+            options_text = "\n".join([f"  - {opt['text']}" for opt in available_options])
+            
+            prompt = f"""
+You are helping fill out a job application form. You need to select the BEST matching option from the dropdown for the value: "{target_value}"
+
+{profile_context}
+
+AVAILABLE DROPDOWN OPTIONS:
+{options_text}
+
+SELECTION RULES:
+1. EXACT MATCH: If there's an exact or very close text match to "{target_value}", select that
+2. SEMANTIC MATCH: If the meaning matches even if wording differs, select that option
+3. PROFILE-BASED: Use the user's profile information to make intelligent selections:
+   - For location (country/state/city): Use profile's location data
+   - For work authorization: Use profile's work_authorization or visa_status
+   - For demographic questions: Use profile data or "Prefer not to say" if available
+   - For experience level: Infer from work history
+4. SAFE DEFAULTS: When uncertain, choose privacy-respecting options like "Prefer not to say"
+
+IMPORTANT: You MUST select EXACTLY ONE option text from the list above. Do not create new text.
+
+Please return a JSON response with:
+{{
+    "best_option_text": "exact text of the selected option from the list above",
+    "reason": "brief explanation for this selection",
+    "confidence": 0.9
+}}
+
+If no reasonable match exists, return:
+{{
+    "best_option_text": null,
+    "reason": "no suitable match found",
+    "confidence": 0.0
+}}
+
+Your response (JSON only):
+"""
+            
+            import google.generativeai as genai
+            model = genai.GenerativeModel(self.model_name)
+            response = model.generate_content(prompt)
+            
+            # Parse the response
+            result = self._parse_dropdown_response(response.text)
+            
+            # Validate that the selected option actually exists in the available options
+            if result and result.get('best_option_text'):
+                selected_text = result['best_option_text']
+                # Check if the selected option exists (case-insensitive)
+                option_exists = any(
+                    opt['text'].strip().lower() == selected_text.strip().lower() 
+                    for opt in available_options
+                )
+                if not option_exists:
+                    logger.warning(f"AI selected '{selected_text}' but it doesn't exist in options, trying partial match")
+                    # Try partial match
+                    for opt in available_options:
+                        if selected_text.lower() in opt['text'].lower() or opt['text'].lower() in selected_text.lower():
+                            logger.info(f"Found partial match: '{opt['text']}' for AI selection '{selected_text}'")
+                            result['best_option_text'] = opt['text']
+                            option_exists = True
+                            break
+                    
+                if not option_exists:
+                    logger.error(f"AI selected invalid option '{selected_text}', not in available options")
+                    return None
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ AI dropdown option selection failed: {e}")
+            return None
 
     async def analyze_dropdown_options(self, dropdown_html: str, target_value: str, profile: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         """Use AI to analyze dropdown HTML and suggest the best option for a target value using profile context."""

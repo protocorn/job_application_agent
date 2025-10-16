@@ -38,6 +38,12 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_active = Column(Boolean, default=True)
 
+    # Google OAuth fields
+    google_refresh_token = Column(Text)  # Encrypted refresh token
+    google_access_token = Column(Text)  # Encrypted access token
+    google_token_expiry = Column(DateTime)
+    google_account_email = Column(String)
+
     # Relationships
     job_applications = relationship("JobApplication", back_populates="user")
 

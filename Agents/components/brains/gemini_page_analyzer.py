@@ -45,8 +45,18 @@ class GeminiPageAnalyzer:
 
         logger.info("🧠 Analyzing unknown page with Gemini Vision...")
         try:
-            screenshot_bytes = await page.screenshot()
+            # Take screenshot with reduced quality to minimize token usage
+            screenshot_bytes = await page.screenshot(quality=50, type='jpeg')
             image = Image.open(BytesIO(screenshot_bytes))
+
+            # Resize image to max 1280px width to further reduce tokens
+            max_width = 1280
+            if image.width > max_width:
+                ratio = max_width / image.width
+                new_size = (max_width, int(image.height * ratio))
+                image = image.resize(new_size, Image.Resampling.LANCZOS)
+                logger.debug(f"Resized screenshot from {image.width}x{image.height} to {new_size[0]}x{new_size[1]}")
+
             prompt = self._create_analysis_prompt()
 
             # Pass image and prompt as a list

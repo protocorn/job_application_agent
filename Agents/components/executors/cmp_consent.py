@@ -99,6 +99,11 @@ class CmpConsent:
             if (typeof window.Didomi === 'undefined' || typeof window.Didomi.setUserAgreeToAll === 'undefined') {
                 return false;
             }
+            // Check if consent is already given
+            if (window.Didomi.getUserStatus && window.Didomi.getUserStatus().consent_string) {
+                // Consent already provided
+                return false;
+            }
             window.Didomi.setUserAgreeToAll();
             return true;
         }
@@ -110,13 +115,40 @@ class CmpConsent:
         script = """
         () => {
             if (typeof window.OneTrust === 'undefined' || typeof window.OneTrust.AllowAll === 'undefined') {
-                return false;
+                return { accepted: false, reason: 'OneTrust API not available' };
             }
+
+            // Check OneTrust's internal state to see if consent was already given
+            if (window.OneTrust.GetDomainData) {
+                const domainData = window.OneTrust.GetDomainData();
+                // If AlertBoxClosed is true, the banner has already been dismissed
+                if (domainData && domainData.AlertBoxClosed) {
+                    return { accepted: false, reason: 'AlertBoxClosed is true' };
+                }
+            }
+
+            // Alternative check: Look for the accept button - if it doesn't exist, banner is already handled
+            const acceptButton = document.getElementById('onetrust-accept-btn-handler');
+            if (!acceptButton) {
+                return { accepted: false, reason: 'Accept button not found in DOM' };
+            }
+
+            // Check if banner is actually visible
+            const banner = document.getElementById('onetrust-banner-sdk');
+            if (banner && window.getComputedStyle(banner).display === 'none') {
+                return { accepted: false, reason: 'Banner display is none' };
+            }
+
+            // Banner is present and visible - accept it
             window.OneTrust.AllowAll();
-            return true;
+            return { accepted: true, reason: 'Called OneTrust.AllowAll()' };
         }
         """
-        return await self.page.evaluate(script)
+        result = await self.page.evaluate(script)
+        if isinstance(result, dict):
+            logger.debug(f"OneTrust check: {result['reason']}")
+            return result.get('accepted', False)
+        return result
 
     async def _handle_quantcast(self) -> bool:
         """Handles Quantcast Choice."""
@@ -141,6 +173,11 @@ class CmpConsent:
         script = """
         () => {
             if (typeof window.Cookiebot === 'undefined' || typeof window.Cookiebot.submitCustomConsent === 'undefined') {
+                return false;
+            }
+            // Check if consent has already been given
+            if (window.Cookiebot.consented || window.Cookiebot.hasResponse) {
+                // Consent already provided
                 return false;
             }
             window.Cookiebot.submitCustomConsent(true, true, true);
