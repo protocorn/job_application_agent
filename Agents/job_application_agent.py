@@ -1102,9 +1102,17 @@ Return ONLY a JSON object:
 
         # After resolving, check where we should go next
         if state.context.get('post_apply_popup'):
-            # This was a popup after clicking Apply, continue with validation
+            # This was a popup after clicking Apply, continue the flow
             state.context.pop('post_apply_popup', None)  # Remove the flag
-            return 'validate_apply'
+            
+            # Check if we're in Adzuna/DeJobs flow and need to click more buttons
+            current_url = self.page.url
+            if state.context.get('adzuna_flow_active') or "dejobs.org" in current_url:
+                logger.info("🔄 Resolved popup in Adzuna/DeJobs flow - continuing to find next button")
+                return 'ai_guided_navigation'
+            else:
+                # Regular post-apply popup, continue to form filling
+                return 'ai_guided_navigation'
         else:
             # Regular popup detection flow
             return 'ai_guided_navigation'
@@ -1262,6 +1270,71 @@ Return ONLY a JSON object:
                 logger.info("🔄 All components re-initialized for iframe context")
             else:
                 logger.info("No iframe detected - using main page context")
+
+            # Track Adzuna multi-button flow (2 or 3 buttons depending on route)
+            current_url = self.page.url
+            
+            # BUTTON 1: Adzuna details page (clicked "Apply for this job" after "No thanks")
+            if "adzuna.com/details/" in current_url or state.context.get('adzuna_button_1_clicked'):
+                if not state.context.get('adzuna_button_1_clicked'):
+                    logger.info("🔵 BUTTON 1: Adzuna details page - clicked 'Apply for this job'")
+                    state.context['adzuna_button_1_clicked'] = True
+                    state.context['adzuna_flow_active'] = True
+            
+            # BUTTON 2a: Adzuna land page (need to click "Apply Now" to DeJobs)
+            if "adzuna.com/land/ad/" in current_url and state.context.get('adzuna_flow_active'):
+                logger.info("🔵 BUTTON 2a: Adzuna land page - need to click 'Apply Now' to DeJobs")
+                state.context['adzuna_button_2_clicked'] = True
+                state.context['has_clicked_apply'] = False  # Not yet on actual application
+                return 'ai_guided_navigation'
+            
+            # BUTTON 2b or 3: DeJobs intermediate page (need to click "Apply Now" to actual application)
+            # This could be button 2 (if skipped land page) or button 3 (if went through land page)
+            if "dejobs.org" in current_url and "/job/" in current_url and state.context.get('adzuna_flow_active'):
+                button_num = "2 (direct from details)" if not state.context.get('adzuna_button_2_clicked') else "3"
+                logger.info(f"🔵 BUTTON {button_num}: DeJobs intermediate page - need to click 'Apply Now' to actual application")
+                state.context['adzuna_dejobs_clicked'] = True
+                state.context['on_dejobs_intermediate'] = True
+                state.context['has_clicked_apply'] = False  # Not yet on actual application
+                return 'ai_guided_navigation'
+            
+            # REACHED ACTUAL APPLICATION: Clear action sequence from preliminary Adzuna buttons
+            # Check if we came from Adzuna flow and now on actual application (not Adzuna, not DeJobs)
+            if (state.context.get('adzuna_flow_active') and 
+                "adzuna.com" not in current_url and 
+                "dejobs.org" not in current_url):
+                
+                # Determine if we had 2 or 3 buttons (depending on whether we went through land page)
+                went_through_land_page = state.context.get('adzuna_button_2_clicked', False)
+                num_buttons = 3 if went_through_land_page else 2
+                
+                logger.info(f"✅ Reached actual application from Adzuna {num_buttons}-button flow!")
+                
+                # Clear the preliminary action sequence
+                action_seq = state.context.get('action_sequence', [])
+                preliminary_actions = state.context.get('adzuna_preliminary_actions', [])
+                
+                # Save the preliminary actions for reference
+                if len(action_seq) >= num_buttons:
+                    preliminary_actions = action_seq[:num_buttons]
+                    state.context['adzuna_preliminary_actions'] = preliminary_actions
+                    state.context['action_sequence'] = action_seq[num_buttons:]
+                    logger.info(f"🧹 Cleared preliminary action sequence - saved {len(preliminary_actions)} Adzuna button clicks, keeping them recorded")
+                    logger.debug(f"   Preliminary actions: {preliminary_actions}")
+                
+                # Reset Adzuna flow flags but mark as completed
+                state.context['adzuna_flow_active'] = False
+                state.context['adzuna_flow_completed'] = True
+                state.context['on_dejobs_intermediate'] = False
+                state.context['has_clicked_apply'] = True
+                logger.info("🆕 Starting fresh on actual application page - action recorder still has all actions")
+            
+            # Legacy support: Check if we're on DeJobs without Adzuna flow (direct DeJobs link)
+            elif "dejobs.org" in current_url and "/job/" in current_url and not state.context.get('adzuna_flow_active'):
+                logger.info("🔄 Detected DeJobs page (not from Adzuna) - will click 'Apply Now'")
+                state.context['on_dejobs_intermediate'] = True
+                state.context['has_clicked_apply'] = False
+                return 'ai_guided_navigation'
 
             # Set the flag to remember we're inside the application now.
             state.context['has_clicked_apply'] = True

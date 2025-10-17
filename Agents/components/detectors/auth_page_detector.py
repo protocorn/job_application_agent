@@ -55,6 +55,31 @@ class AuthenticationPageDetector:
         """
         logger.info("🔍 Analyzing page for authentication indicators...")
         
+        # BYPASS: Skip auth detection for known job application pages
+        current_url = self.page.url
+        
+        # Adzuna pages should never be flagged as auth pages
+        if "adzuna.com" in current_url:
+            logger.info("ℹ️ Skipping auth detection for Adzuna job page")
+            return None
+        
+        # DeJobs intermediate pages should never be flagged as auth pages
+        if "dejobs.org" in current_url and "/job/" in current_url:
+            logger.info("ℹ️ Skipping auth detection for DeJobs application page")
+            return None
+        
+        # Generic job page detection - if URL contains job patterns and has apply button
+        job_url_patterns = ['/jobs/', '/job/', '/apply/', '/application/', '/careers/']
+        if any(pattern in current_url.lower() for pattern in job_url_patterns):
+            # Quick check for apply button presence
+            try:
+                apply_indicators = await self.page.locator('button:has-text("apply"), a:has-text("apply")').count()
+                if apply_indicators > 0:
+                    logger.info("ℹ️ Skipping auth detection - detected job application page with apply button")
+                    return None
+            except Exception:
+                pass
+        
         scores = {'signup': 0.0, 'signin': 0.0}
         sensitive_fields = {}
 

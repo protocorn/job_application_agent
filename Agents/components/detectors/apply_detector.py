@@ -47,11 +47,26 @@ class ApplyDetector:
     async def detect(self) -> Optional[Dict[str, Any]]:
         """
         Detects the best apply button using a tiered pattern search with an AI fallback.
-        
+
         Returns:
             A dictionary containing the button element and detection details, or None.
         """
         logger.info("🕵️‍♂️ Detecting apply button...")
+
+        # Check for Adzuna-specific flow
+        current_url = self.page.url
+        if "adzuna.com" in current_url:
+            if "/details/" in current_url:
+                logger.info("🔍 Detected Adzuna details page - handling popup and 'Apply for this job' button")
+                return await self._handle_adzuna_details_page()
+            elif "/land/ad/" in current_url:
+                logger.info("🔍 Detected Adzuna land page - clicking 'Apply Now' button")
+                return await self._handle_adzuna_land_page()
+        
+        # Check for DeJobs intermediate page (comes after Adzuna or standalone)
+        if "dejobs.org" in current_url and "/job/" in current_url:
+            logger.info("🔍 Detected DeJobs intermediate page - clicking 'Apply Now' button")
+            return await self._handle_dejobs_page()
 
         # A single, efficient wait for any potential button to appear.
         all_selectors = [s for tier in self.APPLY_PATTERNS.values() for s in tier['selectors']]
@@ -105,7 +120,7 @@ class ApplyDetector:
             page_content = await self.page.content()
             context = "Find the primary call-to-action button to start a job application."
             ai_result = await self.ai_brain.find_apply_button(page_content, context)
-            
+
             if not (ai_result and ai_result.get('found')):
                 logger.info("🧠 AI analysis complete: No apply button found.")
                 return None
@@ -129,3 +144,130 @@ class ApplyDetector:
         except Exception as e:
             logger.error(f"AI fallback process failed with an exception: {e}")
             return None
+
+    async def _handle_adzuna_details_page(self) -> Optional[Dict[str, Any]]:
+        """Handle Adzuna details page: close popup then click 'Apply for this job' button."""
+        import asyncio
+
+        logger.info("📧 Waiting for Adzuna email popup...")
+        # Wait for popup to appear
+        await asyncio.sleep(2)
+
+        # Try to close the popup - click "No, thanks"
+        popup_selectors = [
+            'a.ea_close:has-text("No, thanks")',
+            'div.mfp-content a.ea_close:has-text("No, thanks")',
+            'a[class*="ea_close"]:has-text("No, thanks")',
+            '.ea_close'
+        ]
+
+        popup_closed = False
+        for selector in popup_selectors:
+            try:
+                popup_close = self.page.locator(selector)
+                if await popup_close.is_visible(timeout=2000):
+                    logger.info(f"📧 Found Adzuna popup 'No, thanks' button, closing it")
+                    await popup_close.click()
+                    await asyncio.sleep(1)
+                    popup_closed = True
+                    break
+            except Exception:
+                continue
+
+        if not popup_closed:
+            logger.warning("⚠️ Could not find Adzuna popup close button, continuing anyway")
+
+        # Find the "Apply for this job" button
+        apply_selectors = [
+            'a[data-js="apply"]:has-text("Apply for this job")',
+            'a[data-js="apply"]',
+            'a.bg-adzuna-green-500:has-text("Apply for this job")',
+            'a:has-text("Apply for this job")'
+        ]
+
+        for selector in apply_selectors:
+            try:
+                apply_btn = self.page.locator(selector).first
+                await apply_btn.wait_for(state='visible', timeout=5000)
+                logger.info(f"✅ Found Adzuna 'Apply for this job' button")
+                return {
+                    'element': apply_btn,
+                    'confidence': 0.95,
+                    'reason': 'Adzuna details page - Apply for this job button',
+                    'method': 'adzuna_details_page'
+                }
+            except Exception:
+                continue
+
+        logger.warning(f"⚠️ Could not find Adzuna apply button")
+        return None
+
+    async def _handle_adzuna_land_page(self) -> Optional[Dict[str, Any]]:
+        """Handle Adzuna /land/ad/ intermediate page: click 'Apply Now' button that leads to DeJobs."""
+        import asyncio
+
+        logger.info("🔄 On Adzuna land page, looking for 'Apply Now' button...")
+        await asyncio.sleep(1)
+
+        # Find the "Apply Now" button that links to jobsyn.org (DeJobs)
+        apply_selectors = [
+            'a[href*="rr.jobsyn.org"]:has-text("Apply Now")',
+            'a.bg-button:has-text("Apply Now")',
+            'a[class*="bg-button"]:has-text("Apply Now")',
+            'a:has-text("Apply Now")'
+        ]
+
+        for selector in apply_selectors:
+            try:
+                apply_btn = self.page.locator(selector).first
+                await apply_btn.wait_for(state='visible', timeout=5000)
+                logger.info(f"✅ Found Adzuna land page 'Apply Now' button")
+                return {
+                    'element': apply_btn,
+                    'confidence': 0.95,
+                    'reason': 'Adzuna land page - Apply Now button to DeJobs',
+                    'method': 'adzuna_land_page'
+                }
+            except Exception:
+                continue
+
+        logger.warning(f"⚠️ Could not find Adzuna land page apply button")
+        return None
+
+    async def _handle_adzuna_page(self) -> Optional[Dict[str, Any]]:
+        """DEPRECATED: Old combined Adzuna handler. Use _handle_adzuna_details_page instead."""
+        logger.warning("Using deprecated _handle_adzuna_page method")
+        return await self._handle_adzuna_details_page()
+
+    async def _handle_dejobs_page(self) -> Optional[Dict[str, Any]]:
+        """Handle DeJobs intermediate page: find the 'Apply Now' link to actual application."""
+        import asyncio
+        
+        logger.info("🔄 On DeJobs page, looking for 'Apply Now' button...")
+        await asyncio.sleep(1)  # Let page settle
+        
+        # Try multiple selectors in priority order
+        apply_selectors = [
+            'a[href*="rr.jobsyn.org"]:has-text("Apply Now")',  # Most specific
+            'a[href*="rr.jobsyn.org"]',  # By redirect URL
+            'a.bg-button:has-text("Apply Now")',  # By class and text
+            'a[class*="bg-button"]:has-text("Apply Now")',  # Flexible class match
+            'a:has-text("Apply Now")'  # Generic fallback
+        ]
+        
+        for selector in apply_selectors:
+            try:
+                apply_link = self.page.locator(selector).first
+                await apply_link.wait_for(state='visible', timeout=5000)
+                logger.info(f"✅ Found DeJobs 'Apply Now' button")
+                return {
+                    'element': apply_link,
+                    'confidence': 0.95,
+                    'reason': 'DeJobs Apply Now link to actual application',
+                    'method': 'dejobs_specific'
+                }
+            except Exception:
+                continue
+        
+        logger.warning(f"⚠️ Could not find DeJobs apply button with any selector")
+        return None

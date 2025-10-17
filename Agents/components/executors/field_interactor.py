@@ -528,11 +528,11 @@ class FieldInteractor:
             input_type = await element.get_attribute('type') or 'text'
             placeholder = await element.get_attribute('placeholder') or ''
             
-            # Create a composite identifier
+            # Create a composite identifier with index for uniqueness
             if label:
-                return f"label:{label}:{tag_name}:{input_type}"
+                return f"label:{label}:{tag_name}:{input_type}:{index}"
             elif placeholder:
-                return f"placeholder:{placeholder}:{tag_name}:{input_type}"
+                return f"placeholder:{placeholder}:{tag_name}:{input_type}:{index}"
             else:
                 return f"index:{index}:{tag_name}:{input_type}"
                 

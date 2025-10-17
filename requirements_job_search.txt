@@ -1,0 +1,9 @@
+# Additional requirements for multi-source job search
+
+# Date parsing for relevance scoring
+python-dateutil>=2.8.2
+
+# Already in your project (but listing for completeness):
+# requests>=2.31.0
+# sqlalchemy>=2.0.0
+# python-dotenv>=1.0.0
