@@ -38,10 +38,13 @@ class GreenhouseDropdownHandlerV2:
         except Exception:
             return False
     
-    async def fill(self, element: Locator, value: str, field_label: str) -> bool:
+    async def fill(self, element: Locator, value: str, field_label: str, profile_context: dict = None) -> bool:
         """
-        FAST fill: Type → Get options → Fuzzy match → Select → Verify.
+        FAST fill: Type → Get options → Context-aware fuzzy match → Select → Verify.
         Returns False if failed (so it goes to AI batch fallback).
+        
+        Args:
+            profile_context: Optional dict with 'city', 'state' for context-aware matching
         """
         try:
             logger.debug(f"⚡ Fast fill: '{field_label}'")
@@ -69,17 +72,19 @@ class GreenhouseDropdownHandlerV2:
             await asyncio.sleep(0.5)  # Wait for options to filter
             
             # Step 4: Get top visible options (filtered by typing)
-            top_options = await self._get_top_visible_options(element, count=5)
+            top_options = await self._get_top_visible_options(element, count=10)  # Increased for context matching
             
             if not top_options:
                 logger.warning(f"⚠️ No options appeared after typing")
                 await element.press('Escape')
                 return False  # Will go to AI batch fallback
             
-            logger.debug(f"  Top {len(top_options)} options: {top_options[:3]}")
+            logger.debug(f"  Top {len(top_options)} options: {top_options[:5]}")
             
-            # Step 5: Fuzzy match to find best option
-            best_match, best_score = self._fuzzy_find_best_option(value, top_options)
+            # Step 5: Context-aware fuzzy match
+            best_match, best_score = self._fuzzy_find_best_option_with_context(
+                value, top_options, field_label, profile_context
+            )
             logger.debug(f"  Best match: '{best_match}' (score: {best_score:.2f})")
             
             # Step 6: Select if score is good enough (>= 0.70)
@@ -171,6 +176,76 @@ class GreenhouseDropdownHandlerV2:
                 best_match = option
         
         return (best_match, best_score)
+    
+    def _fuzzy_find_best_option_with_context(self, desired: str, options: List[str], 
+                                             field_label: str, profile_context: dict = None) -> Tuple[str, float]:
+        """
+        Find best matching option using fuzzy matching + location context.
+        
+        SAFETY NET for ambiguous options (e.g., University names with multiple campuses).
+        If multiple high-scoring options exist, prefer ones containing location keywords.
+        
+        Example:
+            desired = "University of Maryland"
+            options = ["University of Maryland - Baltimore", 
+                      "University of Maryland - Baltimore County",
+                      "University of Maryland - College Park"]
+            profile_context = {"city": "College Park", "state": "Maryland"}
+            → Picks "College Park" option due to location match
+        """
+        if not options:
+            return ("", 0.0)
+        
+        # Step 1: Get all fuzzy scores
+        scored_options = []
+        desired_lower = desired.lower().strip()
+        
+        for option in options:
+            option_lower = option.lower().strip()
+            
+            # Base fuzzy score
+            score = SequenceMatcher(None, desired_lower, option_lower).ratio()
+            
+            # Boost score if desired is substring of option or vice versa
+            if desired_lower in option_lower or option_lower in desired_lower:
+                score = max(score, 0.75)
+            
+            scored_options.append((option, score, option_lower))
+        
+        # Step 2: Check for ambiguous high scores (multiple options with similar scores)
+        high_score_threshold = max(s[1] for s in scored_options)
+        high_scorers = [opt for opt in scored_options if opt[1] >= high_score_threshold - 0.05]  # Within 0.05
+        
+        if len(high_scorers) > 1 and profile_context:
+            # Multiple ambiguous options - use location context as tiebreaker
+            location_keywords = []
+            if profile_context.get('city'):
+                location_keywords.append(profile_context['city'].lower())
+            if profile_context.get('state'):
+                location_keywords.append(profile_context['state'].lower())
+            
+            if location_keywords:
+                logger.debug(f"  🎯 Ambiguous options detected, using location context: {location_keywords}")
+                
+                # Boost scores for options containing location keywords
+                for i, (option, base_score, option_lower) in enumerate(high_scorers):
+                    location_boost = 0.0
+                    for keyword in location_keywords:
+                        if keyword in option_lower:
+                            location_boost = 0.15  # Significant boost for location match
+                            logger.debug(f"  📍 Location match: '{option}' contains '{keyword}'")
+                            break
+                    
+                    # Update score with location boost
+                    high_scorers[i] = (option, base_score + location_boost, option_lower)
+        
+        # Step 3: Return best option (with location boost if applied)
+        if high_scorers:
+            best = max(high_scorers, key=lambda x: x[1])
+            return (best[0], best[1])
+        else:
+            # Fallback to first option
+            return (scored_options[0][0], scored_options[0][1])
     
     async def _verify_selection_simple(self, element: Locator, field_label: str) -> bool:
         """

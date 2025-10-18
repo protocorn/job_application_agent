@@ -95,7 +95,7 @@ class FieldInteractorV2:
                 await self._fill_workday_multiselect(element, value, field_label, result)
 
             elif 'dropdown' in category or category in ['greenhouse_dropdown', 'workday_dropdown', 'lever_dropdown']:
-                await self._fill_dropdown_fast_fail(element, str(value), field_label, category, field_data, result)
+                await self._fill_dropdown_fast_fail(element, str(value), field_label, category, field_data, result, profile)
 
             elif category == 'ashby_button_group':
                 await self._fill_button_group(element, str(value), field_label, result)
@@ -154,7 +154,8 @@ class FieldInteractorV2:
         field_label: str,
         category: str,
         field_data: Dict[str, Any],
-        result: Dict[str, Any]
+        result: Dict[str, Any],
+        profile: Optional[Dict[str, Any]] = None
     ) -> None:
         """
         Fill dropdown with FAST strategy (v2): Type → Fuzzy match → Verify.
@@ -164,9 +165,17 @@ class FieldInteractorV2:
             # Fast timeout - we type immediately, no slow extraction
             timeout = 8.0  # 8 seconds is enough for type + select + verify
             
+            # Extract location context from profile for context-aware matching
+            profile_context = None
+            if profile:
+                profile_context = {
+                    'city': profile.get('city') or profile.get('location', {}).get('city'),
+                    'state': profile.get('state') or profile.get('location', {}).get('state')
+                }
+            
             # Use the fast v2 handler (no pre-extracted options needed!)
             success = await asyncio.wait_for(
-                self.dropdown_handler.fill(element, value, field_label),
+                self.dropdown_handler.fill(element, value, field_label, profile_context=profile_context),
                 timeout=timeout
             )
 

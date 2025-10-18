@@ -237,17 +237,17 @@ Use the profile data with CONFIDENCE. If the profile contains information, USE I
    - Response format: "ID: <field_id> -> DROPDOWN: <selected_option>"
    - CONFIDENT MAPPING FOR DEMOGRAPHICS (USE PROFILE DATA WHEN AVAILABLE):
      * GENDER: If profile has gender="Male" -> SELECT "Male", "M", "Man" (NEVER "Prefer not to say")
-     * RACE/ETHNICITY: If nationality="Indian" -> SELECT "Asian", "Asian American", "South Asian" (NEVER "Prefer not to say" when data exists)
-     * HISPANIC: If nationality="Indian" -> SELECT "No", "Non-Hispanic", "Not Hispanic" (confident inference)
+     * RACE/ETHNICITY: Infer from nationality (e.g., Asian countries → "Asian", European → "White", etc.) (NEVER "Prefer not to say" when data exists)
+     * HISPANIC: Infer from nationality (e.g., non-Latin American countries → "No", "Non-Hispanic") (confident inference)
      * DISABILITY: If not specified in profile -> ONLY THEN use "No" or "Prefer not to say"
      * VETERAN: If not specified in profile -> ONLY THEN use "No" or "Prefer not to say"
-     * VISA/WORK AUTH: Use visa_status="F-1" + require_sponsorship="Yes" with confidence
+     * VISA/WORK AUTH: Use visa_status (e.g., F-1, H-1B, Green Card, Citizen) + require_sponsorship from profile with confidence
      * COUNTRY/STATE: Use exact matches from profile 
      * EDUCATION: Map to education array data when relevant
      * NOTICE PERIOD: For students -> "Immediately", "Upon graduation", "Flexible"
    - SMART INFERENCE FOR COMMON YES/NO QUESTIONS:
      * "Are you 18+ years old?" / "18 years of age?" -> If has work_experience or Master's degree -> "Yes"
-     * "Are you authorized to work in US?" -> If location=US state (e.g. Maryland) AND education in US -> "Yes" (H-1B/F-1 OPT allows work)
+     * "Are you authorized to work in US?" -> If location is US state AND education in US -> "Yes" (visa holders with work authorization)
      * "Do you require visa sponsorship?" -> If visa_status OR location=US but nationality=non-US -> Check require_sponsorship or infer "Yes"
      * "Have you worked at [Company X]?" -> Check work_experience array for company name match -> "Yes" if found, else "No"
      * "Have you applied before?" -> Default "No" (unless profile indicates otherwise)
@@ -291,11 +291,11 @@ CRITICAL RULES - CONFIDENCE-BASED APPROACH:
   * Salary expectations (not specified) → NEEDS_HUMAN_INPUT
   * Specific company questions without profile context → NEEDS_HUMAN_INPUT
 - For fields WITH profile data or inferable data - USE WITH CONFIDENCE:
-  * Gender: If profile has gender="Male" → SELECT "Male" options confidently
-  * Race/Ethnicity: If nationality="Indian" → SELECT "Asian" options confidently
-  * Hispanic: If nationality="Indian" → SELECT "No"/"Non-Hispanic" confidently
+  * Gender: Use profile.gender value → SELECT matching option confidently
+  * Race/Ethnicity: Infer from profile.nationality → SELECT appropriate race option confidently
+  * Hispanic: Infer from profile.nationality → SELECT "Yes"/"No" confidently
   * Disability/Veteran: If not in profile → "No" (not "prefer not to say")
-  * Work Authorization: Use visa_status="F-1" + require_sponsorship="Yes" confidently
+  * Work Authorization: Use profile.visa_status + require_sponsorship confidently
   * Education/Skills: Use education and skills arrays from profile
   * Company-specific questions: Check work_experience for company matches
 - NEVER make up personal details, but DO use confident logical inference from available data
@@ -305,35 +305,60 @@ CRITICAL RULES - CONFIDENCE-BASED APPROACH:
 RESPONSE FORMAT:
 Provide one line per field ID with the mapping decision.
 
-EXAMPLES:
-ID: id:first_name -> SIMPLE: John Doe
-ID: id:email -> SIMPLE: john.doe@example.com
+EXAMPLES (generalized patterns, replace with actual profile data):
+
+# Basic profile fields
+ID: id:first_name -> SIMPLE: <profile.first_name>
+ID: id:email -> SIMPLE: <profile.email>
+ID: id:phone -> SIMPLE: <profile.phone>
+ID: id:city -> SIMPLE: <profile.city>
+
+# Fields requiring human input
 ID: id:notice_period -> NEEDS_HUMAN_INPUT: Notice period not specified in profile
-ID: id:gender -> DROPDOWN: Male
-ID: id:race -> DROPDOWN: Asian (inferred from nationality=Indian)
-ID: id:hispanic -> DROPDOWN: No (inferred from nationality=Indian) 
-ID: id:disability -> DROPDOWN: Prefer not to say (default when not specified),
-ID: id:veteran -> DROPDOWN: Prefer not to say (default when not specified)
-ID: id:visa_sponsorship -> DROPDOWN: Yes (from require_sponsorship=Yes)
-ID: id:work_authorization -> DROPDOWN: F-1 Student (from visa_status=F-1)
-ID: id:university -> SIMPLE: University of Maryland
-ID: id:cover_letter -> MANUAL: Job application cover letter
-ID: id:skills -> MULTISELECT_SKILLS: Python,JavaScript,React.js,MongoDB,PyTorch
-ID: id:technical_skills -> MULTISELECT_SKILLS: AI,ML,Data Science,Vector Search
-ID: id:programming_languages -> MULTISELECT_SKILLS: Python,JavaScript,TypeScript
-ID: id:frameworks -> MULTISELECT_SKILLS: PyTorch,TensorFlow,React.js,Node.js
-ID: id:worked_for_company_before -> DROPDOWN: No (checked work_experience, no match found)
-ID: id:have_you_worked_for_google -> DROPDOWN: No (Google not in work_experience)
-ID: id:worked_for_raising_the_floor -> DROPDOWN: Yes (found "Raising The Floor" in work_experience)
-ID: id:authorized_to_work -> DROPDOWN: Yes (F-1 visa allows work with proper authorization)
-ID: id:require_sponsorship -> DROPDOWN: Yes (from require_sponsorship=Yes in profile)
-ID: id:willing_to_relocate -> DROPDOWN: Yes (from willing_to_relocate in profile)
-ID: id:are_you_18_years_old -> DROPDOWN: Yes (has work_experience and Master's degree, definitely 18+)
-ID: id:worked_at_accenture -> DROPDOWN: No (Accenture not found in work_experience)
-ID: id:have_security_clearance -> DROPDOWN: No (not mentioned in profile, default for students/recent grads)
+ID: id:salary_expectations -> NEEDS_HUMAN_INPUT: Salary not specified in profile
+ID: id:start_date -> NEEDS_HUMAN_INPUT: Start date preference not provided
+
+# Demographic fields (use profile data confidently)
+ID: id:gender -> DROPDOWN: <profile.gender> (use exact value from profile)
+ID: id:race -> DROPDOWN: <infer from profile.nationality> (e.g., nationality=Indian → Asian)
+ID: id:hispanic -> DROPDOWN: <infer from profile.nationality> (e.g., nationality=Indian → No)
+ID: id:disability -> DROPDOWN: <profile.disability_status or "Prefer not to say">
+ID: id:veteran -> DROPDOWN: <profile.veteran_status or "No" for students/recent grads>
+
+# Work authorization (use profile fields)
+ID: id:visa_sponsorship -> DROPDOWN: <profile.require_sponsorship> (Yes/No from profile)
+ID: id:work_authorization -> DROPDOWN: <profile.visa_status> (e.g., F-1, H-1B, Green Card, Citizen)
+ID: id:authorized_to_work_us -> DROPDOWN: Yes (if profile has US education/location + visa_status)
+
+# Education fields
+ID: id:university -> SIMPLE: <profile.education[0].school>
+ID: id:degree -> SIMPLE: <profile.education[0].degree>
+ID: id:major -> SIMPLE: <profile.education[0].field_of_study>
+ID: id:graduation_year -> SIMPLE: <profile.education[0].end_date.year>
+
+# Skills (extract from profile arrays)
+ID: id:skills -> MULTISELECT_SKILLS: <comma_separated from profile.skills>
+ID: id:technical_skills -> MULTISELECT_SKILLS: <from profile.programming_languages + frameworks>
+ID: id:programming_languages -> MULTISELECT_SKILLS: <from profile.programming_languages>
+ID: id:frameworks -> MULTISELECT_SKILLS: <from profile.frameworks>
+
+# Company-specific YES/NO questions (check work_experience array)
+ID: id:worked_for_company_before -> DROPDOWN: No (checked work_experience, company not found)
+ID: id:have_you_worked_for_google -> DROPDOWN: <Yes if "Google" in work_experience, else No>
+ID: id:worked_at_acme_corp -> DROPDOWN: <Yes if "Acme Corp" in work_experience, else No>
+
+# Age verification (infer from education/work history)
+ID: id:are_you_18_years_old -> DROPDOWN: Yes (has university degree and/or work experience)
+
+# Security/clearance questions (safe defaults for civilians)
+ID: id:have_security_clearance -> DROPDOWN: No (not mentioned in profile, safe default)
 ID: id:non_disclosure_agreement -> DROPDOWN: No (not mentioned in profile, safe default)
-ID: id:government_employee -> DROPDOWN: No (work_experience shows only "Raising The Floor", not government)
-ID: id:currently_work_with_company -> DROPDOWN: No (current experience doesn't mention this company)
+ID: id:government_employee -> DROPDOWN: No (check if work_experience contains government entities)
+ID: id:currently_work_with_company -> DROPDOWN: No (unless current role mentions this company)
+
+# Cover letter / Essays
+ID: id:cover_letter -> MANUAL: Job application cover letter
+ID: id:why_work_here -> MANUAL: Essay question about motivation
 
 YOUR RESPONSE:
 """
@@ -841,21 +866,21 @@ EXAMPLES:
 - "why join" or "motivation" → "cover_letter" -> summary in profile schema
 - "additional information" or "other information" → "cover_letter" -> summary in profile schema
 - "worked for company before" → "work_experience.0.company" (check if company matches)
-- "gender" or "sex" → "gender" (use "Male" exactly as in profile)
-- "race" or "ethnicity" → "race_ethnicity" (infer "Asian" from nationality="Indian")
-- "hispanic or latino" → "race_ethnicity" (infer "Non-Hispanic" from nationality="Indian")
+- "gender" or "sex" → "gender" (use exact value from profile, e.g., "Male", "Female", "Non-binary")
+- "race" or "ethnicity" → "race_ethnicity" (infer from nationality in profile)
+- "hispanic or latino" → "race_ethnicity" (infer from nationality in profile)
 - "disability" or "disabled" → "disability_status" (default "No" if not specified)
 - "veteran" → "veteran_status" (default "No" if not specified)
 - "work authorization" or "authorized to work" → "work_authorization" + "visa_status"
-- "visa sponsorship" or "sponsor" → "require_sponsorship" (use "Yes" from profile)
-- "country" or "citizenship" → "country" (use "United States")
-- "state" or "province" → "state" (use "Maryland") or "state_code" (use "MD")
-- "university" or "school" → "education.0.institution" (use "University of Maryland")
-- "degree" or "major" → "education.0.degree" (use "Master of Science in Data Science")
-- "graduation" → "education.0.graduation_year" (use "2026")
-- "programming languages" → "programming_languages" (use ["Python", "JavaScript", "TypeScript"])
-- "frameworks" → "frameworks" (use ["PyTorch", "TensorFlow", "LangChain"])
-- "notice period" → "availability" (use "Immediately" for students)
+- "visa sponsorship" or "sponsor" → "require_sponsorship" (from profile)
+- "country" or "citizenship" → "country" (from profile location/citizenship)
+- "state" or "province" → "state" (from profile) or "state_code" (abbreviation)
+- "university" or "school" → "education.0.institution" (from profile education array)
+- "degree" or "major" → "education.0.degree" (from profile education array)
+- "graduation" → "education.0.graduation_year" (from profile education array)
+- "programming languages" → "programming_languages" (from profile skills array)
+- "frameworks" → "frameworks" (from profile skills/frameworks array)
+- "notice period" → "availability" (e.g., "Immediately" for students, from profile if specified)
 
 Return ONLY valid JSON, no other text:
 """
