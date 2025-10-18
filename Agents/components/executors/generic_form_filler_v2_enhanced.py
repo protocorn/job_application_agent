@@ -90,6 +90,9 @@ class GenericFormFillerV2Enhanced:
             "filled_fields": {}  # field_label -> value (for final review)
         }
 
+        # Keep track of last detected fields for correction mechanism
+        last_detected_fields = []
+
         # Iterative filling loop
         for iteration in range(self.MAX_ITERATIONS):
             result["iterations"] = iteration + 1
@@ -108,6 +111,7 @@ class GenericFormFillerV2Enhanced:
 
             # Step 1: Detect fields (NO option extraction - fill immediately!)
             all_fields = await self.interactor.get_all_form_fields(extract_options=False)
+            last_detected_fields = all_fields  # Save for correction mechanism
             logger.info(f"🔍 Detected {len(all_fields)} fields (fast mode - no pre-extraction)")
 
             # Step 2: Clean fields (remove invalid ones)
@@ -149,7 +153,7 @@ class GenericFormFillerV2Enhanced:
                 corrections_made = await self._correct_gemini_issues(
                     review_result.get('issues', []),
                     result["filled_fields"],
-                    cached_fields,
+                    last_detected_fields,
                     profile,
                     result
                 )
@@ -383,15 +387,49 @@ class GenericFormFillerV2Enhanced:
                     })
                     continue
                 
-                # Get value
-                value = mapping_data.get('value')
-                if not value:
-                    logger.debug(f"⏭️ No value for '{field_label}'")
-                    result['skipped_fields'].append({
-                        "field": field_label,
-                        "reason": "AI returned empty value"
-                    })
-                    continue
+                # Handle MANUAL fields (essays, motivation questions) - generate AI content
+                if mapping_type == 'manual':
+                    logger.info(f"✍️ Generating AI content for essay field: '{field_label}'")
+                    
+                    # Determine max length based on field type
+                    field_category = field.get('field_category', 'text_input')
+                    max_length = 1000 if field_category == 'textarea' else 300
+                    
+                    # Extract job context from profile if available
+                    job_context = {
+                        'job_title': profile.get('target_job_title', ''),
+                        'company': profile.get('target_company', ''),
+                        'job_description': profile.get('job_description', '')
+                    }
+                    
+                    # Generate AI-written response
+                    generated_text = await self.ai_mapper.generate_text_field_response(
+                        field_label=field_label,
+                        field_type=field_category,
+                        profile=profile,
+                        job_context=job_context if any(job_context.values()) else None,
+                        max_length=max_length
+                    )
+                    
+                    if not generated_text:
+                        logger.warning(f"⚠️ Failed to generate text for '{field_label}'")
+                        result['skipped_fields'].append({
+                            "field": field_label,
+                            "reason": "AI text generation failed"
+                        })
+                        continue
+                    
+                    value = generated_text
+                else:
+                    # Get value for simple/dropdown fields
+                    value = mapping_data.get('value')
+                    if not value:
+                        logger.debug(f"⏭️ No value for '{field_label}'")
+                        result['skipped_fields'].append({
+                            "field": field_label,
+                            "reason": "AI returned empty value"
+                        })
+                        continue
                 
                 # Get fresh element
                 element = await self._get_fresh_element(field)
@@ -411,7 +449,14 @@ class GenericFormFillerV2Enhanced:
                 fill_result = await self.interactor.fill_field(field_data, value, profile)
                 
                 if fill_result['success']:
-                    logger.info(f"✅ AI Batch: '{field_label}' = '{value}'")
+                    # Log differently for generated text vs mapped values
+                    if mapping_type == 'manual':
+                        # Truncate long text for logging
+                        display_value = value[:100] + '...' if len(value) > 100 else value
+                        logger.info(f"✅ AI Generated: '{field_label}' = '{display_value}'")
+                    else:
+                        logger.info(f"✅ AI Batch: '{field_label}' = '{value}'")
+                    
                     result["fields_by_method"]["ai"] += 1
                     result["filled_fields"][field_label] = value
                     self.completion_tracker.mark_field_completed(field_id, field_label, value)
@@ -560,6 +605,11 @@ class GenericFormFillerV2Enhanced:
             issues_text = "\n".join([f"- {issue}" for issue in issues])
             filled_list = "\n".join([f"- {label}: {value}" for label, value in filled_fields.items()])
 
+            # Use the comprehensive profile context (same as AI gets during field filling and review)
+            from components.brains.gemini_field_mapper import GeminiFieldMapper
+            field_mapper = GeminiFieldMapper()
+            comprehensive_profile_context = field_mapper._create_profile_context(profile, context_type="correction")
+
             prompt = f"""
 You identified these issues with a job application form:
 {issues_text}
@@ -567,11 +617,7 @@ You identified these issues with a job application form:
 Current filled fields:
 {filled_list}
 
-Profile data:
-- Name: {profile.get('first_name', '')} {profile.get('last_name', '')}
-- Email: {profile.get('email', '')}
-- Phone: {profile.get('phone', '')}
-- Location: {profile.get('city', '')}, {profile.get('state', '')}
+{comprehensive_profile_context}
 
 For EACH issue, provide a correction. Respond in JSON format:
 {{
@@ -590,6 +636,11 @@ IMPORTANT:
 - Use EXACT field names as they appear in "Current filled fields"
 - For "Phone Extension" with full phone number, set corrected_value to empty string "" (not the extension)
 - For redundant duplicate fields, mark them for removal by setting corrected_value to ""
+- For graduation date fields:
+  * If graduation date is in the FUTURE relative to Current Date, the person IS currently enrolled
+  * Provide the actual graduation date from education data (e.g., "May 2025", "December 2025")
+  * DO NOT use "No" or "I am not currently enrolled" when graduation is in the future
+- For LinkedIn URLs, ensure they start with "https://www.linkedin.com/in/"
 """
 
             response = client.models.generate_content(
@@ -692,14 +743,15 @@ IMPORTANT:
             # Create review prompt
             filled_list = "\n".join([f"- {label}: {value}" for label, value in filled_fields.items()])
 
+            # Use the comprehensive profile context from field mapper (same as AI gets during field filling)
+            from components.brains.gemini_field_mapper import GeminiFieldMapper
+            field_mapper = GeminiFieldMapper()
+            comprehensive_profile_context = field_mapper._create_profile_context(profile, context_type="final_review")
+
             prompt = f"""
 You are reviewing a job application form that has been filled out. Please verify that the inputs make sense and are appropriate.
 
-Profile Information:
-- Name: {profile.get('first_name', '')} {profile.get('last_name', '')}
-- Email: {profile.get('email', '')}
-- Phone: {profile.get('phone', '')}
-- Location: {profile.get('city', '')}, {profile.get('state', '')}
+{comprehensive_profile_context}
 
 Filled Fields:
 {filled_list}

@@ -2,88 +2,114 @@
   "resume_url": "",
   "first name": "Sahil",
   "last name": "Chordia",
-  "email": "",
-  "date of birth": "",
-  "gender": "",
-  "nationality": "",
-  "preferred language": "",
-  "phone": "",
-  "address": "",
-  "city": "",
-  "state": "",
-  "zip": "",
-  "country": "",
-  "country_code": "",
-  "state_code": "",
-  "linkedin": "",
-  "github": "",
+  "email": "chordiasahil24@gmail.com",
+  "date of birth": "2002-12-24",
+  "gender": "Male",
+  "nationality": "American",
+  "preferred language": "English",
+  "phone": "(240) 610-1453",
+  "address": "123 Main St",
+  "city": "College Park",
+  "state": "Maryland",
+  "zip": "20742",
+  "country": "United States",
+  "country_code": "US",
+  "state_code": "MD",
+  "linkedin": "linkedin.com/in/sahil-chordia",
+  "github": "github.com/sahilchordia",
   "other links": [
-    ""
+    "mimikree.com"
   ],
   "education": [
     {
-      "degree": "",
-      "institution": "",
-      "graduation_year": "",
-      "gpa": "",
+      "degree": "Master's in Data Science",
+      "field": "Data Science",
+      "institution": "Northwestern University",
+      "start_date": "August 2024",
+      "end_date": "May 2025",
+      "gpa": "3.9",
       "relevant_courses": [
-        ""
+        "Data Science",
+        "Machine Learning",
+        "Advanced Algorithms"
       ]
     }
   ],
   "work experience": [
     {
-      "title": "",
-      "company": "",
-      "start_date": "",
-      "end_date": "",
-      "description": "",
+      "title": "Software Engineer Intern",
+      "company": "Tech Company",
+      "start_date": "June 2024",
+      "end_date": "August 2024",
+      "description": "Developed full-stack applications using React and Node.js, improving performance by 40%",
       "achievements": [
-        ""
+        "Built real-time collaborative features",
+        "Reduced API response time by 50%"
       ]
     }
   ],
   "projects": [
     {
-      "name": "",
-      "description": "",
+      "name": "Mimikree",
+      "description": "AI-powered web application for automated job applications",
       "technologies": [
-        ""
+        "Python",
+        "React",
+        "PostgreSQL",
+        "Playwright"
       ],
-      "github_url": "",
-      "live_url": "",
+      "github_url": "github.com/sahilchordia/mimikree",
+      "live_url": "mimikree.com",
       "features": [
-        ""
+        "Automated form filling",
+        "AI-powered resume tailoring",
+        "Multi-platform job search"
       ]
     }
   ],
   "skills": {
     "technical": [
-      ""
+      "Full-Stack Development",
+      "Machine Learning",
+      "System Design"
     ],
     "programming_languages": [
-      ""
+      "Python",
+      "JavaScript",
+      "TypeScript",
+      "Java"
     ],
     "frameworks": [
-      ""
+      "React",
+      "Node.js",
+      "Django",
+      "TensorFlow"
     ],
     "tools": [
-      ""
+      "Git",
+      "Docker",
+      "AWS",
+      "PostgreSQL"
     ],
     "soft_skills": [
-      ""
+      "Leadership",
+      "Communication",
+      "Problem Solving"
     ],
     "languages": [
-      ""
+      "English (Fluent)",
+      "Hindi (Native)"
     ]
   },
-  "summary": "",
-  "disabilities": [],
-  "veteran status": "",
-  "visa status": "",
-  "visa sponsorship": "",
+  "summary": "Passionate software engineer with experience in full-stack development and AI. Currently pursuing Master's in Computer Science with a focus on building scalable, intelligent systems.",
+  "disabilities": ["Low Vision"],
+  "veteran status": "No",
+  "visa status": "F-1",
+  "visa sponsorship": "Required",
   "preferred location": [
-    ""
+    "San Francisco, CA",
+    "Seattle, WA",
+    "New York, NY"
   ],
-  "willing to relocate": ""
+  "willing to relocate": "Yes"
 }

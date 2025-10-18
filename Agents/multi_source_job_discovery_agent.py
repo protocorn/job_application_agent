@@ -33,25 +33,53 @@ class MultiSourceJobDiscoveryAgent:
         logger.info(f"Initialized with {len(self.adapters)} job API adapters")
 
     def _load_profile_data(self) -> Dict[str, Any]:
-        """Load profile data from PostgreSQL database"""
+        """Load profile data from PostgreSQL database OR JSON file (based on env settings)"""
+        # Check environment variables for development mode
+        run_mode = os.getenv('RUN_MODE', 'Production')
+        dev_settings = os.getenv('DEV_SETTINGS', 'Use_database')
+        
+        logger.info(f"🔧 RUN_MODE: {run_mode}, DEV_SETTINGS: {dev_settings}")
+        
         try:
-            from agent_profile_service import AgentProfileService
-
-            if self.user_id:
-                profile = AgentProfileService.get_profile_by_user_id(self.user_id)
-            else:
-                # For backward compatibility, get the latest user's profile
-                profile = AgentProfileService.get_latest_user_profile()
-
-            if profile:
-                logger.info(f"Successfully loaded profile for {profile.get('first name', 'N/A')} {profile.get('last name', 'N/A')} from database")
+            # Development mode with JSON file
+            if run_mode == 'Development' and dev_settings == 'Dont_use_database':
+                logger.info("📁 Loading profile from JSON file (Development mode)")
+                
+                # Get path to profile_data.json
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                project_root = os.path.dirname(current_dir)
+                json_path = os.path.join(project_root, 'ProfileBuilder', 'profile_data.json')
+                
+                if not os.path.exists(json_path):
+                    logger.error(f"❌ profile_data.json not found at: {json_path}")
+                    return {}
+                
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    profile = json.load(f)
+                
+                logger.info(f"✅ Loaded profile from JSON: {profile.get('first name', 'N/A')} {profile.get('last name', 'N/A')}")
                 return profile
+            
+            # Production mode OR Development with database
             else:
-                logger.error("No profile data found in database")
-                return {}
+                logger.info("🗄️ Loading profile from PostgreSQL database")
+                from agent_profile_service import AgentProfileService
+
+                if self.user_id:
+                    profile = AgentProfileService.get_profile_by_user_id(self.user_id)
+                else:
+                    # For backward compatibility, get the latest user's profile
+                    profile = AgentProfileService.get_latest_user_profile()
+
+                if profile:
+                    logger.info(f"Successfully loaded profile for {profile.get('first name', 'N/A')} {profile.get('last name', 'N/A')} from database")
+                    return profile
+                else:
+                    logger.error("No profile data found in database")
+                    return {}
 
         except Exception as e:
-            logger.error(f"Error loading profile from database: {e}")
+            logger.error(f"Error loading profile: {e}")
             return {}
 
     def _build_query_params(self) -> Dict[str, Any]:

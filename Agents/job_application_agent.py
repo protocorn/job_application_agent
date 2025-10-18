@@ -2310,23 +2310,53 @@ IMPORTANT:
         self._update_job_and_session_status('failed', "❌ Job application failed - unable to complete the process")
         return None
 
-# Load profile data from PostgreSQL database
+# Load profile data from PostgreSQL database OR JSON file (based on env settings)
 def _load_profile_data(user_id=None):
     import os
+    import json
     from agent_profile_service import AgentProfileService
 
-    try:
-        # Load from PostgreSQL database
-        if user_id:
-            profile_data = AgentProfileService.get_profile_by_user_id(user_id)
-        else:
-            # For backward compatibility, get the latest user's profile
-            profile_data = AgentProfileService.get_latest_user_profile()
+    # Check environment variables for development mode
+    run_mode = os.getenv('RUN_MODE', 'Production')
+    dev_settings = os.getenv('DEV_SETTINGS', 'Use_database')
+    
+    logger.info(f"🔧 RUN_MODE: {run_mode}, DEV_SETTINGS: {dev_settings}")
 
-        if not profile_data:
-            logger.error("❌ No profile data found in database")
-            logger.warning("🔄 Using fallback profile data...")
-            return fallback_profile
+    try:
+        # Development mode with JSON file
+        if run_mode == 'Development' and dev_settings == 'Dont_use_database':
+            logger.info("📁 Loading profile from JSON file (Development mode)")
+            
+            # Get path to profile_data.json
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(current_dir)
+            json_path = os.path.join(project_root, 'ProfileBuilder', 'profile_data.json')
+            
+            if not os.path.exists(json_path):
+                logger.error(f"❌ profile_data.json not found at: {json_path}")
+                logger.warning("🔄 Using fallback profile data...")
+                return fallback_profile
+            
+            with open(json_path, 'r', encoding='utf-8') as f:
+                profile_data = json.load(f)
+            
+            logger.info(f"✅ Loaded profile from JSON: {profile_data.get('first name', 'N/A')} {profile_data.get('last name', 'N/A')}")
+        
+        # Production mode OR Development with database
+        else:
+            logger.info("🗄️ Loading profile from PostgreSQL database")
+            
+            # Load from PostgreSQL database
+            if user_id:
+                profile_data = AgentProfileService.get_profile_by_user_id(user_id)
+            else:
+                # For backward compatibility, get the latest user's profile
+                profile_data = AgentProfileService.get_latest_user_profile()
+
+            if not profile_data:
+                logger.error("❌ No profile data found in database")
+                logger.warning("🔄 Using fallback profile data...")
+                return fallback_profile
         
         # Get current directory for resume path
         current_dir = os.path.dirname(os.path.abspath(__file__))

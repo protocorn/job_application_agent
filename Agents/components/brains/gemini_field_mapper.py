@@ -254,7 +254,28 @@ Use the profile data with CONFIDENCE. If the profile contains information, USE I
      * "Have you entered NDA/non-compete?" -> Default "No" (unless profile indicates otherwise)
      * "Do you have security clearance?" -> Default "No" (unless profile indicates otherwise)
      * "Currently working on project with [Company]?" -> Check current work_experience -> Usually "No"
+   - **CRITICAL: DATE-AWARE DROPDOWN SELECTION (GRADUATION/ENROLLMENT)**:
+     * For questions about "expected graduation date" or "when will you graduate" with dropdown options
+     * **COMPARE the graduation date from profile with CURRENT DATE from context**
+     * If graduation date is in the FUTURE (e.g., May 2025 when today is October 2024):
+       - User is CURRENTLY ENROLLED
+       - SELECT the actual graduation date option from dropdown (e.g., "May 2025", "December 2025")
+       - **DO NOT SELECT "I am not currently enrolled" or "No"**
+     * If graduation date is in the PAST:
+       - User has already GRADUATED
+       - SELECT "I am not currently enrolled" or "Already graduated"
+     * Example: Today is October 2024, graduation is May 2025, options are ["May 2025", "December 2025", "I am not currently enrolled"]
+       - **CORRECT**: Select "May 2025" (matches profile graduation date)
+       - **WRONG**: Select "I am not currently enrolled" (graduation is still in future!)
      * 
+
+2.1. TERMS & CONDITIONS / AGREEMENT CHECKBOXES: ALWAYS CHECK THESE
+   - CRITICAL: Even if the field ID contains "honeypot", "honey-pot", etc., if it's a VISIBLE checkbox with terms/conditions language, it is LEGITIMATE
+   - For checkboxes with labels containing: "terms", "conditions", "agreement", "consent", "acknowledge", "privacy policy", "I agree", "I have read"
+   - Response format: "ID: <field_id> -> SIMPLE: true" or "ID: <field_id> -> SIMPLE: checked"
+   - These are NOT honeypots - they are required legal checkboxes that must be checked
+   - Examples: "I agree to the terms and conditions", "I acknowledge the privacy policy", "Accept terms"
+   - DO NOT skip these just because they have "honeypot" in the ID - that's a false positive from bad naming by website developers
 
 2.5. MULTISELECT SKILLS: For Workday multiselect fields (skills, technologies, tools)
    - Map to relevant skills from profile skill categories
@@ -355,6 +376,12 @@ ID: id:have_security_clearance -> DROPDOWN: No (not mentioned in profile, safe d
 ID: id:non_disclosure_agreement -> DROPDOWN: No (not mentioned in profile, safe default)
 ID: id:government_employee -> DROPDOWN: No (check if work_experience contains government entities)
 ID: id:currently_work_with_company -> DROPDOWN: No (unless current role mentions this company)
+
+# Terms and conditions checkboxes (ALWAYS check these, even if ID looks like honeypot)
+ID: id:honey-pot-0 -> SIMPLE: true (checkbox for terms/conditions - NOT an actual honeypot, just bad naming)
+ID: id:terms_checkbox -> SIMPLE: checked (agree to terms)
+ID: id:privacy_agreement -> SIMPLE: true (acknowledge privacy policy)
+ID: id:accept_conditions -> SIMPLE: checked (accept terms and conditions)
 
 # Cover letter / Essays
 ID: id:cover_letter -> MANUAL: Job application cover letter
@@ -681,11 +708,20 @@ Your response (exact option text only):"""
 
     def _create_profile_context(self, profile: Dict[str, Any], context_type: str = "general") -> str:
         """Create comprehensive profile context for field mapping."""
+        from datetime import datetime
+        
         # Extract ALL profile information systematically
         context_parts = []
         
+        # CURRENT DATE (for date-aware decisions)
+        current_date = datetime.now()
+        context_parts.append("=== CURRENT DATE (FOR REFERENCE) ===")
+        context_parts.append(f"Today: {current_date.strftime('%B %d, %Y')}")
+        context_parts.append(f"Current Year: {current_date.year}")
+        context_parts.append(f"Note: Use this to determine if graduation dates are in future (currently enrolled) or past (graduated)")
+        
         # Basic Personal Information
-        context_parts.append("=== PERSONAL INFORMATION ===")
+        context_parts.append("\n=== PERSONAL INFORMATION ===")
         # Handle both 'first_name' and 'first name' formats
         first_name = profile.get('first_name') or profile.get('first name')
         last_name = profile.get('last_name') or profile.get('last name')
@@ -776,6 +812,8 @@ Your response (exact option text only):"""
                 if edu.get('degree'): context_parts.append(f"  Degree: {edu['degree']}")
                 if edu.get('field'): context_parts.append(f"  Field: {edu['field']}")
                 if edu.get('institution'): context_parts.append(f"  Institution: {edu['institution']}")
+                if edu.get('start_date'): context_parts.append(f"  Start Date: {edu['start_date']}")
+                if edu.get('end_date'): context_parts.append(f"  End Date (Graduation): {edu['end_date']}")
                 if edu.get('graduation_date'): context_parts.append(f"  Graduation: {edu['graduation_date']}")
                 if edu.get('gpa'): context_parts.append(f"  GPA: {edu['gpa']}")
         
@@ -1176,6 +1214,113 @@ Your response (JSON only):
             
         except Exception as e:
             logger.error(f"❌ AI dropdown option selection failed: {e}")
+            return None
+
+    async def generate_text_field_response(
+        self, 
+        field_label: str, 
+        field_type: str,
+        profile: Dict[str, Any],
+        job_context: Optional[Dict[str, Any]] = None,
+        max_length: int = 500
+    ) -> Optional[str]:
+        """
+        Generate AI-written response for essay questions, motivation fields, etc.
+        
+        Args:
+            field_label: The field's label/question
+            field_type: Type of field (textarea, text_input, etc.)
+            profile: User's profile data
+            job_context: Optional job description and company info
+            max_length: Maximum length for the response
+            
+        Returns:
+            Generated text response or None if generation fails
+        """
+        try:
+            import google.generativeai as genai
+            
+            # Create comprehensive profile context
+            profile_context = self._create_profile_context(profile, "text_generation")
+            
+            # Create job context if available
+            job_context_text = ""
+            if job_context:
+                job_context_text = "\n=== JOB CONTEXT ===\n"
+                if job_context.get('job_title'):
+                    job_context_text += f"Position: {job_context['job_title']}\n"
+                if job_context.get('company'):
+                    job_context_text += f"Company: {job_context['company']}\n"
+                if job_context.get('job_description'):
+                    # Truncate long job descriptions
+                    desc = job_context['job_description']
+                    if len(desc) > 2000:
+                        desc = desc[:2000] + "..."
+                    job_context_text += f"Job Description:\n{desc}\n"
+            
+            # Determine response length guidelines
+            length_guide = "2-3 sentences" if max_length < 200 else "a short paragraph (3-5 sentences)"
+            if max_length > 500:
+                length_guide = "1-2 paragraphs (5-8 sentences)"
+            
+            prompt = f"""
+You are helping a job applicant fill out an application form. Write a professional, compelling response to this question:
+
+QUESTION: "{field_label}"
+
+{profile_context}
+
+{job_context_text}
+
+INSTRUCTIONS:
+1. Write a response that is {length_guide} long
+2. Use information from the profile to make it specific and authentic
+3. If job context is provided, tailor the response to the company and position
+4. Be professional, enthusiastic, and concise
+5. Avoid generic phrases - use specific examples from the profile
+6. Maximum length: {max_length} characters
+7. DO NOT use placeholder text or [brackets] - write actual content
+8. DO NOT start with "I am writing to..." or "Dear hiring manager" - just answer the question directly
+
+RESPONSE GUIDELINES FOR COMMON QUESTIONS:
+- "Why do you want to work here/join us?" → Connect your skills/experience to the company's mission, show enthusiasm
+- "What interests you about this role?" → Highlight relevant skills and career goals that align with the position
+- "Tell us about yourself" → Brief professional summary highlighting relevant experience and skills
+- "Additional information/comments" → Mention unique qualifications, projects, or achievements not covered elsewhere
+- "How did you hear about us?" → Be honest (LinkedIn, job board, referral, etc.)
+
+Your response (text only, no JSON, no formatting):"""
+            
+            model = genai.GenerativeModel(self.model_name)
+            response = model.generate_content(prompt)
+            
+            generated_text = response.text.strip()
+            
+            # Clean up the response
+            # Remove any JSON formatting if present
+            if generated_text.startswith('{') or generated_text.startswith('['):
+                logger.warning("AI returned JSON format, extracting text...")
+                import json
+                try:
+                    data = json.loads(generated_text)
+                    generated_text = data.get('response', '') or data.get('text', '') or str(data)
+                except:
+                    pass
+            
+            # Truncate if too long
+            if len(generated_text) > max_length:
+                # Try to truncate at a sentence boundary
+                sentences = generated_text[:max_length].split('. ')
+                if len(sentences) > 1:
+                    generated_text = '. '.join(sentences[:-1]) + '.'
+                else:
+                    generated_text = generated_text[:max_length-3] + '...'
+            
+            logger.info(f"✍️ Generated {len(generated_text)} char response for '{field_label}'")
+            return generated_text
+            
+        except Exception as e:
+            logger.error(f"❌ Text generation failed for '{field_label}': {e}")
             return None
 
     async def analyze_dropdown_options(self, dropdown_html: str, target_value: str, profile: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:

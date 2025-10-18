@@ -347,6 +347,33 @@ class DeterministicFieldMapper:
     def _try_semantic_inference(self, label: str, field_type: str, profile: Dict[str, Any]) -> Optional[FieldMapping]:
         """Try semantic inference for question-based fields."""
 
+        # ALWAYS check terms and conditions checkboxes
+        # Match patterns like: "terms", "conditions", "agreement", "consent", "acknowledge", "privacy policy"
+        # Even if element ID contains "honeypot", if it's a visible checkbox with these keywords, it should be checked
+        if field_type in ['checkbox', 'selection']:
+            terms_patterns = [
+                r'\bterms?\b',
+                r'\bconditions?\b',
+                r'\bagreement\b',
+                r'\bconsent\b',
+                r'\backnowledge\b',
+                r'\bprivacy\s*policy\b',
+                r'\baccept\b',
+                r'\bagree\b',
+                r'\bi\s*have\s*read\b',
+                r'\bi\s*understand\b',
+                r'\bconfirm\b',
+            ]
+            label_lower = label.lower()
+            if any(re.search(pattern, label_lower, re.IGNORECASE) for pattern in terms_patterns):
+                logger.info(f"🔍 Detected terms/agreement checkbox: '{label}' - will auto-check")
+                return FieldMapping(
+                    profile_key='terms_agreement',
+                    value='true',
+                    confidence=FieldMappingConfidence.HIGH,
+                    method='terms_checkbox_autocheck'
+                )
+
         # Handle question-based fields
         inference_rules = [
             # Work authorization questions
@@ -449,23 +476,68 @@ class DeterministicFieldMapper:
         return None
 
     def _infer_current_student(self, label: str, profile: Dict[str, Any]) -> Optional[FieldMapping]:
-        """Infer if currently a student."""
+        """
+        Infer if currently a student based on date arithmetic.
+        NO reliance on 'current' boolean - calculated from dates!
+        
+        Logic:
+        - If start_date <= current_date < end_date → Currently enrolled
+        - If current_date >= end_date → Already graduated
+        """
+        from datetime import datetime
+        
         education = profile.get('education', [])
+        current_date = datetime.now()
+        
         for edu in education:
-            if edu.get('current', False):
-                return FieldMapping(
-                    profile_key='education',
-                    value='Yes',
-                    confidence=FieldMappingConfidence.HIGH,
-                    method='semantic_inference'
-                )
-
-        return FieldMapping(
-            profile_key='education',
-            value='No',
-            confidence=FieldMappingConfidence.MEDIUM,
-            method='semantic_inference'
-        )
+            # Get end_date (graduation date)
+            end_date_str = edu.get('end_date', '')
+            if not end_date_str:
+                continue
+            
+            # Parse graduation date (handle various formats)
+            try:
+                grad_date = None
+                
+                # Try year only (e.g., "2025")
+                if len(end_date_str) == 4 and end_date_str.isdigit():
+                    grad_date = datetime(int(end_date_str), 12, 31)  # Assume end of year
+                else:
+                    # Try common date formats
+                    for fmt in ['%Y-%m', '%m/%Y', '%B %Y', '%b %Y', '%Y-%m-%d', '%m/%d/%Y']:
+                        try:
+                            grad_date = datetime.strptime(end_date_str, fmt)
+                            break
+                        except:
+                            continue
+                
+                if grad_date:
+                    # Date arithmetic: Is graduation in the future?
+                    if grad_date > current_date:
+                        # Graduation is in the FUTURE → Currently enrolled!
+                        logger.info(f"📅 Date arithmetic: Graduation {end_date_str} is future → Currently enrolled")
+                        return FieldMapping(
+                            profile_key='education',
+                            value='Yes',
+                            confidence=FieldMappingConfidence.HIGH,
+                            method='semantic_inference_date_calculated'
+                        )
+                    else:
+                        # Graduation is in the PAST → Already graduated
+                        logger.info(f"📅 Date arithmetic: Graduation {end_date_str} is past → Already graduated")
+                        return FieldMapping(
+                            profile_key='education',
+                            value='No',
+                            confidence=FieldMappingConfidence.HIGH,
+                            method='semantic_inference_date_calculated'
+                        )
+            except Exception as e:
+                logger.debug(f"Could not parse graduation date '{end_date_str}': {e}")
+                continue
+        
+        # No graduation date found - can't determine enrollment status
+        logger.debug("No graduation date found in profile - cannot infer enrollment status")
+        return None  # Let AI handle it
 
     def _get_profile_value(self, profile: Dict[str, Any], profile_key: str) -> Optional[Any]:
         """
