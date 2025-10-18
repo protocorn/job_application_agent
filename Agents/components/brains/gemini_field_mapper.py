@@ -245,6 +245,16 @@ Use the profile data with CONFIDENCE. If the profile contains information, USE I
      * COUNTRY/STATE: Use exact matches from profile 
      * EDUCATION: Map to education array data when relevant
      * NOTICE PERIOD: For students -> "Immediately", "Upon graduation", "Flexible"
+   - SMART INFERENCE FOR COMMON YES/NO QUESTIONS:
+     * "Are you 18+ years old?" / "18 years of age?" -> If has work_experience or Master's degree -> "Yes"
+     * "Are you authorized to work in US?" -> If location=US state (e.g. Maryland) AND education in US -> "Yes" (H-1B/F-1 OPT allows work)
+     * "Do you require visa sponsorship?" -> If visa_status OR location=US but nationality=non-US -> Check require_sponsorship or infer "Yes"
+     * "Have you worked at [Company X]?" -> Check work_experience array for company name match -> "Yes" if found, else "No"
+     * "Have you applied before?" -> Default "No" (unless profile indicates otherwise)
+     * "Have you entered NDA/non-compete?" -> Default "No" (unless profile indicates otherwise)
+     * "Do you have security clearance?" -> Default "No" (unless profile indicates otherwise)
+     * "Currently working on project with [Company]?" -> Check current work_experience -> Usually "No"
+     * 
 
 2.5. MULTISELECT SKILLS: For Workday multiselect fields (skills, technologies, tools)
    - Map to relevant skills from profile skill categories
@@ -318,6 +328,12 @@ ID: id:worked_for_raising_the_floor -> DROPDOWN: Yes (found "Raising The Floor" 
 ID: id:authorized_to_work -> DROPDOWN: Yes (F-1 visa allows work with proper authorization)
 ID: id:require_sponsorship -> DROPDOWN: Yes (from require_sponsorship=Yes in profile)
 ID: id:willing_to_relocate -> DROPDOWN: Yes (from willing_to_relocate in profile)
+ID: id:are_you_18_years_old -> DROPDOWN: Yes (has work_experience and Master's degree, definitely 18+)
+ID: id:worked_at_accenture -> DROPDOWN: No (Accenture not found in work_experience)
+ID: id:have_security_clearance -> DROPDOWN: No (not mentioned in profile, default for students/recent grads)
+ID: id:non_disclosure_agreement -> DROPDOWN: No (not mentioned in profile, safe default)
+ID: id:government_employee -> DROPDOWN: No (work_experience shows only "Raising The Floor", not government)
+ID: id:currently_work_with_company -> DROPDOWN: No (current experience doesn't mention this company)
 
 YOUR RESPONSE:
 """

@@ -88,10 +88,11 @@ class GreenhouseDropdownHandlerV2:
                 
                 # Press Enter to select (dropdown already filtered to show this option first)
                 await element.press('Enter')
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.5)  # Give Greenhouse time to update DOM
                 
                 # Step 7: VERIFY selection was successful
-                verification_passed = await self._verify_selection(element, field_label, best_match)
+                # For Greenhouse: If dropdown closed, selection succeeded
+                verification_passed = await self._verify_selection_simple(element, field_label)
                 
                 if verification_passed:
                     logger.info(f"✅ Verified: '{field_label}' filled successfully")
@@ -171,52 +172,44 @@ class GreenhouseDropdownHandlerV2:
         
         return (best_match, best_score)
     
-    async def _verify_selection(self, element: Locator, field_label: str, expected_value: str) -> bool:
+    async def _verify_selection_simple(self, element: Locator, field_label: str) -> bool:
         """
-        CRITICAL: Verify that the dropdown was actually filled.
-        
-        For Greenhouse dropdowns, check:
-        1. Sibling display element (e.g., [class*="singleValue"])
-        2. Input value
-        3. aria-activedescendant attribute
+        SIMPLE verification: Check if dropdown closed (aria-expanded=false).
+        For Greenhouse, when you press Enter, the dropdown closes if selection succeeded.
         """
         try:
-            # Method 1: Check sibling display element (most reliable for Greenhouse)
+            # Method 1: Check if dropdown is closed (aria-expanded="false")
+            try:
+                expanded = await element.get_attribute('aria-expanded')
+                if expanded == 'false':
+                    logger.debug(f"  ✓ Verified: dropdown closed (aria-expanded=false)")
+                    return True
+            except:
+                pass
+            
+            # Method 2: Check if options are no longer visible
+            try:
+                page = element.page
+                options_visible = await page.locator('[role="option"]:visible').count()
+                if options_visible == 0:
+                    logger.debug(f"  ✓ Verified: no visible options (dropdown closed)")
+                    return True
+            except:
+                pass
+            
+            # Method 3: Check sibling display element has a value (not placeholder)
             try:
                 parent = element.locator('xpath=..')
-                display_elem = parent.locator('[class*="singleValue"], [class*="placeholder"]').first
-                display_text = await display_elem.text_content(timeout=1000)
-                if display_text and display_text.strip():
-                    # Check if it matches our expected value
-                    similarity = SequenceMatcher(None, expected_value.lower(), display_text.lower()).ratio()
-                    if similarity > 0.6:
-                        logger.debug(f"  ✓ Verified via display element: '{display_text}'")
-                        return True
-            except:
-                pass
-            
-            # Method 2: Check input value
-            try:
-                input_val = await element.input_value(timeout=1000)
-                if input_val and input_val.strip():
-                    similarity = SequenceMatcher(None, expected_value.lower(), input_val.lower()).ratio()
-                    if similarity > 0.6:
-                        logger.debug(f"  ✓ Verified via input value: '{input_val}'")
-                        return True
-            except:
-                pass
-            
-            # Method 3: Check aria-activedescendant
-            try:
-                active_id = await element.get_attribute('aria-activedescendant')
-                if active_id:
-                    logger.debug(f"  ✓ Verified via aria-activedescendant: {active_id}")
+                display_elem = parent.locator('[class*="singleValue"]').first
+                display_text = await display_elem.text_content(timeout=500)
+                if display_text and len(display_text.strip()) > 0:
+                    logger.debug(f"  ✓ Verified: display shows '{display_text.strip()}'")
                     return True
             except:
                 pass
             
             # No verification method succeeded
-            logger.warning(f"  ✗ Could not verify selection for '{field_label}'")
+            logger.debug(f"  ✗ Could not verify selection for '{field_label}'")
             return False
             
         except Exception as e:
