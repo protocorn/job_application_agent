@@ -91,9 +91,6 @@ class GenericFormFillerV2Enhanced:
         }
 
         # Iterative filling loop
-        # Cache fields and options on first iteration only
-        cached_fields = None
-
         for iteration in range(self.MAX_ITERATIONS):
             result["iterations"] = iteration + 1
             logger.info(f"📝 Form filling iteration {iteration + 1}/{self.MAX_ITERATIONS}")
@@ -109,16 +106,9 @@ class GenericFormFillerV2Enhanced:
                     else:
                         logger.debug("⏭️ No resume upload field found or upload skipped")
 
-            # Step 1: Detect fields (extract options only on first iteration)
-            if cached_fields is None:
-                all_fields = await self.interactor.get_all_form_fields(extract_options=True)
-                logger.info(f"🔍 Detected {len(all_fields)} total fields (with options extraction)")
-                cached_fields = all_fields
-            else:
-                all_fields = await self.interactor.get_all_form_fields(extract_options=False)
-                logger.info(f"🔍 Re-detected {len(all_fields)} fields (using cached options)")
-                # Merge cached options into newly detected fields
-                all_fields = self._merge_cached_options(all_fields, cached_fields)
+            # Step 1: Detect fields (NO option extraction - fill immediately!)
+            all_fields = await self.interactor.get_all_form_fields(extract_options=False)
+            logger.info(f"🔍 Detected {len(all_fields)} fields (fast mode - no pre-extraction)")
 
             # Step 2: Clean fields (remove invalid ones)
             valid_fields = await self._clean_detected_fields(all_fields)
@@ -240,72 +230,55 @@ class GenericFormFillerV2Enhanced:
         result: Dict[str, Any]
     ) -> int:
         """
-        Process fields with single-attempt strategy:
-        For each field:
-          1. Try deterministic (if not tried before)
-          2. Validate field
-          3. If empty and AI not tried, try AI
-          4. Validate again
-          5. If still empty, skip field
+        BATCH STRATEGY: Process all fields efficiently:
+        Phase 1: Try deterministic on ALL fields
+        Phase 2: Collect fields needing AI help
+        Phase 3: Make ONE batch Gemini call for all AI fields
+        Phase 4: Apply all AI responses
         """
         filled_count = 0
-
+        
+        # PHASE 1: Try deterministic on all fields first
+        logger.info("📋 Phase 1: Attempting deterministic mapping for all fields...")
+        fields_needing_ai = []
+        
         for field in fields:
             field_id = self._get_field_id(field)
             field_label = field.get('label', 'Unknown')
-
-            # Get next method to try
+            
+            # Skip if all methods exhausted
             next_method = self.attempt_tracker.get_next_method(field_id)
-
             if not next_method:
-                # All methods exhausted for this field
                 if field_label not in [f['field'] for f in result['skipped_fields']]:
                     result['skipped_fields'].append({
                         "field": field_label,
                         "reason": "All strategies attempted, field still empty"
                     })
                 continue
-
-            # Try deterministic first (if not attempted)
+            
+            # Try deterministic if not yet attempted
             if next_method == 'deterministic':
                 success = await self._try_deterministic(field, profile, result)
                 self.attempt_tracker.mark_attempted(field_id, 'deterministic')
-
+                
                 if success:
                     filled_count += 1
                     continue  # Success, move to next field
-
-                # Deterministic failed - immediately try AI in same iteration
-                logger.debug(f"⚠️ Deterministic failed for '{field_label}', trying AI immediately...")
-                if not self.attempt_tracker.has_attempted(field_id, 'ai'):
-                    success = await self._try_ai(field, profile, result)
-                    self.attempt_tracker.mark_attempted(field_id, 'ai')
-
-                    if success:
-                        filled_count += 1
-                    else:
-                        # Both methods failed
-                        if field_label not in [f['field'] for f in result['skipped_fields']]:
-                            result['skipped_fields'].append({
-                                "field": field_label,
-                                "reason": "Both deterministic and AI attempts failed"
-                            })
-
-            # Try AI (if deterministic was already attempted in previous iteration)
-            elif next_method == 'ai':
-                success = await self._try_ai(field, profile, result)
-                self.attempt_tracker.mark_attempted(field_id, 'ai')
-
-                if success:
-                    filled_count += 1
                 else:
-                    # AI failed and deterministic was already tried
-                    if field_label not in [f['field'] for f in result['skipped_fields']]:
-                        result['skipped_fields'].append({
-                            "field": field_label,
-                            "reason": "Both deterministic and AI attempts failed"
-                        })
-
+                    # Deterministic failed - add to AI batch
+                    if not self.attempt_tracker.has_attempted(field_id, 'ai'):
+                        fields_needing_ai.append(field)
+            
+            # If AI is next method, add to batch
+            elif next_method == 'ai':
+                fields_needing_ai.append(field)
+        
+        # PHASE 2 & 3: Batch AI processing
+        if fields_needing_ai:
+            logger.info(f"🤖 Phase 2: Batch processing {len(fields_needing_ai)} fields with Gemini...")
+            ai_filled = await self._try_ai_batch(fields_needing_ai, profile, result)
+            filled_count += ai_filled
+        
         return filled_count
 
     async def _try_deterministic(
@@ -334,7 +307,7 @@ class GenericFormFillerV2Enhanced:
             if not element:
                 return False
 
-            # Prepare field data
+            # Prepare field data (no pre-extracted options in fast mode)
             field_data = {
                 'element': element,
                 'label': field_label,
@@ -362,13 +335,111 @@ class GenericFormFillerV2Enhanced:
             logger.error(f"❌ Error in deterministic attempt for '{field_label}': {e}")
             return False
 
+    async def _try_ai_batch(
+        self,
+        fields: List[Dict[str, Any]],
+        profile: Dict[str, Any],
+        result: Dict[str, Any]
+    ) -> int:
+        """
+        Batch process multiple fields with ONE Gemini API call.
+        This reduces API calls from N to 1 per batch.
+        """
+        if not fields:
+            return 0
+        
+        filled_count = 0
+        
+        try:
+            # Make ONE batch Gemini call for all fields
+            logger.info(f"🧠 Making batch Gemini call for {len(fields)} fields...")
+            ai_mappings = await self.ai_mapper.map_fields_to_profile(fields, profile)
+            logger.info(f"✅ Received {len(ai_mappings)} mappings from Gemini")
+            
+            # Apply each mapping
+            for field in fields:
+                field_id = self._get_field_id(field)
+                field_label = field.get('label', 'Unknown')
+                
+                # Mark AI as attempted
+                self.attempt_tracker.mark_attempted(field_id, 'ai')
+                
+                if field_id not in ai_mappings:
+                    logger.debug(f"⏭️ No AI mapping for '{field_label}'")
+                    result['skipped_fields'].append({
+                        "field": field_label,
+                        "reason": "AI did not provide mapping"
+                    })
+                    continue
+                
+                mapping_data = ai_mappings[field_id]
+                mapping_type = mapping_data.get('type', 'simple')
+                
+                # Check if needs human input
+                if mapping_type == 'needs_human_input':
+                    result["requires_human"].append({
+                        "field": field_label,
+                        "reason": mapping_data.get('reason', 'AI determined needs human input')
+                    })
+                    continue
+                
+                # Get value
+                value = mapping_data.get('value')
+                if not value:
+                    logger.debug(f"⏭️ No value for '{field_label}'")
+                    result['skipped_fields'].append({
+                        "field": field_label,
+                        "reason": "AI returned empty value"
+                    })
+                    continue
+                
+                # Get fresh element
+                element = await self._get_fresh_element(field)
+                if not element:
+                    logger.debug(f"⏭️ Could not get fresh element for '{field_label}'")
+                    continue
+                
+                # Prepare field data (fast mode - no pre-extracted options)
+                field_data = {
+                    'element': element,
+                    'label': field_label,
+                    'field_category': field.get('field_category', 'text_input'),
+                    'stable_id': field.get('stable_id', '')
+                }
+                
+                # Fill the field
+                fill_result = await self.interactor.fill_field(field_data, value, profile)
+                
+                if fill_result['success']:
+                    logger.info(f"✅ AI Batch: '{field_label}' = '{value}'")
+                    result["fields_by_method"]["ai"] += 1
+                    result["filled_fields"][field_label] = value
+                    self.completion_tracker.mark_field_completed(field_id, field_label, value)
+                    filled_count += 1
+                else:
+                    logger.debug(f"⏭️ AI batch fill failed for '{field_label}'")
+                    result['skipped_fields'].append({
+                        "field": field_label,
+                        "reason": f"AI provided value but fill failed: {fill_result.get('error', 'Unknown')}"
+                    })
+            
+            return filled_count
+            
+        except Exception as e:
+            logger.error(f"❌ Error in batch AI processing: {e}")
+            # Mark all fields as attempted even if batch failed
+            for field in fields:
+                field_id = self._get_field_id(field)
+                self.attempt_tracker.mark_attempted(field_id, 'ai')
+            return 0
+
     async def _try_ai(
         self,
         field: Dict[str, Any],
         profile: Dict[str, Any],
         result: Dict[str, Any]
     ) -> bool:
-        """Try to fill field with AI mapping."""
+        """Try to fill field with AI mapping (single field - used by final review)."""
         field_label = field.get('label', 'Unknown')
 
         try:

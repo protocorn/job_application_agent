@@ -18,7 +18,7 @@ from components.exceptions.field_exceptions import (
     RequiresHumanInputError,
     FieldInteractionStrategy
 )
-from components.executors.ats_dropdown_handlers import ATSDropdownFactory
+from components.executors.ats_dropdown_handlers_v2 import get_dropdown_handler
 
 
 class FieldInteractorV2:
@@ -38,7 +38,7 @@ class FieldInteractorV2:
     def __init__(self, page: Page | Frame, action_recorder=None):
         self.page = page
         self.action_recorder = action_recorder
-        self.dropdown_factory = ATSDropdownFactory(page)
+        self.dropdown_handler = get_dropdown_handler()  # Fast v2 handler
         self._cached_fields: Optional[List[Dict[str, Any]]] = None
 
     async def fill_field(
@@ -95,7 +95,7 @@ class FieldInteractorV2:
                 await self._fill_workday_multiselect(element, value, field_label, result)
 
             elif 'dropdown' in category or category in ['greenhouse_dropdown', 'workday_dropdown', 'lever_dropdown']:
-                await self._fill_dropdown_fast_fail(element, str(value), field_label, category, result)
+                await self._fill_dropdown_fast_fail(element, str(value), field_label, category, field_data, result)
 
             elif category == 'ashby_button_group':
                 await self._fill_button_group(element, str(value), field_label, result)
@@ -153,38 +153,36 @@ class FieldInteractorV2:
         value: str,
         field_label: str,
         category: str,
+        field_data: Dict[str, Any],
         result: Dict[str, Any]
     ) -> None:
         """
-        Fill dropdown with fast-fail strategy using specialized ATS handlers.
-        Each strategy gets 5s max, not 60s.
+        Fill dropdown with FAST strategy (v2): Type → Fuzzy match → Verify.
+        Returns False if failed (for AI batch fallback).
         """
         try:
-            # Use the ATS dropdown factory to get specialized handler
+            # Fast timeout - we type immediately, no slow extraction
+            timeout = 8.0  # 8 seconds is enough for type + select + verify
+            
+            # Use the fast v2 handler (no pre-extracted options needed!)
             success = await asyncio.wait_for(
-                self.dropdown_factory.fill_dropdown(element, value, field_label),
-                timeout=self.STRATEGY_TIMEOUT_MS / 1000
+                self.dropdown_handler.fill(element, value, field_label),
+                timeout=timeout
             )
 
             if success:
-                # Verify selection
-                actual_value = await element.input_value()
                 result.update({
                     "success": True,
-                    "method": "ats_specialized_handler",
-                    "final_value": actual_value,
-                    "verification": {
-                        "expected": value,
-                        "actual": actual_value,
-                        "passed": value.lower() in actual_value.lower()
-                    }
+                    "method": "fast_fuzzy_match",
+                    "final_value": value
                 })
             else:
+                # Return False - field will go to AI batch fallback
                 raise DropdownInteractionError(
                     field_label=field_label,
                     value=value,
                     dropdown_type=category,
-                    reason="ATS handler returned False"
+                    reason="Fast fill failed - needs AI fallback"
                 )
 
         except asyncio.TimeoutError:
@@ -680,10 +678,46 @@ class FieldInteractorV2:
         try:
             if category in ['checkbox', 'radio']:
                 return await element.is_checked()
-            elif category in ['dropdown', 'greenhouse_dropdown', 'workday_dropdown', 'lever_dropdown']:
+            
+            elif category == 'greenhouse_dropdown':
+                # Greenhouse dropdowns show selected value in sibling display elements, not input value
+                # The input field contains typed text, but selection is in a separate div
+                try:
+                    parent = element.locator('..')
+                    display_selectors = [
+                        '[class*="singleValue"]',
+                        '[class*="value"]',
+                        '.select__single-value',
+                        'div[data-value]'
+                    ]
+                    
+                    # Check if any display element has a selected value
+                    for selector in display_selectors:
+                        try:
+                            display_element = parent.locator(selector).first
+                            if await display_element.count() > 0:
+                                selected_value = await display_element.text_content(timeout=500)
+                                if selected_value and selected_value.strip():
+                                    # Has a real selection (not just placeholder text)
+                                    if 'select' not in selected_value.lower():
+                                        logger.debug(f"✓ Greenhouse dropdown already has selection: '{selected_value.strip()}'")
+                                        return True
+                        except Exception:
+                            continue
+                    
+                    # No valid selection found
+                    return False
+                except Exception:
+                    # Fallback to input check if parent selector fails
+                    return False
+            
+            elif category in ['workday_dropdown', 'lever_dropdown', 'dropdown']:
+                # For other ATS dropdowns, check input value
                 value = await element.input_value()
                 return bool(value and value.strip())
+            
             else:
+                # Standard text inputs
                 value = await element.input_value()
                 return bool(value and value.strip() and value != '')
         except Exception:
