@@ -415,5 +415,248 @@
       "state_file": "C:\\Users\\proto\\Job_Application_Agent\\server\\sessions\\browser_states\\state_4b6d1d06-4e6e-4be4-9099-1fc8bce7b0e2.json"
     },
     "form_data": {}
+  },
+  {
+    "session_id": "0da56939-def5-4f01-ab0e-78aa07d4567d",
+    "job_url": "https://www.adzuna.com/land/ad/5244378174?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=290CBBE3741127A3D9C3DFBA81E773C273BB5C73",
+    "job_title": "",
+    "company": "",
+    "status": "needs_attention",
+    "created_at": 1760658563.004235,
+    "last_updated": 1760658588.9933937,
+    "completed_fields": {},
+    "missing_fields": [],
+    "errors": [],
+    "completion_percentage": 0,
+    "screenshot_path": "C:\\Users\\proto\\Job_Application_Agent\\server\\sessions\\screenshots\\session_0da56939-def5-4f01-ab0e-78aa07d4567d_1760658588.png",
+    "action_history": [
+      {
+        "type": "navigate",
+        "timestamp": 1760658563.0202456,
+        "selector": null,
+        "value": null,
+        "url": "https://www.adzuna.com/land/ad/5244378174?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=290CBBE3741127A3D9C3DFBA81E773C273BB5C73",
+        "element_text": null,
+        "field_label": null,
+        "field_type": null,
+        "success": true,
+        "error": null,
+        "metadata": null
+      },
+      {
+        "type": "navigate",
+        "timestamp": 1760658565.4920087,
+        "selector": null,
+        "value": null,
+        "url": "https://www.adzuna.com/land/ad/5244378174?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=290CBBE3741127A3D9C3DFBA81E773C273BB5C73",
+        "element_text": null,
+        "field_label": null,
+        "field_type": null,
+        "success": true,
+        "error": null,
+        "metadata": null
+      },
+      {
+        "type": "page_state",
+        "timestamp": 1760658586.426987,
+        "selector": null,
+        "value": null,
+        "url": "https://www.adzuna.com/land/ad/5244378174?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=290CBBE3741127A3D9C3DFBA81E773C273BB5C73",
+        "element_text": null,
+        "field_label": null,
+        "field_type": null,
+        "success": true,
+        "error": null,
+        "metadata": {
+          "page_title": "Access Denied",
+          "page_type": "ai_analysis_checkpoint",
+          "has_clicked_apply": false
+        }
+      }
+    ],
+    "last_successful_step": {
+      "type": "page_state",
+      "timestamp": 1760658586.426987,
+      "selector": null,
+      "value": null,
+      "url": "https://www.adzuna.com/land/ad/5244378174?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=290CBBE3741127A3D9C3DFBA81E773C273BB5C73",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "page_title": "Access Denied",
+        "page_type": "ai_analysis_checkpoint",
+        "has_clicked_apply": false
+      }
+    },
+    "failure_point": null,
+    "browser_state": {
+      "state_file": "C:\\Users\\proto\\Job_Application_Agent\\server\\sessions\\browser_states\\state_0da56939-def5-4f01-ab0e-78aa07d4567d.json"
+    },
+    "form_data": {}
+  },
+  {
+    "session_id": "8eff490b-9388-4b57-bc53-ecfa9d47d06e",
+    "job_url": "https://www.adzuna.com/land/ad/5441538075?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=3863ED351DCAD0D312FCC27B3B47DCA0DA6D2DA6",
+    "job_title": "",
+    "company": "",
+    "status": "needs_attention",
+    "created_at": 1760659564.322781,
+    "last_updated": 1760659597.0357213,
+    "completed_fields": {},
+    "missing_fields": [],
+    "errors": [],
+    "completion_percentage": 0,
+    "screenshot_path": "C:\\Users\\proto\\Job_Application_Agent\\server\\sessions\\screenshots\\session_8eff490b-9388-4b57-bc53-ecfa9d47d06e_1760659596.png",
+    "action_history": [
+      {
+        "type": "navigate",
+        "timestamp": 1760659564.327782,
+        "selector": null,
+        "value": null,
+        "url": "https://www.adzuna.com/land/ad/5441538075?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=3863ED351DCAD0D312FCC27B3B47DCA0DA6D2DA6",
+        "element_text": null,
+        "field_label": null,
+        "field_type": null,
+        "success": true,
+        "error": null,
+        "metadata": null
+      },
+      {
+        "type": "navigate",
+        "timestamp": 1760659573.6783133,
+        "selector": null,
+        "value": null,
+        "url": "https://www.adzuna.com/land/ad/5441538075?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=3863ED351DCAD0D312FCC27B3B47DCA0DA6D2DA6",
+        "element_text": null,
+        "field_label": null,
+        "field_type": null,
+        "success": true,
+        "error": null,
+        "metadata": null
+      },
+      {
+        "type": "page_state",
+        "timestamp": 1760659594.8084357,
+        "selector": null,
+        "value": null,
+        "url": "https://www.adzuna.com/land/ad/5441538075?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=3863ED351DCAD0D312FCC27B3B47DCA0DA6D2DA6",
+        "element_text": null,
+        "field_label": null,
+        "field_type": null,
+        "success": true,
+        "error": null,
+        "metadata": {
+          "page_title": "Access Denied",
+          "page_type": "ai_analysis_checkpoint",
+          "has_clicked_apply": false
+        }
+      }
+    ],
+    "last_successful_step": {
+      "type": "page_state",
+      "timestamp": 1760659594.8084357,
+      "selector": null,
+      "value": null,
+      "url": "https://www.adzuna.com/land/ad/5441538075?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=3863ED351DCAD0D312FCC27B3B47DCA0DA6D2DA6",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "page_title": "Access Denied",
+        "page_type": "ai_analysis_checkpoint",
+        "has_clicked_apply": false
+      }
+    },
+    "failure_point": null,
+    "browser_state": {
+      "state_file": "C:\\Users\\proto\\Job_Application_Agent\\server\\sessions\\browser_states\\state_8eff490b-9388-4b57-bc53-ecfa9d47d06e.json"
+    },
+    "form_data": {}
+  },
+  {
+    "session_id": "21ebb155-3248-4333-9cef-883b220948d3",
+    "job_url": "https://www.adzuna.com/land/ad/5427172899?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=17F08EB8BFE08AFEE87EE56DABFFF0988AE23322",
+    "job_title": "",
+    "company": "",
+    "status": "needs_attention",
+    "created_at": 1760827335.0375946,
+    "last_updated": 1760827369.0721297,
+    "completed_fields": {},
+    "missing_fields": [],
+    "errors": [],
+    "completion_percentage": 0,
+    "screenshot_path": "C:\\Users\\proto\\Job_Application_Agent\\server\\sessions\\screenshots\\session_21ebb155-3248-4333-9cef-883b220948d3_1760827368.png",
+    "action_history": [
+      {
+        "type": "navigate",
+        "timestamp": 1760827335.049374,
+        "selector": null,
+        "value": null,
+        "url": "https://www.adzuna.com/land/ad/5427172899?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=17F08EB8BFE08AFEE87EE56DABFFF0988AE23322",
+        "element_text": null,
+        "field_label": null,
+        "field_type": null,
+        "success": true,
+        "error": null,
+        "metadata": null
+      },
+      {
+        "type": "navigate",
+        "timestamp": 1760827345.3643544,
+        "selector": null,
+        "value": null,
+        "url": "https://www.adzuna.com/land/ad/5427172899?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=17F08EB8BFE08AFEE87EE56DABFFF0988AE23322",
+        "element_text": null,
+        "field_label": null,
+        "field_type": null,
+        "success": true,
+        "error": null,
+        "metadata": null
+      },
+      {
+        "type": "page_state",
+        "timestamp": 1760827366.3405504,
+        "selector": null,
+        "value": null,
+        "url": "https://www.adzuna.com/land/ad/5427172899?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=17F08EB8BFE08AFEE87EE56DABFFF0988AE23322",
+        "element_text": null,
+        "field_label": null,
+        "field_type": null,
+        "success": true,
+        "error": null,
+        "metadata": {
+          "page_title": "Access Denied",
+          "page_type": "ai_analysis_checkpoint",
+          "has_clicked_apply": false
+        }
+      }
+    ],
+    "last_successful_step": {
+      "type": "page_state",
+      "timestamp": 1760827366.3405504,
+      "selector": null,
+      "value": null,
+      "url": "https://www.adzuna.com/land/ad/5427172899?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=17F08EB8BFE08AFEE87EE56DABFFF0988AE23322",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "page_title": "Access Denied",
+        "page_type": "ai_analysis_checkpoint",
+        "has_clicked_apply": false
+      }
+    },
+    "failure_point": null,
+    "browser_state": {
+      "state_file": "C:\\Users\\proto\\Job_Application_Agent\\server\\sessions\\browser_states\\state_21ebb155-3248-4333-9cef-883b220948d3.json"
+    },
+    "form_data": {}
   }
 ]

@@ -657,12 +657,18 @@ POSSIBLE ACTIONS (choose exactly ONE):
 3. "handle_iframe" - If there's an iframe that contains the application form
 4. "submit_form" - If form is filled and ready for submission (Next/Submit button visible)
 5. "application_complete" - ONLY if you see explicit success confirmation messages ("Application submitted", "Thank you for applying", etc.)
-6. "navigate_to_next_page" - If you see application start options like "Autofill with Resume", "Apply Manually", or need to click buttons to proceed
+6. "navigate_to_next_page" - If you see METHOD SELECTION buttons like "Autofill with Resume", "Apply Manually", "Use Last Application" (NOT "Apply Now" buttons!)
 7. "need_human_intervention" - If the page requires human attention (captcha, broken pages, authentication failures) - DO NOT use this for resume uploads, chatbots, or help widgets
 
+CRITICAL DISTINCTION - "Apply Now" vs "Method Selection":
+- "Apply Now" / "Start Applying" / "Submit Application" buttons → These should trigger either "find_apply_button" (if on job listing) OR be handled as navigation buttons
+- "Autofill with Resume" / "Apply Manually" / "Use Last Application" → These are METHOD SELECTION options, use "navigate_to_next_page"
+- If you see BOTH "Apply Now" AND method selection options (like "Start applying with LinkedIn"), the "Apply Now" button is what needs to be clicked!
+
 ANALYSIS CRITERIA:
-- DISTINGUISH CAREFULLY: "Application start page" vs "Actual form page"
-  * Application start page: Shows options like "Autofill with Resume", "Apply Manually", "Use Last Application" → use "navigate_to_next_page"
+- DISTINGUISH CAREFULLY: "Apply Now button" vs "Application method selection page" vs "Actual form page"
+  * Apply Now button page: Shows "Apply Now", "Start Applying", "Submit Application" buttons → use "navigate_to_next_page" to click them
+  * Method selection page: Shows CHOICE options like "Autofill with Resume", "Apply Manually", "Use Last Application" → use "navigate_to_next_page"
   * Actual form page: Shows text inputs, dropdowns, checkboxes, OR resume/CV upload fields that need filling → use "fill_form"
 - IMPORTANT: Resume/CV upload fields (like "Upload Resume", "Upload CV", file upload for resume) should trigger "fill_form", NOT "need_human_intervention"
   * The agent CAN automatically upload resumes - this is a standard form filling operation
@@ -776,8 +782,44 @@ Return ONLY a JSON object:
         """Handle navigation to next page based on AI analysis."""
         try:
             reason = page_analysis.get('reason', '').lower()
-            
-            # Handle application start pages - AVOID AUTOFILL, PREFER MANUAL
+            elements_detected = page_analysis.get('elements_detected', [])
+
+            # PRIORITY 1: Handle "Apply Now" buttons (most common case in iframes)
+            apply_now_keywords = ['apply now', 'start applying', 'submit application']
+            if any(keyword in reason for keyword in apply_now_keywords) or \
+               any(keyword.lower() in str(elements_detected).lower() for keyword in ['Apply Now', 'apply now']):
+                logger.info("🎯 Detected 'Apply Now' button - clicking to proceed with application")
+
+                # Try to find and click the Apply Now button
+                apply_now_selectors = [
+                    'button:has-text("Apply Now")',
+                    'a:has-text("Apply Now")',
+                    'button:has-text("Start Applying")',
+                    'a:has-text("Start Applying")',
+                    '[data-automation-id*="apply"]',
+                    'button[aria-label*="Apply"]',
+                    'a[aria-label*="Apply"]'
+                ]
+
+                for selector in apply_now_selectors:
+                    try:
+                        element = await self.page.wait_for_selector(selector, timeout=2000)
+                        if element and await element.is_visible():
+                            logger.info(f"✅ Clicking Apply Now button: {selector}")
+                            await element.click()
+                            if self.action_recorder:
+                                self.action_recorder.record_click(selector, "Apply Now button", success=True)
+                            await self.page.wait_for_load_state("domcontentloaded", timeout=10000)
+                            if self.action_recorder:
+                                self.action_recorder.record_navigation(self.page.url, success=True)
+                                self.action_recorder.record_wait(2000, "Wait for page load after Apply Now")
+                            return 'ai_guided_navigation'
+                    except:
+                        continue
+
+                logger.warning("⚠️ Could not find Apply Now button with standard selectors - will continue with other strategies")
+
+            # PRIORITY 2: Handle application start pages - AVOID AUTOFILL, PREFER MANUAL
             if any(keyword in reason for keyword in ['autofill', 'apply manually', 'start application', 'application start']):
                 logger.info("🎯 Detected application start page - prioritizing manual application (avoiding autofill)")
                 

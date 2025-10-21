@@ -1,6 +1,6 @@
 """
 Job API Adapters - Multi-source job search integration
-Supports: JSearch (RapidAPI), Adzuna, Active Jobs DB, Google Jobs, SerpAPI
+Supports: JSearch (RapidAPI), Adzuna, Active Jobs DB, Google Jobs, SerpAPI, The Muse
 """
 
 import os
@@ -618,6 +618,223 @@ class GoogleJobsAdapter(JobAPIAdapter):
             return "mid"
 
 
+class TheMuseAdapter(JobAPIAdapter):
+    """The Muse API Adapter - Focus on company culture and detailed job descriptions"""
+
+    def __init__(self):
+        super().__init__()
+        self.api_name = "TheMuse"
+        self.api_key = os.getenv('THEMUSE_API_KEY')
+        self.app_label = os.getenv('THEMUSE_APP_LABEL')
+        self.base_url = "https://www.themuse.com/api/public/jobs"
+
+    def search_jobs(self, query_params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        The Muse API Parameters:
+        - page: The page number to load (required, default: 1)
+        - descending: Whether to show descending results (true/false, default: false)
+        - company: Only get jobs for these companies
+        - category: The job category (e.g., "Data Science", "Software Engineering", etc.)
+        - level: Experience level (Entry Level, Mid Level, Senior Level, management, Internship)
+        - location: Job location (can include flexible/remote jobs)
+        """
+        try:
+            if not self.api_key:
+                logger.warning("The Muse API key not found")
+                return {"data": [], "count": 0, "source": self.api_name}
+
+            # Build parameters
+            params = {
+                "api_key": self.api_key,
+                "page": query_params.get("page", 1)
+            }
+
+            # Optional parameters
+            if query_params.get("descending"):
+                params["descending"] = "true" if query_params["descending"] else "false"
+
+            if query_params.get("company"):
+                params["company"] = query_params["company"]
+
+            # Map common keywords to Muse categories
+            category = self._map_keywords_to_category(query_params.get("keywords", ""))
+            if category:
+                params["category"] = category
+
+            # Map experience level
+            level = self._map_experience_level(query_params.get("experience_level", ""))
+            if level:
+                params["level"] = level
+
+            # Location
+            if query_params.get("location"):
+                params["location"] = query_params["location"]
+
+            logger.info(f"The Muse: Searching with params: {params}")
+            response = requests.get(self.base_url, params=params, timeout=30)
+            response.raise_for_status()
+
+            data = response.json()
+            jobs = data.get("results", [])
+            total = data.get("total", 0)
+            page_count = data.get("page_count", 0)
+
+            logger.info(f"The Muse: Found {len(jobs)} jobs (Total: {total}, Pages: {page_count})")
+
+            # Normalize all jobs
+            normalized_jobs = [self.normalize_job(job) for job in jobs]
+
+            return {
+                "data": normalized_jobs,
+                "count": len(normalized_jobs),
+                "source": self.api_name,
+                "total": total,
+                "page_count": page_count
+            }
+
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"The Muse HTTP error: {e}")
+            if hasattr(e.response, 'text'):
+                logger.error(f"Response: {e.response.text[:500]}")
+            return {"data": [], "count": 0, "source": self.api_name}
+        except Exception as e:
+            logger.error(f"The Muse API error: {e}")
+            return {"data": [], "count": 0, "source": self.api_name}
+
+    def normalize_job(self, raw_job: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize The Muse job data"""
+        # The Muse provides detailed company and job information
+        company_info = raw_job.get("company", {})
+        locations = raw_job.get("locations", [])
+        location_str = locations[0].get("name", "") if locations else ""
+
+        # Build job URL
+        job_id = raw_job.get("id", "")
+        job_url = f"https://www.themuse.com/jobs/{job_id}" if job_id else raw_job.get("refs", {}).get("landing_page", "")
+
+        return {
+            "title": raw_job.get("name", ""),
+            "company": company_info.get("name", ""),
+            "location": location_str,
+            "salary": "",  # The Muse doesn't always provide salary info
+            "description": raw_job.get("contents", ""),
+            "requirements": "",  # The Muse includes this in the main description
+            "job_url": job_url,
+            "posted_date": raw_job.get("publication_date", ""),
+            "job_type": self._map_job_type(raw_job.get("type", "")),
+            "experience_level": self._map_level_to_standard(raw_job.get("levels", [])),
+            "is_remote": self._check_remote(locations),
+            "salary_min": None,
+            "salary_max": None,
+            "salary_currency": "USD"
+        }
+
+    def _map_keywords_to_category(self, keywords: str) -> str:
+        """Map search keywords to The Muse categories"""
+        keywords_lower = keywords.lower()
+
+        # Category mapping based on common keywords
+        category_map = {
+            "data science": "Data Science",
+            "data": "Data and Analytics",
+            "software": "Software Engineering",
+            "engineer": "Software Engineering",
+            "developer": "Software Engineering",
+            "design": "Design and UX",
+            "ux": "Design and UX",
+            "ui": "Design and UX",
+            "marketing": "Marketing",
+            "sales": "Sales",
+            "product": "Product Management",
+            "hr": "Human Resources and Recruiting",
+            "finance": "Accounting and Finance",
+            "accounting": "Accounting and Finance",
+            "customer": "Customer Service",
+            "writer": "Writing and Editing",
+            "content": "Writing and Editing",
+            "project": "Project Management",
+            "manager": "Management",
+            "analyst": "Data and Analytics",
+            "nurse": "Nurses",
+            "healthcare": "Healthcare"
+        }
+
+        for keyword, category in category_map.items():
+            if keyword in keywords_lower:
+                return category
+
+        return ""  # Return empty if no match
+
+    def _map_experience_level(self, level: str) -> str:
+        """Map generic experience level to The Muse format"""
+        level_lower = level.lower()
+
+        muse_levels = {
+            "entry": "Entry Level",
+            "junior": "Entry Level",
+            "mid": "Mid Level",
+            "senior": "Senior Level",
+            "lead": "Senior Level",
+            "principal": "Senior Level",
+            "manager": "management",
+            "management": "management",
+            "director": "management",
+            "executive": "management",
+            "intern": "Internship",
+            "internship": "Internship"
+        }
+
+        for key, muse_level in muse_levels.items():
+            if key in level_lower:
+                return muse_level
+
+        return ""
+
+    def _map_level_to_standard(self, levels: List[Dict[str, Any]]) -> str:
+        """Map The Muse level to standard experience level"""
+        if not levels:
+            return "mid"
+
+        # Get the first level name
+        level_name = levels[0].get("name", "").lower()
+
+        if "entry" in level_name:
+            return "entry"
+        elif "senior" in level_name:
+            return "senior"
+        elif "intern" in level_name:
+            return "internship"
+        elif "management" in level_name or "manager" in level_name:
+            return "executive"
+        else:
+            return "mid"
+
+    def _map_job_type(self, job_type: str) -> str:
+        """Map The Muse job type to standard format"""
+        jt = job_type.lower()
+
+        if "intern" in jt:
+            return "internship"
+        elif "contract" in jt:
+            return "contract"
+        elif "part" in jt:
+            return "part-time"
+        else:
+            return "full-time"
+
+    def _check_remote(self, locations: List[Dict[str, Any]]) -> bool:
+        """Check if job is remote based on location data"""
+        if not locations:
+            return False
+
+        for location in locations:
+            location_name = location.get("name", "").lower()
+            if "remote" in location_name or "flexible" in location_name:
+                return True
+
+        return False
+
+
 # Adapter Factory
 class JobAPIFactory:
     """Factory to create and manage job API adapters"""
@@ -629,7 +846,8 @@ class JobAPIFactory:
             JSearchAdapter(),
             AdzunaAdapter(),
             ActiveJobsDBAdapter(),
-            GoogleJobsAdapter()
+            GoogleJobsAdapter(),
+            TheMuseAdapter()
         ]
 
     @staticmethod
@@ -639,6 +857,7 @@ class JobAPIFactory:
             "jsearch": JSearchAdapter(),
             "adzuna": AdzunaAdapter(),
             "activejobsdb": ActiveJobsDBAdapter(),
-            "googlejobs": GoogleJobsAdapter()
+            "googlejobs": GoogleJobsAdapter(),
+            "themuse": TheMuseAdapter()
         }
         return adapters.get(api_name.lower())

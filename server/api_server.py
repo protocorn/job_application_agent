@@ -598,41 +598,41 @@ def delete_action_history_api():
 @app.route("/api/search-jobs", methods=['POST'])
 @require_auth
 def search_jobs():
-    """ Search for jobs using Job Discovery Agent and save to PostgreSQL"""
+    """ Search for jobs using Multi-Source Job Discovery Agent and save to PostgreSQL"""
     try:
         import sys
         sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-        from Agents.job_discovery_agent import JobDiscoveryAgent
+        from Agents.multi_source_job_discovery_agent import MultiSourceJobDiscoveryAgent
 
         user_id = request.current_user['id']
-        job_discovery_agent = JobDiscoveryAgent(user_id=user_id)
+
+        # Get optional min_relevance_score from request body (default: 30)
+        min_relevance_score = request.json.get('min_relevance_score', 30) if request.json else 30
+
+        job_discovery_agent = MultiSourceJobDiscoveryAgent(user_id=user_id)
 
         if not job_discovery_agent.profile_data:
             return jsonify({"error": "Profile data not found for this user"}), 400
 
-        
-        logging.info("Searching for jobs...")
-        response = job_discovery_agent.search_jobs_with_rapidapi()
+        logging.info(f"Searching for jobs across all sources (min relevance score: {min_relevance_score})...")
+
+        # Use search_and_save which searches all sources and saves to database
+        response = job_discovery_agent.search_and_save(min_relevance_score=min_relevance_score)
 
         if 'error' in response:
             return jsonify({"error": response['error']}), 500
 
-        # Save job listings to PostgreSQL
-        jobs_data = response.get('data', [])
-        if jobs_data:
-            logging.info(f"Saving {len(jobs_data)} job listings to database...")
-            save_result = JobSearchService.save_job_listings(user_id, jobs_data, "rapidapi")
-            
-            if not save_result['success']:
-                logging.warning(f"Failed to save some job listings: {save_result.get('error', 'Unknown error')}")
-            else:
-                logging.info(f"Saved {save_result['saved_count']} new jobs, updated {save_result['updated_count']} existing jobs")
+        jobs_data = response.get('jobs', [])
 
         return jsonify({
             "jobs": jobs_data,
-            "total_found": response['count'],
+            "total_found": response.get('count', 0),
+            "sources": response.get('sources', {}),
+            "average_score": response.get('average_score', 0),
+            "saved_count": response.get('saved_count', 0),
+            "updated_count": response.get('updated_count', 0),
             "success": True,
-            "message": "Jobs searched successfully and saved to database",
+            "message": f"Jobs searched from {len(response.get('sources', {}))} sources and saved to database",
             "error": None
             }), 200
     except Exception as e:
