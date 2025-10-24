@@ -1,6 +1,6 @@
 """
 Job API Adapters - Multi-source job search integration
-Supports: JSearch (RapidAPI), Adzuna, Active Jobs DB, Google Jobs, SerpAPI, The Muse
+Supports: JSearch (RapidAPI), Adzuna, Active Jobs DB, Google Jobs, SerpAPI, The Muse, TheirStack
 """
 
 import os
@@ -636,14 +636,14 @@ class TheMuseAdapter(JobAPIAdapter):
         - company: Only get jobs for these companies
         - category: The job category (e.g., "Data Science", "Software Engineering", etc.)
         - level: Experience level (Entry Level, Mid Level, Senior Level, management, Internship)
-        - location: Job location (can include flexible/remote jobs)
+        - locations: Array of job locations (can include flexible/remote jobs)
         """
         try:
             if not self.api_key:
                 logger.warning("The Muse API key not found")
                 return {"data": [], "count": 0, "source": self.api_name}
 
-            # Build parameters
+            # Build base parameters
             params = {
                 "api_key": self.api_key,
                 "page": query_params.get("page", 1)
@@ -656,25 +656,56 @@ class TheMuseAdapter(JobAPIAdapter):
             if query_params.get("company"):
                 params["company"] = query_params["company"]
 
-            # Map common keywords to Muse categories
-            category = self._map_keywords_to_category(query_params.get("keywords", ""))
-            if category:
-                params["category"] = category
+            # Category (from Gemini or mapped from keywords)
+            if query_params.get("category"):
+                params["category"] = query_params["category"]
+            else:
+                # Fallback: Map keywords to category
+                category = self._map_keywords_to_category(query_params.get("keywords", ""))
+                if category:
+                    params["category"] = category
 
-            # Map experience level
-            level = self._map_experience_level(query_params.get("experience_level", ""))
-            if level:
-                params["level"] = level
+            # Experience level (from Gemini or mapped)
+            if query_params.get("level"):
+                params["level"] = query_params["level"]
+            else:
+                # Fallback: Map experience level
+                level = self._map_experience_level(query_params.get("experience_level", ""))
+                if level:
+                    params["level"] = level
 
-            # Location
-            if query_params.get("location"):
-                params["location"] = query_params["location"]
+            # Handle multiple locations
+            # The Muse API accepts repeated 'location' parameters: ?location=A&location=B&location=C
+            locations = query_params.get("locations", [])
+            if not locations and query_params.get("location"):
+                # Fallback to single location
+                locations = [query_params["location"]]
 
-            logger.info(f"The Muse: Searching with params: {params}")
-            response = requests.get(self.base_url, params=params, timeout=30)
+            # Build URL with repeated location parameters
+            url_parts = [f"{self.base_url}?"]
+
+            # Add base params
+            for key, value in params.items():
+                url_parts.append(f"{key}={urllib.parse.quote(str(value), safe='')}&")
+
+            # Add multiple locations
+            # IMPORTANT: Use safe='' to encode ALL special characters including '/'
+            # "Flexible / Remote" must become "Flexible%20%2F%20Remote"
+            for location in locations:
+                url_parts.append(f"location={urllib.parse.quote(location, safe='')}&")
+
+            # Remove trailing &
+            url = "".join(url_parts).rstrip("&")
+
+            logger.info(f"The Muse: Searching with URL: {url}")
+            response = requests.get(url, timeout=30)
             response.raise_for_status()
 
             data = response.json()
+
+            # Debug: Log the full response to see what's happening
+            logger.info(f"The Muse: API Response - page: {data.get('page')}, page_count: {data.get('page_count')}, items_per_page: {data.get('items_per_page')}, total: {data.get('total')}")
+
             jobs = data.get("results", [])
             total = data.get("total", 0)
             page_count = data.get("page_count", 0)
@@ -708,9 +739,9 @@ class TheMuseAdapter(JobAPIAdapter):
         locations = raw_job.get("locations", [])
         location_str = locations[0].get("name", "") if locations else ""
 
-        # Build job URL
-        job_id = raw_job.get("id", "")
-        job_url = f"https://www.themuse.com/jobs/{job_id}" if job_id else raw_job.get("refs", {}).get("landing_page", "")
+        # Get job URL from refs.landing_page (the actual application page)
+        # This is the proper URL format: https://www.themuse.com/jobs/coinbase/product-designer-ii-consumer-aa9c3b
+        job_url = raw_job.get("refs", {}).get("landing_page", "")
 
         return {
             "title": raw_job.get("name", ""),
@@ -730,40 +761,72 @@ class TheMuseAdapter(JobAPIAdapter):
         }
 
     def _map_keywords_to_category(self, keywords: str) -> str:
-        """Map search keywords to The Muse categories"""
+        """Map search keywords to The Muse categories with priority-based matching"""
         keywords_lower = keywords.lower()
 
-        # Category mapping based on common keywords
-        category_map = {
-            "data science": "Data Science",
-            "data": "Data and Analytics",
-            "software": "Software Engineering",
-            "engineer": "Software Engineering",
-            "developer": "Software Engineering",
-            "design": "Design and UX",
-            "ux": "Design and UX",
-            "ui": "Design and UX",
-            "marketing": "Marketing",
-            "sales": "Sales",
-            "product": "Product Management",
-            "hr": "Human Resources and Recruiting",
-            "finance": "Accounting and Finance",
-            "accounting": "Accounting and Finance",
-            "customer": "Customer Service",
-            "writer": "Writing and Editing",
-            "content": "Writing and Editing",
-            "project": "Project Management",
-            "manager": "Management",
-            "analyst": "Data and Analytics",
-            "nurse": "Nurses",
-            "healthcare": "Healthcare"
-        }
+        # Category mapping with priority (more specific keywords first)
+        # Each entry is (keyword, category, priority) - higher priority = more specific
+        category_mappings = [
+            # High priority - very specific matches
+            ("data science", "Data Science", 10),
+            ("data scientist", "Data Science", 10),
+            ("machine learning", "Data Science", 10),
+            ("software engineer", "Software Engineering", 10),
+            ("software developer", "Software Engineering", 10),
+            ("full stack", "Software Engineering", 10),
+            ("backend", "Software Engineering", 10),
+            ("frontend", "Software Engineering", 10),
+            ("product manager", "Product Management", 10),
+            ("product design", "Design and UX", 10),
+            ("ux designer", "Design and UX", 10),
+            ("ui designer", "Design and UX", 10),
+            ("project manager", "Project Management", 10),
+            ("data analyst", "Data and Analytics", 10),
+            ("business analyst", "Data and Analytics", 10),
 
-        for keyword, category in category_map.items():
+            # Medium priority - moderately specific
+            ("software", "Software Engineering", 5),
+            ("developer", "Software Engineering", 5),
+            ("programmer", "Software Engineering", 5),
+            ("engineer", "Software Engineering", 5),
+            ("data", "Data and Analytics", 5),
+            ("analytics", "Data and Analytics", 5),
+            ("product", "Product Management", 5),
+            ("design", "Design and UX", 5),
+            ("ux", "Design and UX", 5),
+            ("ui", "Design and UX", 5),
+
+            # Lower priority - generic matches
+            ("marketing", "Marketing", 3),
+            ("sales", "Sales", 3),
+            ("hr", "Human Resources and Recruiting", 3),
+            ("finance", "Accounting and Finance", 3),
+            ("accounting", "Accounting and Finance", 3),
+            ("customer", "Customer Service", 3),
+            ("writer", "Writing and Editing", 3),
+            ("content", "Writing and Editing", 3),
+            ("project", "Project Management", 3),
+            ("manager", "Management", 3),
+            ("analyst", "Data and Analytics", 3),
+            ("nurse", "Nurses", 3),
+            ("healthcare", "Healthcare", 3),
+        ]
+
+        # Find all matching categories with their priorities
+        matches = []
+        for keyword, category, priority in category_mappings:
             if keyword in keywords_lower:
-                return category
+                matches.append((category, priority))
 
-        return ""  # Return empty if no match
+        if not matches:
+            return ""  # Return empty if no match
+
+        # Sort by priority (highest first) and return the best match
+        matches.sort(key=lambda x: x[1], reverse=True)
+        best_category = matches[0][0]
+
+        logger.info(f"The Muse: Mapped keywords '{keywords}' to category '{best_category}'")
+        return best_category
 
     def _map_experience_level(self, level: str) -> str:
         """Map generic experience level to The Muse format"""
@@ -835,6 +898,189 @@ class TheMuseAdapter(JobAPIAdapter):
         return False
 
 
+class TheirStackAdapter(JobAPIAdapter):
+    """TheirStack API Adapter - Largest database of jobs and technographics"""
+
+    def __init__(self):
+        super().__init__()
+        self.api_name = "TheirStack"
+        self.api_key = os.getenv('THEIRSTACK_API_KEY')
+        self.base_url = "https://api.theirstack.com/v1/jobs/search"
+
+    def search_jobs(self, query_params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        TheirStack API Parameters (POST request):
+        - posted_at_max_age_days: Max age in days (required filter)
+        - job_title_pattern_or: Regex patterns for job titles
+        - job_country_code_or: ISO2 country codes
+        - remote: Boolean for remote jobs
+        - min_salary_usd: Minimum annual salary
+        - max_salary_usd: Maximum annual salary
+        - job_technology_slug_or: Technology slugs
+        - company_name_or: Company names
+        - limit: Number of results (default: 25)
+        - offset: Pagination offset
+        """
+        try:
+            if not self.api_key:
+                logger.warning("TheirStack API key not found")
+                return {"data": [], "count": 0, "source": self.api_name}
+
+            # Build request body
+            body = {
+                "limit": query_params.get("limit", 25),
+                "offset": query_params.get("offset", 0)
+            }
+
+            # Required: At least one of these filters must be present
+            if query_params.get("posted_at_max_age_days") is not None:
+                body["posted_at_max_age_days"] = query_params["posted_at_max_age_days"]
+            else:
+                # Default to last 30 days if not specified
+                body["posted_at_max_age_days"] = 30
+
+            # Job title patterns (from Gemini or keywords)
+            if query_params.get("job_title_pattern_or"):
+                body["job_title_pattern_or"] = query_params["job_title_pattern_or"]
+
+            # Country codes
+            if query_params.get("job_country_code_or"):
+                body["job_country_code_or"] = query_params["job_country_code_or"]
+
+            # Remote filter
+            if query_params.get("remote") is not None:
+                body["remote"] = query_params["remote"]
+
+            # Salary range
+            if query_params.get("min_salary_usd"):
+                body["min_salary_usd"] = query_params["min_salary_usd"]
+            if query_params.get("max_salary_usd"):
+                body["max_salary_usd"] = query_params["max_salary_usd"]
+
+            # Technologies
+            if query_params.get("job_technology_slug_or"):
+                body["job_technology_slug_or"] = query_params["job_technology_slug_or"]
+
+            # Company filters
+            if query_params.get("company_name_or"):
+                body["company_name_or"] = query_params["company_name_or"]
+            if query_params.get("company_domain_or"):
+                body["company_domain_or"] = query_params["company_domain_or"]
+
+            # Employee count range
+            if query_params.get("min_employee_count"):
+                body["min_employee_count"] = query_params["min_employee_count"]
+            if query_params.get("max_employee_count"):
+                body["max_employee_count"] = query_params["max_employee_count"]
+
+            # Employment status
+            if query_params.get("employment_statuses_or"):
+                body["employment_statuses_or"] = query_params["employment_statuses_or"]
+
+            logger.info(f"TheirStack: Searching with body: {json.dumps(body, indent=2)}")
+
+            # Make POST request with Bearer token
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+
+            response = requests.post(self.base_url, json=body, headers=headers, timeout=30)
+            response.raise_for_status()
+
+            data = response.json()
+            jobs = data.get("data", [])
+            total = data.get("total_results", len(jobs))
+
+            logger.info(f"TheirStack: Found {len(jobs)} jobs (Total: {total})")
+
+            # Normalize all jobs
+            normalized_jobs = [self.normalize_job(job) for job in jobs]
+
+            return {
+                "data": normalized_jobs,
+                "count": len(normalized_jobs),
+                "source": self.api_name,
+                "total": total
+            }
+
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"TheirStack HTTP error: {e}")
+            if hasattr(e.response, 'text'):
+                logger.error(f"Response: {e.response.text[:500]}")
+            return {"data": [], "count": 0, "source": self.api_name}
+        except Exception as e:
+            logger.error(f"TheirStack API error: {e}")
+            return {"data": [], "count": 0, "source": self.api_name}
+
+    def normalize_job(self, raw_job: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize TheirStack job data"""
+        # Extract company information
+        company_obj = raw_job.get("company_object", {}) or {}
+
+        # Get locations
+        locations = raw_job.get("locations", [])
+        location_str = ", ".join([loc.get("city", "") or loc.get("state", "") or loc.get("country", "")
+                                   for loc in locations if loc]) if locations else raw_job.get("location", "")
+
+        # Get employment status
+        employment_statuses = raw_job.get("employment_statuses", [])
+        job_type = self._map_employment_status(employment_statuses[0] if employment_statuses else "full_time")
+
+        # Get salary info
+        salary_str = ""
+        min_salary = raw_job.get("min_salary_usd")
+        max_salary = raw_job.get("max_salary_usd")
+        if min_salary and max_salary:
+            salary_str = f"${min_salary:,} - ${max_salary:,}"
+        elif min_salary:
+            salary_str = f"${min_salary:,}+"
+        elif max_salary:
+            salary_str = f"Up to ${max_salary:,}"
+
+        return {
+            "title": raw_job.get("title", ""),
+            "company": raw_job.get("company", "") or company_obj.get("name", ""),
+            "location": location_str,
+            "salary": salary_str,
+            "description": raw_job.get("description", ""),
+            "requirements": "",  # TheirStack doesn't separate requirements
+            "job_url": raw_job.get("url", "") or raw_job.get("final_url", ""),
+            "posted_date": raw_job.get("date_posted", ""),
+            "job_type": job_type,
+            "experience_level": self._infer_seniority(raw_job.get("seniority")),
+            "is_remote": raw_job.get("is_remote", False),
+            "salary_min": min_salary,
+            "salary_max": max_salary,
+            "salary_currency": "USD"
+        }
+
+    def _map_employment_status(self, status: str) -> str:
+        """Map TheirStack employment status to standard format"""
+        mapping = {
+            "full_time": "full-time",
+            "part_time": "part-time",
+            "contract": "contract",
+            "internship": "internship",
+            "temporary": "contract"
+        }
+        return mapping.get(status, "full-time")
+
+    def _infer_seniority(self, seniority: Optional[str]) -> str:
+        """Map TheirStack seniority to standard experience level"""
+        if not seniority:
+            return "mid"
+
+        mapping = {
+            "junior": "entry",
+            "mid_level": "mid",
+            "senior": "senior",
+            "staff": "senior",
+            "c_level": "executive"
+        }
+        return mapping.get(seniority, "mid")
+
+
 # Adapter Factory
 class JobAPIFactory:
     """Factory to create and manage job API adapters"""
@@ -847,7 +1093,8 @@ class JobAPIFactory:
             AdzunaAdapter(),
             ActiveJobsDBAdapter(),
             GoogleJobsAdapter(),
-            TheMuseAdapter()
+            TheMuseAdapter(),
+            TheirStackAdapter()
         ]
 
     @staticmethod
@@ -858,6 +1105,7 @@ class JobAPIFactory:
             "adzuna": AdzunaAdapter(),
             "activejobsdb": ActiveJobsDBAdapter(),
             "googlejobs": GoogleJobsAdapter(),
-            "themuse": TheMuseAdapter()
+            "themuse": TheMuseAdapter(),
+            "theirstack": TheirStackAdapter()
         }
         return adapters.get(api_name.lower())

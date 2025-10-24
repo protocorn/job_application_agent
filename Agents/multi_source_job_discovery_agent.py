@@ -9,6 +9,7 @@ import json
 import logging
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
+from google import genai
 
 # Add parent directory to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -30,6 +31,7 @@ class MultiSourceJobDiscoveryAgent:
         self.user_id = user_id
         self.profile_data = self._load_profile_data()
         self.adapters = JobAPIFactory.get_all_adapters()
+        self.gemini_client = self._initialize_gemini()
         logger.info(f"Initialized with {len(self.adapters)} job API adapters")
 
     def _load_profile_data(self) -> Dict[str, Any]:
@@ -81,6 +83,23 @@ class MultiSourceJobDiscoveryAgent:
         except Exception as e:
             logger.error(f"Error loading profile: {e}")
             return {}
+
+    def _initialize_gemini(self):
+        """Initialize Gemini 2.0 Flash client"""
+        load_dotenv()
+
+        try:
+            api_key = os.getenv('GOOGLE_API_KEY')
+            if not api_key:
+                logger.error("GOOGLE_API_KEY not found in environment variables")
+                return None
+            model = genai.Client(api_key=api_key)
+            logger.info("Gemini API initialized successfully")
+            return model
+
+        except Exception as e:
+            logger.error(f"Error initializing Gemini: {e}")
+            return None
 
     def _build_query_params(self) -> Dict[str, Any]:
         """Build query parameters from user profile"""
@@ -290,8 +309,181 @@ class MultiSourceJobDiscoveryAgent:
                 "error": str(e)
             }
 
+    def _generate_api_params_with_gemini(self, adapter: JobAPIAdapter) -> Dict[str, Any]:
+        """Use Gemini to generate optimal API parameters for a specific job source"""
+        if not self.gemini_client:
+            logger.warning("Gemini client not initialized, falling back to basic params")
+            return self._build_query_params()
+
+        # Define API parameter structures for each source
+        api_specs = {
+            "TheMuse": {
+                "description": "The Muse API - Focus on company culture and detailed job descriptions",
+                "parameters": {
+                    "page": "The page number to load (default: 1)",
+                    "category": f"Job category - MUST choose ONE from: {', '.join(['Data Science', 'Software Engineering', 'Design and UX', 'Product Management', 'Marketing', 'Sales', 'Data and Analytics', 'Human Resources and Recruiting', 'IT', 'Science and Engineering'])}",
+                    "level": f"Experience level - MUST choose ONE from: {', '.join(['Entry Level', 'Mid Level', 'Senior Level', 'management', 'Internship'])}",
+                    "locations": "Array of job locations - IMPORTANT: 'Flexible / Remote' is a valid location option. Use ONLY 1-2 locations max (API may treat multiple as AND). Recommend: user's PRIMARY preferred city/state OR country, plus 'Flexible / Remote'. Examples: ['United States', 'Flexible / Remote'] or ['New York, NY', 'Flexible / Remote']"
+                },
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "page": {"type": "integer"},
+                        "category": {"type": "string"},
+                        "level": {"type": "string"},
+                        "locations": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of locations including cities, states, and 'Flexible / Remote'"
+                        }
+                    },
+                    "required": ["page"]
+                }
+            },
+            "JSearch": {
+                "description": "JSearch API (RapidAPI) - Best quality job data",
+                "parameters": {
+                    "query": "Job title, keywords, or company name",
+                    "page": "Page number (default: 1)",
+                    "num_pages": "Number of pages (default: 1, max: 5)",
+                    "date_posted": "Filter by date: all, today, 3days, week, month",
+                    "remote_jobs_only": "true/false",
+                    "employment_types": "Comma-separated: FULLTIME, CONTRACTOR, PARTTIME, INTERN"
+                },
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "keywords": {"type": "string"},
+                        "page": {"type": "integer"},
+                        "num_pages": {"type": "integer"},
+                        "date_posted": {"type": "string"},
+                        "remote_only": {"type": "boolean"},
+                        "employment_types": {"type": "array", "items": {"type": "string"}},
+                        "location": {"type": "string"}
+                    },
+                    "required": ["keywords"]
+                }
+            },
+            "Adzuna": {
+                "description": "Adzuna API - Free tier, good coverage",
+                "parameters": {
+                    "what": "Keywords (keep it simple, 2-3 words max)",
+                    "where": "Location (city or state)",
+                    "page": "Page number",
+                    "results_per_page": "Number of results (max: 50)",
+                    "max_days_old": "Filter by posting date (days)"
+                },
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "keywords": {"type": "string"},
+                        "location": {"type": "string"},
+                        "page": {"type": "integer"},
+                        "limit": {"type": "integer"},
+                        "max_days_old": {"type": "integer"}
+                    },
+                    "required": ["keywords"]
+                }
+            },
+            "TheirStack": {
+                "description": "TheirStack API - Largest database of jobs and technographics with advanced filtering",
+                "parameters": {
+                    "posted_at_max_age_days": "Max age in days (REQUIRED - default: 30 for last month)",
+                    "job_title_pattern_or": "Array of regex patterns for job titles (e.g., ['data scientist', 'machine learning engineer'])",
+                    "job_country_code_or": "Array of ISO2 country codes (e.g., ['US', 'CA'])",
+                    "remote": "Boolean - true for only remote jobs, false for non-remote, null for all",
+                    "min_salary_usd": "Minimum annual salary in USD",
+                    "max_salary_usd": "Maximum annual salary in USD",
+                    "employment_statuses_or": "Array of employment types: ['full_time', 'part_time', 'contract', 'internship', 'temporary']",
+                    "limit": "Number of results (default: 25, max recommended: 50)"
+                },
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "posted_at_max_age_days": {"type": "integer", "description": "Required - days since posting"},
+                        "job_title_pattern_or": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Regex patterns for job titles"
+                        },
+                        "job_country_code_or": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "ISO2 country codes like US, CA, GB"
+                        },
+                        "remote": {"type": "boolean", "description": "Filter for remote jobs"},
+                        "min_salary_usd": {"type": "integer"},
+                        "max_salary_usd": {"type": "integer"},
+                        "employment_statuses_or": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Employment types"
+                        },
+                        "limit": {"type": "integer", "description": "Number of results"}
+                    },
+                    "required": ["posted_at_max_age_days"]
+                }
+            }
+        }
+
+        api_spec = api_specs.get(adapter.api_name)
+        if not api_spec:
+            # Fallback to basic params for unknown adapters
+            return self._build_query_params()
+
+        prompt = f"""
+You are a job search optimization expert. Given a user's profile, generate the BEST API parameters to find the MAXIMUM number of RELEVANT jobs.
+
+**User Profile:**
+{json.dumps(self.profile_data, indent=2)}
+
+**API: {adapter.api_name}**
+{api_spec['description']}
+
+**Available Parameters:**
+{json.dumps(api_spec['parameters'], indent=2)}
+
+**Instructions:**
+1. Analyze the user's profile carefully (work experience, skills, education, preferences)
+2. Generate optimal parameters that will return the MAXIMUM relevant jobs
+3. For category/level fields, choose the SINGLE BEST option from the allowed values
+4. For The Muse API locations field: Use ONLY 1-2 locations (API may treat multiple as AND condition). ALWAYS include "Flexible / Remote". Use either user's country OR primary city, NOT both. Examples: ["United States", "Flexible / Remote"] or ["San Francisco, CA", "Flexible / Remote"]
+5. Use broad but relevant search terms to maximize results
+6. Return ONLY a JSON object matching the schema below - NO explanations, NO markdown
+
+**Response Schema:**
+{json.dumps(api_spec['schema'], indent=2)}
+
+Return the optimized parameters as JSON:
+"""
+
+        try:
+            logger.info(f"Generating {adapter.api_name} parameters with Gemini...")
+
+            response = self.gemini_client.models.generate_content(
+                model='gemini-2.0-flash-exp',
+                contents=prompt,
+                config={
+                    "response_mime_type": "application/json",
+                    "response_schema": api_spec['schema']
+                }
+            )
+
+            params = json.loads(response.text)
+            logger.info(f"{adapter.api_name} parameters from Gemini: {params}")
+            return params
+
+        except Exception as e:
+            logger.error(f"Error generating params with Gemini for {adapter.api_name}: {e}")
+            return self._build_query_params()
+
     def _adapt_params_for_source(self, params: Dict[str, Any], adapter: JobAPIAdapter) -> Dict[str, Any]:
-        """Adapt generic query parameters for specific API adapter"""
+        """Adapt generic query parameters for specific API adapter - DEPRECATED, use Gemini instead"""
+        # Use Gemini to generate API-specific parameters
+        if adapter.api_name in ["TheMuse", "JSearch", "Adzuna", "TheirStack"]:
+            return self._generate_api_params_with_gemini(adapter)
+
+        # Fallback for older adapters
         adapted = params.copy()
 
         # Active Jobs DB uses different parameter format

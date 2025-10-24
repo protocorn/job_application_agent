@@ -417,25 +417,25 @@
     "form_data": {}
   },
   {
-    "session_id": "0da56939-def5-4f01-ab0e-78aa07d4567d",
-    "job_url": "https://www.adzuna.com/land/ad/5244378174?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=290CBBE3741127A3D9C3DFBA81E773C273BB5C73",
+    "session_id": "ded5e72a-6d8d-4ad1-8298-fabe75a1c53f",
+    "job_url": "https://www.themuse.com/jobs/kyndryl/customer-enterprise-architect-95918d",
     "job_title": "",
     "company": "",
-    "status": "needs_attention",
-    "created_at": 1760658563.004235,
-    "last_updated": 1760658588.9933937,
+    "status": "completed",
+    "created_at": 1761076460.4113147,
+    "last_updated": 1761076614.114661,
     "completed_fields": {},
     "missing_fields": [],
     "errors": [],
     "completion_percentage": 0,
-    "screenshot_path": "C:\\Users\\proto\\Job_Application_Agent\\server\\sessions\\screenshots\\session_0da56939-def5-4f01-ab0e-78aa07d4567d_1760658588.png",
+    "screenshot_path": "C:\\Users\\proto\\Job_Application_Agent\\server\\sessions\\screenshots\\session_ded5e72a-6d8d-4ad1-8298-fabe75a1c53f_1761076613.png",
     "action_history": [
       {
         "type": "navigate",
-        "timestamp": 1760658563.0202456,
+        "timestamp": 1761076460.4127998,
         "selector": null,
         "value": null,
-        "url": "https://www.adzuna.com/land/ad/5244378174?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=290CBBE3741127A3D9C3DFBA81E773C273BB5C73",
+        "url": "https://www.themuse.com/jobs/kyndryl/customer-enterprise-architect-95918d",
         "element_text": null,
         "field_label": null,
         "field_type": null,
@@ -445,10 +445,36 @@
       },
       {
         "type": "navigate",
-        "timestamp": 1760658565.4920087,
+        "timestamp": 1761076468.8015978,
         "selector": null,
         "value": null,
-        "url": "https://www.adzuna.com/land/ad/5244378174?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=290CBBE3741127A3D9C3DFBA81E773C273BB5C73",
+        "url": "https://www.themuse.com/jobs/kyndryl/customer-enterprise-architect-95918d",
+        "element_text": null,
+        "field_label": null,
+        "field_type": null,
+        "success": true,
+        "error": null,
+        "metadata": null
+      },
+      {
+        "type": "click",
+        "timestamp": 1761076489.4285514,
+        "selector": "button.square-button_button__VMEWo",
+        "value": null,
+        "url": null,
+        "element_text": "element",
+        "field_label": null,
+        "field_type": null,
+        "success": true,
+        "error": null,
+        "metadata": null
+      },
+      {
+        "type": "navigate",
+        "timestamp": 1761076494.5254114,
+        "selector": null,
+        "value": null,
+        "url": "https://kyndryl.wd5.myworkdayjobs.com/KyndrylProfessionalCareers/job/CEA-for-Enterprise-Transformation-Services_R-42873?source=REC_APPLICANT_SOURCE_The+Muse",
         "element_text": null,
         "field_label": null,
         "field_type": null,
@@ -458,66 +484,28 @@
       },
       {
         "type": "page_state",
-        "timestamp": 1760658586.426987,
+        "timestamp": 1761076497.8160648,
         "selector": null,
         "value": null,
-        "url": "https://www.adzuna.com/land/ad/5244378174?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=290CBBE3741127A3D9C3DFBA81E773C273BB5C73",
+        "url": "https://kyndryl.wd5.myworkdayjobs.com/KyndrylProfessionalCareers/job/CEA-for-Enterprise-Transformation-Services_R-42873?source=REC_APPLICANT_SOURCE_The+Muse",
         "element_text": null,
         "field_label": null,
         "field_type": null,
         "success": true,
         "error": null,
         "metadata": {
-          "page_title": "Access Denied",
+          "page_title": "Professional Careers at Kyndryl",
           "page_type": "ai_analysis_checkpoint",
-          "has_clicked_apply": false
+          "has_clicked_apply": true
         }
-      }
-    ],
-    "last_successful_step": {
-      "type": "page_state",
-      "timestamp": 1760658586.426987,
-      "selector": null,
-      "value": null,
-      "url": "https://www.adzuna.com/land/ad/5244378174?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=290CBBE3741127A3D9C3DFBA81E773C273BB5C73",
-      "element_text": null,
-      "field_label": null,
-      "field_type": null,
-      "success": true,
-      "error": null,
-      "metadata": {
-        "page_title": "Access Denied",
-        "page_type": "ai_analysis_checkpoint",
-        "has_clicked_apply": false
-      }
-    },
-    "failure_point": null,
-    "browser_state": {
-      "state_file": "C:\\Users\\proto\\Job_Application_Agent\\server\\sessions\\browser_states\\state_0da56939-def5-4f01-ab0e-78aa07d4567d.json"
-    },
-    "form_data": {}
-  },
-  {
-    "session_id": "8eff490b-9388-4b57-bc53-ecfa9d47d06e",
-    "job_url": "https://www.adzuna.com/land/ad/5441538075?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=3863ED351DCAD0D312FCC27B3B47DCA0DA6D2DA6",
-    "job_title": "",
-    "company": "",
-    "status": "needs_attention",
-    "created_at": 1760659564.322781,
-    "last_updated": 1760659597.0357213,
-    "completed_fields": {},
-    "missing_fields": [],
-    "errors": [],
-    "completion_percentage": 0,
-    "screenshot_path": "C:\\Users\\proto\\Job_Application_Agent\\server\\sessions\\screenshots\\session_8eff490b-9388-4b57-bc53-ecfa9d47d06e_1760659596.png",
-    "action_history": [
+      },
       {
-        "type": "navigate",
-        "timestamp": 1760659564.327782,
-        "selector": null,
+        "type": "click",
+        "timestamp": 1761076501.257904,
+        "selector": "[data-automation-id='adventureButton']",
         "value": null,
-        "url": "https://www.adzuna.com/land/ad/5441538075?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=3863ED351DCAD0D312FCC27B3B47DCA0DA6D2DA6",
-        "element_text": null,
+        "url": null,
+        "element_text": "element",
         "field_label": null,
         "field_type": null,
         "success": true,
@@ -526,10 +514,10 @@
       },
       {
         "type": "navigate",
-        "timestamp": 1760659573.6783133,
+        "timestamp": 1761076505.323122,
         "selector": null,
         "value": null,
-        "url": "https://www.adzuna.com/land/ad/5441538075?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=3863ED351DCAD0D312FCC27B3B47DCA0DA6D2DA6",
+        "url": "https://kyndryl.wd5.myworkdayjobs.com/KyndrylProfessionalCareers/job/CEA-for-Enterprise-Transformation-Services_R-42873?source=REC_APPLICANT_SOURCE_The+Muse",
         "element_text": null,
         "field_label": null,
         "field_type": null,
@@ -539,66 +527,28 @@
       },
       {
         "type": "page_state",
-        "timestamp": 1760659594.8084357,
+        "timestamp": 1761076507.4424596,
         "selector": null,
         "value": null,
-        "url": "https://www.adzuna.com/land/ad/5441538075?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=3863ED351DCAD0D312FCC27B3B47DCA0DA6D2DA6",
+        "url": "https://kyndryl.wd5.myworkdayjobs.com/KyndrylProfessionalCareers/job/CEA-for-Enterprise-Transformation-Services_R-42873?source=REC_APPLICANT_SOURCE_The+Muse",
         "element_text": null,
         "field_label": null,
         "field_type": null,
         "success": true,
         "error": null,
         "metadata": {
-          "page_title": "Access Denied",
+          "page_title": "Professional Careers at Kyndryl",
           "page_type": "ai_analysis_checkpoint",
-          "has_clicked_apply": false
+          "has_clicked_apply": true
         }
-      }
-    ],
-    "last_successful_step": {
-      "type": "page_state",
-      "timestamp": 1760659594.8084357,
-      "selector": null,
-      "value": null,
-      "url": "https://www.adzuna.com/land/ad/5441538075?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=3863ED351DCAD0D312FCC27B3B47DCA0DA6D2DA6",
-      "element_text": null,
-      "field_label": null,
-      "field_type": null,
-      "success": true,
-      "error": null,
-      "metadata": {
-        "page_title": "Access Denied",
-        "page_type": "ai_analysis_checkpoint",
-        "has_clicked_apply": false
-      }
-    },
-    "failure_point": null,
-    "browser_state": {
-      "state_file": "C:\\Users\\proto\\Job_Application_Agent\\server\\sessions\\browser_states\\state_8eff490b-9388-4b57-bc53-ecfa9d47d06e.json"
-    },
-    "form_data": {}
-  },
-  {
-    "session_id": "21ebb155-3248-4333-9cef-883b220948d3",
-    "job_url": "https://www.adzuna.com/land/ad/5427172899?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=17F08EB8BFE08AFEE87EE56DABFFF0988AE23322",
-    "job_title": "",
-    "company": "",
-    "status": "needs_attention",
-    "created_at": 1760827335.0375946,
-    "last_updated": 1760827369.0721297,
-    "completed_fields": {},
-    "missing_fields": [],
-    "errors": [],
-    "completion_percentage": 0,
-    "screenshot_path": "C:\\Users\\proto\\Job_Application_Agent\\server\\sessions\\screenshots\\session_21ebb155-3248-4333-9cef-883b220948d3_1760827368.png",
-    "action_history": [
+      },
       {
-        "type": "navigate",
-        "timestamp": 1760827335.049374,
-        "selector": null,
+        "type": "click",
+        "timestamp": 1761076514.321057,
+        "selector": "text=Apply Manually",
         "value": null,
-        "url": "https://www.adzuna.com/land/ad/5427172899?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=17F08EB8BFE08AFEE87EE56DABFFF0988AE23322",
-        "element_text": null,
+        "url": null,
+        "element_text": "Manual application button",
         "field_label": null,
         "field_type": null,
         "success": true,
@@ -607,56 +557,248 @@
       },
       {
         "type": "navigate",
-        "timestamp": 1760827345.3643544,
+        "timestamp": 1761076514.341997,
         "selector": null,
         "value": null,
-        "url": "https://www.adzuna.com/land/ad/5427172899?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=17F08EB8BFE08AFEE87EE56DABFFF0988AE23322",
+        "url": "https://kyndryl.wd5.myworkdayjobs.com/en-US/KyndrylProfessionalCareers/job/Tokyo%2C-Japan/CEA-for-Enterprise-Transformation-Services_R-42873/apply/applyManually?source=REC_APPLICANT_SOURCE_The+Muse",
         "element_text": null,
         "field_label": null,
         "field_type": null,
         "success": true,
         "error": null,
         "metadata": null
+      },
+      {
+        "type": "wait",
+        "timestamp": 1761076514.341997,
+        "selector": null,
+        "value": "2000",
+        "url": null,
+        "element_text": null,
+        "field_label": null,
+        "field_type": null,
+        "success": true,
+        "error": null,
+        "metadata": {
+          "reason": "Wait for page load after manual application"
+        }
       },
       {
         "type": "page_state",
-        "timestamp": 1760827366.3405504,
+        "timestamp": 1761076517.5000334,
         "selector": null,
         "value": null,
-        "url": "https://www.adzuna.com/land/ad/5427172899?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=17F08EB8BFE08AFEE87EE56DABFFF0988AE23322",
+        "url": "https://kyndryl.wd5.myworkdayjobs.com/en-US/KyndrylProfessionalCareers/job/Tokyo%2C-Japan/CEA-for-Enterprise-Transformation-Services_R-42873/apply/applyManually?source=REC_APPLICANT_SOURCE_The+Muse",
         "element_text": null,
         "field_label": null,
         "field_type": null,
         "success": true,
         "error": null,
         "metadata": {
-          "page_title": "Access Denied",
+          "page_title": "Customer Enterprise Architect",
           "page_type": "ai_analysis_checkpoint",
-          "has_clicked_apply": false
+          "has_clicked_apply": true
+        }
+      },
+      {
+        "type": "enhanced_field_fill",
+        "timestamp": 1761076593.595257,
+        "selector": "id:input-2",
+        "value": "Sahil",
+        "url": null,
+        "element_text": null,
+        "field_label": "First Name*",
+        "field_type": "text_input",
+        "success": true,
+        "error": null,
+        "metadata": {
+          "field_info": {
+            "stable_id": "id:input-2",
+            "label": "First Name*",
+            "field_category": "text_input",
+            "placeholder": "",
+            "required": false
+          },
+          "interaction_method": "text_fill",
+          "element_attributes": {},
+          "final_value": "Sahil",
+          "verification": {
+            "expected": "Sahil",
+            "actual": "Sahil",
+            "passed": true
+          }
+        }
+      },
+      {
+        "type": "enhanced_field_fill",
+        "timestamp": 1761076593.8733807,
+        "selector": "id:input-3",
+        "value": "Chordia",
+        "url": null,
+        "element_text": null,
+        "field_label": "Last Name*",
+        "field_type": "text_input",
+        "success": true,
+        "error": null,
+        "metadata": {
+          "field_info": {
+            "stable_id": "id:input-3",
+            "label": "Last Name*",
+            "field_category": "text_input",
+            "placeholder": "",
+            "required": false
+          },
+          "interaction_method": "text_fill",
+          "element_attributes": {},
+          "final_value": "Chordia",
+          "verification": {
+            "expected": "Chordia",
+            "actual": "Chordia",
+            "passed": true
+          }
+        }
+      },
+      {
+        "type": "enhanced_field_fill",
+        "timestamp": 1761076594.1222582,
+        "selector": "id:input-4",
+        "value": "chordiasahil24@gmail.com",
+        "url": null,
+        "element_text": null,
+        "field_label": "Email*",
+        "field_type": "text_input",
+        "success": true,
+        "error": null,
+        "metadata": {
+          "field_info": {
+            "stable_id": "id:input-4",
+            "label": "Email*",
+            "field_category": "text_input",
+            "placeholder": "",
+            "required": false
+          },
+          "interaction_method": "text_fill",
+          "element_attributes": {},
+          "final_value": "chordiasahil24@gmail.com",
+          "verification": {
+            "expected": "chordiasahil24@gmail.com",
+            "actual": "chordiasahil24@gmail.com",
+            "passed": true
+          }
+        }
+      },
+      {
+        "type": "enhanced_field_fill",
+        "timestamp": 1761076594.3741252,
+        "selector": "id:input-7",
+        "value": "(240) 610-1453",
+        "url": null,
+        "element_text": null,
+        "field_label": "Phone Number",
+        "field_type": "text_input",
+        "success": true,
+        "error": null,
+        "metadata": {
+          "field_info": {
+            "stable_id": "id:input-7",
+            "label": "Phone Number",
+            "field_category": "text_input",
+            "placeholder": "",
+            "required": false
+          },
+          "interaction_method": "text_fill",
+          "element_attributes": {},
+          "final_value": "(240) 610-1453",
+          "verification": {
+            "expected": "(240) 610-1453",
+            "actual": "(240) 610-1453",
+            "passed": true
+          }
+        }
+      },
+      {
+        "type": "page_state",
+        "timestamp": 1761076600.6591475,
+        "selector": null,
+        "value": null,
+        "url": "https://kyndryl.wd5.myworkdayjobs.com/en-US/KyndrylProfessionalCareers/introduceYourself?source=REC_APPLICANT_SOURCE_The+Muse",
+        "element_text": null,
+        "field_label": null,
+        "field_type": null,
+        "success": true,
+        "error": null,
+        "metadata": {
+          "page_title": "Drop off your CV/Resume",
+          "page_type": "ai_analysis_checkpoint",
+          "has_clicked_apply": true
+        }
+      },
+      {
+        "type": "upload_file",
+        "timestamp": 1761076605.763871,
+        "selector": "button[data-automation-id=\"select-files\"]",
+        "value": "C:\\Users\\proto\\Job_Application_Agent\\Resumes\\Sahil-Chordia-Resume.pdf",
+        "url": null,
+        "element_text": null,
+        "field_label": null,
+        "field_type": null,
+        "success": true,
+        "error": null,
+        "metadata": null
+      },
+      {
+        "type": "enhanced_field_fill",
+        "timestamp": 1761076606.9356894,
+        "selector": "id:input-9",
+        "value": "checked",
+        "url": null,
+        "element_text": null,
+        "field_label": "When you submit your information, you will receive an email from Workday@Kyndryl requesting that you officially opt-in to receiving further communications from us. Thank you for your interest in Kyndryl.*",
+        "field_type": "checkbox",
+        "success": true,
+        "error": null,
+        "metadata": {
+          "field_info": {
+            "stable_id": "id:input-9",
+            "label": "When you submit your information, you will receive an email from Workday@Kyndryl requesting that you officially opt-in to receiving further communications from us. Thank you for your interest in Kyndryl.*",
+            "field_category": "checkbox",
+            "placeholder": "",
+            "required": false
+          },
+          "interaction_method": "check",
+          "element_attributes": {},
+          "final_value": "checked",
+          "verification": {}
         }
       }
     ],
     "last_successful_step": {
-      "type": "page_state",
-      "timestamp": 1760827366.3405504,
-      "selector": null,
-      "value": null,
-      "url": "https://www.adzuna.com/land/ad/5427172899?se=LEkH4Oeq8BGHpsjEWSYllA&utm_medium=api&utm_source=78543115&v=17F08EB8BFE08AFEE87EE56DABFFF0988AE23322",
+      "type": "enhanced_field_fill",
+      "timestamp": 1761076606.9356894,
+      "selector": "id:input-9",
+      "value": "checked",
+      "url": null,
       "element_text": null,
-      "field_label": null,
-      "field_type": null,
+      "field_label": "When you submit your information, you will receive an email from Workday@Kyndryl requesting that you officially opt-in to receiving further communications from us. Thank you for your interest in Kyndryl.*",
+      "field_type": "checkbox",
       "success": true,
       "error": null,
       "metadata": {
-        "page_title": "Access Denied",
-        "page_type": "ai_analysis_checkpoint",
-        "has_clicked_apply": false
+        "field_info": {
+          "stable_id": "id:input-9",
+          "label": "When you submit your information, you will receive an email from Workday@Kyndryl requesting that you officially opt-in to receiving further communications from us. Thank you for your interest in Kyndryl.*",
+          "field_category": "checkbox",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "check",
+        "element_attributes": {},
+        "final_value": "checked",
+        "verification": {}
       }
     },
     "failure_point": null,
-    "browser_state": {
-      "state_file": "C:\\Users\\proto\\Job_Application_Agent\\server\\sessions\\browser_states\\state_21ebb155-3248-4333-9cef-883b220948d3.json"
-    },
+    "browser_state": {},
     "form_data": {}
   }
 ]
