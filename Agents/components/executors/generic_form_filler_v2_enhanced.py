@@ -23,6 +23,7 @@ class FieldAttemptTracker:
 
     def __init__(self):
         self.attempts: Dict[str, Set[str]] = {}  # field_id -> {method names}
+        self.needs_human: Set[str] = set()  # field_ids that AI determined need human input
 
     def has_attempted(self, field_id: str, method: str) -> bool:
         """Check if method was already attempted for this field."""
@@ -34,8 +35,22 @@ class FieldAttemptTracker:
             self.attempts[field_id] = set()
         self.attempts[field_id].add(method)
 
+    def mark_needs_human(self, field_id: str):
+        """Mark that AI determined this field needs human input."""
+        self.needs_human.add(field_id)
+        # Also mark AI as attempted to avoid re-asking
+        self.mark_attempted(field_id, 'ai')
+
+    def requires_human_input(self, field_id: str) -> bool:
+        """Check if field was flagged as needing human input."""
+        return field_id in self.needs_human
+
     def get_next_method(self, field_id: str) -> Optional[str]:
         """Get next method to try for this field."""
+        # If already flagged as needing human input, no more methods to try
+        if field_id in self.needs_human:
+            return None
+
         attempted = self.attempts.get(field_id, set())
 
         # Strategy order: deterministic → AI → skip
@@ -364,28 +379,32 @@ class GenericFormFillerV2Enhanced:
             for field in fields:
                 field_id = self._get_field_id(field)
                 field_label = field.get('label', 'Unknown')
-                
-                # Mark AI as attempted
-                self.attempt_tracker.mark_attempted(field_id, 'ai')
-                
+
                 if field_id not in ai_mappings:
                     logger.debug(f"⏭️ No AI mapping for '{field_label}'")
+                    # Mark as attempted since AI tried but couldn't map it
+                    self.attempt_tracker.mark_attempted(field_id, 'ai')
                     result['skipped_fields'].append({
                         "field": field_label,
                         "reason": "AI did not provide mapping"
                     })
                     continue
-                
+
                 mapping_data = ai_mappings[field_id]
                 mapping_type = mapping_data.get('type', 'simple')
-                
+
                 # Check if needs human input
                 if mapping_type == 'needs_human_input':
+                    # Mark as needing human input to avoid re-asking AI but don't skip entirely
+                    self.attempt_tracker.mark_needs_human(field_id)
                     result["requires_human"].append({
                         "field": field_label,
                         "reason": mapping_data.get('reason', 'AI determined needs human input')
                     })
                     continue
+
+                # Mark AI as attempted only when we actually try to fill the field
+                self.attempt_tracker.mark_attempted(field_id, 'ai')
                 
                 # Handle MANUAL fields (essays, motivation questions) - generate AI content
                 if mapping_type == 'manual':

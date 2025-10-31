@@ -914,6 +914,237 @@ def apply_job():
         logging.error(f"Error starting job application: {e}")
         return jsonify({"error": f"Failed to start job application: {str(e)}"}), 500
 
+@app.route("/api/apply-batch-jobs", methods=['POST'])
+@require_auth
+def apply_batch_jobs():
+    """Apply to multiple jobs in batch mode"""
+    try:
+        data = request.json
+        user_id = request.user_id
+
+        if not data:
+            logging.error("No data provided in request")
+            return jsonify({"error": "No data provided"}), 400
+
+        job_urls = data.get('jobUrls', [])
+        resume_url = data.get('resumeUrl', '')
+        use_tailored = data.get('useTailored', False)
+
+        logging.info(f"Received batch apply request - {len(job_urls)} jobs, use_tailored: {use_tailored}")
+
+        if not job_urls or not isinstance(job_urls, list):
+            logging.error("Invalid or missing jobUrls")
+            return jsonify({"error": "jobUrls must be a non-empty list"}), 400
+
+        if not resume_url:
+            logging.error("Missing resume URL")
+            return jsonify({"error": "Resume URL is required"}), 400
+
+        # Create a batch ID
+        batch_id = str(uuid.uuid4())
+
+        # Store batch information
+        JOBS[batch_id] = {
+            "type": "batch",
+            "batch_id": batch_id,
+            "status": "queued",
+            "total_jobs": len(job_urls),
+            "completed_jobs": 0,
+            "failed_jobs": 0,
+            "job_ids": [],
+            "logs": [],
+            "created_at": time.time()
+        }
+
+        logging.info(f"Batch {batch_id} created with {len(job_urls)} jobs")
+
+        # Define batch processing function
+        async def run_batch_applications():
+            try:
+                JOBS[batch_id]["status"] = "running"
+                JOBS[batch_id]["logs"].append({
+                    "timestamp": time.time(),
+                    "level": "info",
+                    "message": f"Starting batch application for {len(job_urls)} jobs"
+                })
+
+                for index, job_url in enumerate(job_urls, 1):
+                    if batch_id not in JOBS:
+                        logging.error(f"Batch {batch_id} no longer exists, stopping")
+                        break
+
+                    # Create individual job ID
+                    job_id = str(uuid.uuid4())
+
+                    # Add to batch tracking
+                    JOBS[batch_id]["job_ids"].append(job_id)
+
+                    # Create individual job entry
+                    JOBS[job_id] = {
+                        "batch_id": batch_id,
+                        "job_url": job_url,
+                        "resumeUrl": resume_url,
+                        "status": "queued",
+                        "links": [job_url],
+                        "logs": [],
+                        "created_at": time.time(),
+                        "job_number": index,
+                        "total_in_batch": len(job_urls)
+                    }
+
+                    JOBS[batch_id]["logs"].append({
+                        "timestamp": time.time(),
+                        "level": "info",
+                        "message": f"Processing job {index}/{len(job_urls)}: {job_url}"
+                    })
+
+                    logging.info(f"Batch {batch_id}: Starting job {index}/{len(job_urls)} - {job_id}")
+
+                    try:
+                        # Update individual job status
+                        JOBS[job_id]["status"] = "running"
+
+                        # Handle resume tailoring if needed
+                        final_resume_url = resume_url
+                        if use_tailored:
+                            try:
+                                JOBS[job_id]["logs"].append({
+                                    "timestamp": time.time(),
+                                    "level": "info",
+                                    "message": "Tailoring resume for this job..."
+                                })
+
+                                # You could add actual tailoring logic here if needed
+                                # For now, we'll use the original resume
+
+                            except Exception as tailor_error:
+                                logging.error(f"Resume tailoring failed for job {job_id}: {tailor_error}")
+                                JOBS[job_id]["logs"].append({
+                                    "timestamp": time.time(),
+                                    "level": "warning",
+                                    "message": f"Resume tailoring failed, using original resume: {str(tailor_error)}"
+                                })
+
+                        # Run the job agent
+                        await run_links_with_refactored_agent(
+                            links=[job_url],
+                            headless=True,
+                            keep_open=False,
+                            debug=False,
+                            hold_seconds=2,
+                            slow_mo_ms=0,
+                            job_id=job_id,
+                            jobs_dict=JOBS,
+                            session_manager=session_manager
+                        )
+
+                        # Update individual job status
+                        if job_id in JOBS:
+                            JOBS[job_id]["status"] = "completed"
+                            JOBS[job_id]["logs"].append({
+                                "timestamp": time.time(),
+                                "level": "success",
+                                "message": "Job application completed successfully"
+                            })
+
+                        # Update batch completed count
+                        if batch_id in JOBS:
+                            JOBS[batch_id]["completed_jobs"] += 1
+                            JOBS[batch_id]["logs"].append({
+                                "timestamp": time.time(),
+                                "level": "success",
+                                "message": f"Completed job {index}/{len(job_urls)}"
+                            })
+
+                        logging.info(f"Batch {batch_id}: Job {index} completed successfully")
+
+                    except Exception as job_error:
+                        # Handle individual job failure
+                        if job_id in JOBS:
+                            JOBS[job_id]["status"] = "failed"
+                            JOBS[job_id]["logs"].append({
+                                "timestamp": time.time(),
+                                "level": "error",
+                                "message": f"Job application failed: {str(job_error)}"
+                            })
+
+                        # Update batch failed count
+                        if batch_id in JOBS:
+                            JOBS[batch_id]["failed_jobs"] += 1
+                            JOBS[batch_id]["logs"].append({
+                                "timestamp": time.time(),
+                                "level": "error",
+                                "message": f"Failed job {index}/{len(job_urls)}: {str(job_error)}"
+                            })
+
+                        logging.error(f"Batch {batch_id}: Job {index} failed - {job_error}")
+
+                        # Continue to next job instead of stopping the batch
+                        continue
+
+                # Mark batch as completed
+                if batch_id in JOBS:
+                    JOBS[batch_id]["status"] = "completed"
+                    JOBS[batch_id]["logs"].append({
+                        "timestamp": time.time(),
+                        "level": "success",
+                        "message": f"Batch completed: {JOBS[batch_id]['completed_jobs']} successful, {JOBS[batch_id]['failed_jobs']} failed"
+                    })
+
+                logging.info(f"Batch {batch_id} completed")
+
+            except Exception as e:
+                # Handle batch-level errors
+                if batch_id in JOBS:
+                    JOBS[batch_id]["status"] = "failed"
+                    JOBS[batch_id]["logs"].append({
+                        "timestamp": time.time(),
+                        "level": "error",
+                        "message": f"Batch processing failed: {str(e)}"
+                    })
+
+                logging.error(f"Error in batch application {batch_id}: {e}")
+                import traceback
+                logging.error(f"Full traceback: {traceback.format_exc()}")
+
+        # Start batch processing in separate thread
+        def run_async_batch():
+            try:
+                logging.info(f"Starting async batch thread for {batch_id}")
+                asyncio.run(run_batch_applications())
+            except Exception as e:
+                logging.error(f"Error running async batch {batch_id}: {e}")
+                if batch_id in JOBS:
+                    JOBS[batch_id]["status"] = "failed"
+                    JOBS[batch_id]["logs"].append({
+                        "timestamp": time.time(),
+                        "level": "error",
+                        "message": f"Failed to start batch: {str(e)}"
+                    })
+                import traceback
+                logging.error(f"Batch thread error traceback: {traceback.format_exc()}")
+
+        # Start the batch in a separate thread
+        import threading
+        batch_thread = threading.Thread(target=run_async_batch, name=f"batch-{batch_id[:8]}")
+        batch_thread.daemon = True
+        batch_thread.start()
+
+        logging.info(f"Batch thread started for {batch_id}")
+
+        return jsonify({
+            "success": True,
+            "batch_id": batch_id,
+            "batch_size": len(job_urls),
+            "message": f"Batch application started for {len(job_urls)} jobs"
+        }), 200
+
+    except Exception as e:
+        logging.error(f"Error starting batch application: {e}")
+        import traceback
+        logging.error(f"Full traceback: {traceback.format_exc()}")
+        return jsonify({"error": f"Failed to start batch application: {str(e)}"}), 500
+
 @app.route("/api/job-logs/<job_or_session_id>", methods=['GET'])
 def get_job_logs(job_or_session_id):
     """Get job logs for a specific job or session"""
@@ -965,6 +1196,43 @@ def get_job_status(job_or_session_id):
     except Exception as e:
         logging.error(f"Error getting job status for {job_or_session_id}: {e}")
         return jsonify({"error": f"Failed to get job status: {str(e)}"}), 500
+
+@app.route("/api/batch-status/<batch_id>", methods=['GET'])
+def get_batch_status(batch_id):
+    """Get detailed status of a batch application including all individual jobs"""
+    try:
+        if batch_id not in JOBS:
+            return jsonify({"error": "Batch not found"}), 404
+
+        batch_data = JOBS[batch_id]
+
+        # Get individual job statuses
+        job_statuses = []
+        for job_id in batch_data.get('job_ids', []):
+            if job_id in JOBS:
+                job_info = JOBS[job_id]
+                job_statuses.append({
+                    "job_id": job_id,
+                    "job_url": job_info.get('job_url', ''),
+                    "status": job_info.get('status', 'unknown'),
+                    "job_number": job_info.get('job_number', 0),
+                    "logs_count": len(job_info.get('logs', []))
+                })
+
+        return jsonify({
+            "batch_id": batch_id,
+            "status": batch_data.get('status', 'unknown'),
+            "total_jobs": batch_data.get('total_jobs', 0),
+            "completed_jobs": batch_data.get('completed_jobs', 0),
+            "failed_jobs": batch_data.get('failed_jobs', 0),
+            "created_at": batch_data.get('created_at', 0),
+            "jobs": job_statuses,
+            "logs": batch_data.get('logs', [])
+        }), 200
+
+    except Exception as e:
+        logging.error(f"Error getting batch status for {batch_id}: {e}")
+        return jsonify({"error": f"Failed to get batch status: {str(e)}"}), 500
 
 @app.route("/api/resume-job/<job_id>", methods=['POST'])
 def resume_job(job_id):

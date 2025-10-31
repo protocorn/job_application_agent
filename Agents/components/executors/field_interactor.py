@@ -504,7 +504,185 @@ class FieldInteractor:
         if len(form_fields) == 0 and visible_count == 0 and error_count > 0:
             logger.error(f"❌ All {error_count} fields failed to process! Check errors above.")
 
+        # Apply pattern-based label improvement
+        form_fields = await self._improve_labels_using_pattern_learning(form_fields)
+
         return form_fields
+
+    async def _improve_labels_using_pattern_learning(self, form_fields: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Learn DOM patterns from successfully labeled fields and apply to poorly labeled fields.
+
+        Strategy:
+        1. Identify fields with good labels (not generic like 'Select', 'textbox', etc.)
+        2. Analyze their DOM structure to find where the label text came from
+        3. Apply the same DOM pattern to fields with poor labels
+        """
+        try:
+            # Identify good and bad labels
+            good_fields = []
+            bad_fields = []
+            generic_labels = {'select', 'select...', 'search', 'textbox', 'text', 'input', '', 'choose', 'pick'}
+
+            for i, field in enumerate(form_fields):
+                label = field.get('label', '').lower().strip()
+                if label and label not in generic_labels and len(label) > 3:
+                    good_fields.append((i, field))
+                else:
+                    bad_fields.append((i, field))
+
+            if not good_fields or not bad_fields:
+                logger.debug(f"📋 Pattern learning: {len(good_fields)} good labels, {len(bad_fields)} bad labels - skipping")
+                return form_fields
+
+            logger.info(f"🔍 Pattern learning: Analyzing {len(good_fields)} well-labeled fields to improve {len(bad_fields)} poorly-labeled fields")
+
+            # Learn common DOM patterns from good fields
+            label_patterns = await self._extract_label_patterns(good_fields)
+
+            if not label_patterns:
+                logger.debug("No label patterns could be extracted")
+                return form_fields
+
+            # Apply learned patterns to bad fields
+            improved_count = 0
+            for idx, bad_field in bad_fields:
+                element = bad_field['element']
+
+                # Try each learned pattern
+                for pattern in label_patterns:
+                    try:
+                        new_label = await self._apply_label_pattern(element, pattern)
+                        if new_label and new_label.lower().strip() not in generic_labels:
+                            old_label = bad_field['label']
+                            form_fields[idx]['label'] = new_label
+                            logger.info(f"✨ Improved label: '{old_label}' → '{new_label}' (using pattern: {pattern['type']})")
+                            improved_count += 1
+                            break  # Found a good label, stop trying patterns
+                    except Exception as e:
+                        logger.debug(f"Pattern {pattern['type']} failed: {e}")
+                        continue
+
+            if improved_count > 0:
+                logger.info(f"✅ Pattern learning improved {improved_count}/{len(bad_fields)} field labels")
+            else:
+                logger.debug("⚠️ Pattern learning found no improvements")
+
+            return form_fields
+
+        except Exception as e:
+            logger.warning(f"⚠️ Pattern learning failed: {e}")
+            return form_fields
+
+    async def _extract_label_patterns(self, good_fields: List[tuple]) -> List[Dict[str, Any]]:
+        """
+        SIMPLE pattern extraction: Find where the label text actually is in the DOM.
+        Don't overthink it - just find the element that contains the expected label text.
+        """
+        patterns = []
+
+        for idx, field in good_fields:
+            element = field['element']
+            expected_label = field['label']
+
+            try:
+                logger.debug(f"🔎 Where is '{expected_label}' located?")
+
+                # First, check HOW the label was found
+                label_source = await element.evaluate('''
+                    (el, expectedLabel) => {
+                        // Check label[for=id]
+                        if (el.id) {
+                            const labelEl = document.querySelector(\`label[for="\${el.id}"]\`);
+                            if (labelEl) {
+                                const text = labelEl.textContent.trim();
+                                if (text === expectedLabel || text.includes(expectedLabel)) {
+                                    return {
+                                        method: 'label_for_id',
+                                        elementId: el.id
+                                    };
+                                }
+                            }
+                        }
+
+                        // Check aria-labelledby
+                        const labelledby = el.getAttribute('aria-labelledby');
+                        if (labelledby) {
+                            const labelEl = document.getElementById(labelledby);
+                            if (labelEl && labelEl.textContent.trim().includes(expectedLabel)) {
+                                return {
+                                    method: 'aria_labelledby',
+                                    labelId: labelledby
+                                };
+                            }
+                        }
+
+                        return { method: 'unknown' };
+                    }
+                ''', expected_label)
+
+                logger.debug(f"   Label extraction method: {label_source}")
+
+                # Store the pattern based on how label was found
+                if label_source.get('method') in ['label_for_id', 'aria_labelledby']:
+                    patterns.append(label_source)
+                    logger.debug(f"   ✅ Pattern found: {label_source['method']}")
+                else:
+                    logger.debug(f"   ❌ Could not determine label source")
+
+            except Exception as e:
+                logger.debug(f"   Error: {e}")
+                continue
+
+        # Deduplicate patterns by type
+        unique_patterns = {}
+        for pattern in patterns:
+            pattern_type = pattern.get('type')
+            if pattern_type not in unique_patterns:
+                unique_patterns[pattern_type] = pattern
+
+        result = list(unique_patterns.values())
+        logger.debug(f"Extracted {len(result)} unique label patterns: {[p['type'] for p in result]}")
+        return result
+
+    async def _apply_label_pattern(self, element: Locator, pattern: Dict[str, Any]) -> str:
+        """Apply the learned pattern: look in parent for element with same tag/class."""
+        pattern_type = pattern.get('type')
+
+        if pattern_type == 'parent_child':
+            # We know the label is a child of the parent with specific tag and class
+            tag_name = pattern.get('tagName', '')
+            class_name = pattern.get('className', '')
+
+            result = await element.evaluate('''
+                (el, tagName, className) => {
+                    const parent = el.parentElement;
+                    if (!parent) return null;
+
+                    // Find all children with the same tag
+                    const candidates = parent.querySelectorAll(tagName);
+                    for (const candidate of candidates) {
+                        // Skip the input itself
+                        if (candidate === el) continue;
+
+                        // If we have a className pattern, check it
+                        if (className && candidate.className.includes(className.split(' ')[0])) {
+                            return candidate.textContent.trim();
+                        }
+                        // Otherwise just return the first matching tag
+                        else if (!className) {
+                            const text = candidate.textContent.trim();
+                            if (text && text.length > 2 && text.length < 100) {
+                                return text;
+                            }
+                        }
+                    }
+                    return null;
+                }
+            ''', tag_name, class_name)
+            return result or ""
+
+        return ""
 
     async def _create_stable_field_id(self, element: Locator, index: int, label: str) -> str:
         """Create a stable identifier for a form field that survives DOM changes."""
@@ -580,8 +758,12 @@ class FieldInteractor:
         return f"field_{hash(label)}"
 
     async def _get_field_label(self, element: Locator) -> str:
-        """Gets the most likely human-readable label for a form element with enhanced context extraction."""
+        """
+        SIMPLE APPROACH: Scan for any text element near the input.
+        Mimics how a human would identify a field - look at the text before/above it.
+        """
         try:
+            # First, try standard methods (fast and reliable when they work)
             # Method 1: <label for="...id">
             element_id = await element.get_attribute('id')
             if element_id:
@@ -590,11 +772,13 @@ class FieldInteractor:
                     label_text = await label.inner_text()
                     if label_text.strip():
                         return label_text.strip()
-            
+
             # Method 2: aria-label
             aria_label = await element.get_attribute('aria-label')
-            if aria_label and aria_label.strip(): 
-                return aria_label.strip()
+            if aria_label and aria_label.strip() and len(aria_label.strip()) > 2:
+                # Skip generic aria-labels like "Select", "Search"
+                if aria_label.strip().lower() not in ['select', 'search', 'textbox', 'input', 'text']:
+                    return aria_label.strip()
 
             # Method 3: aria-labelledby
             aria_labelledby = await element.get_attribute('aria-labelledby')
@@ -605,25 +789,94 @@ class FieldInteractor:
                     if label_text.strip():
                         return label_text.strip()
 
-            # Method 4: For radio buttons and checkboxes, look for fieldset legend or group context
-            input_type = await element.get_attribute('type')
-            if input_type in ['radio', 'checkbox']:
-                context = await self._get_radio_checkbox_context(element)
-                if context:
-                    return context
+            # NEW SIMPLE METHOD: Just scan for text near the input
+            # This is the fallback that handles all the weird cases
+            label_text = await element.evaluate('''
+                el => {
+                    // Helper: Get clean text from an element (not including nested inputs)
+                    function getCleanText(element) {
+                        let text = '';
+                        for (const node of element.childNodes) {
+                            if (node.nodeType === Node.TEXT_NODE) {
+                                text += node.textContent;
+                            } else if (node.nodeType === Node.ELEMENT_NODE) {
+                                const tag = node.tagName.toLowerCase();
+                                // Skip input-like elements
+                                if (!['input', 'select', 'textarea', 'button'].includes(tag)) {
+                                    text += node.textContent;
+                                }
+                            }
+                        }
+                        return text.trim();
+                    }
 
-            # Method 5: Look for nearby text that might be the question/label
-            nearby_context = await self._get_nearby_label_context(element)
-            if nearby_context:
-                return nearby_context
+                    // Helper: Check if text is a good label (not too long, not empty)
+                    function isGoodLabel(text) {
+                        if (!text) return false;
+                        const len = text.length;
+                        return len >= 2 && len <= 100;  // Labels are typically 2-100 chars
+                    }
 
-            # Method 6: Placeholder attribute
+                    const candidates = [];
+
+                    // Strategy 1: Previous sibling's text
+                    let sibling = el.previousElementSibling;
+                    if (sibling) {
+                        const text = getCleanText(sibling);
+                        if (isGoodLabel(text)) {
+                            candidates.push({ text, priority: 1 });
+                        }
+                    }
+
+                    // Strategy 2: Parent's first child (if it's a label-like element before the input)
+                    const parent = el.parentElement;
+                    if (parent) {
+                        for (const child of parent.children) {
+                            if (child === el) break;  // Stop when we reach the input itself
+
+                            const tag = child.tagName.toLowerCase();
+                            if (['label', 'span', 'div', 'legend', 'p'].includes(tag)) {
+                                const text = getCleanText(child);
+                                if (isGoodLabel(text)) {
+                                    candidates.push({ text, priority: 2 });
+                                }
+                            }
+                        }
+                    }
+
+                    // Strategy 3: Grandparent's label-like children
+                    const grandparent = parent ? parent.parentElement : null;
+                    if (grandparent) {
+                        const labels = grandparent.querySelectorAll('label, span[class*="label"], div[class*="label"], legend');
+                        for (const labelEl of labels) {
+                            const text = getCleanText(labelEl);
+                            if (isGoodLabel(text)) {
+                                candidates.push({ text, priority: 3 });
+                                break;  // Just take the first one from grandparent
+                            }
+                        }
+                    }
+
+                    // Return the highest priority (closest) candidate
+                    if (candidates.length > 0) {
+                        candidates.sort((a, b) => a.priority - b.priority);
+                        return candidates[0].text;
+                    }
+
+                    return null;
+                }
+            ''')
+
+            if label_text:
+                return label_text
+
+            # Last resort: placeholder
             placeholder = await element.get_attribute('placeholder')
-            if placeholder and placeholder.strip(): 
+            if placeholder and placeholder.strip():
                 return placeholder.strip()
-            
+
             return ""
-            
+
         except Exception as e:
             logger.debug(f"Error getting field label: {e}")
             return ""

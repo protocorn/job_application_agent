@@ -126,7 +126,345 @@ def read_structural_elements_plain(elements):
             for elem in para_elements:
                 text += elem.get('textRun', {}).get('content', '')
     return text
+
+def extract_document_structure(docs_service, document_id):
+    """Extract line-by-line structure with formatting metadata, detecting natural line wraps.
+
+    Returns a list of line metadata dictionaries containing:
+    - text: the actual text content (may span multiple visual lines)
+    - alignment: left, center, right, justified
+    - bullet_level: nesting level (0 = no bullet, 1+ = nested)
+    - indent_start: indentation in points
+    - indent_first_line: first line indent in points
+    - char_limit: estimated max characters before line wrap
+    - line_number: sequential line number
+    - visual_lines: number of lines this text spans on page
+    """
+    try:
+        document = docs_service.documents().get(documentId=document_id).execute()
+        content = document.get('body', {}).get('content', [])
+
+        # Default page width (8.5" with 1" margins = 6.5" = 468 points)
+        # Average character width ~7 points for typical fonts at 11pt
+        default_page_width = 468
+        avg_char_width = 7
+
+        line_metadata = []
+        line_number = 0
+
+        for element in content:
+            if 'paragraph' in element:
+                paragraph = element['paragraph']
+                para_style = paragraph.get('paragraphStyle', {})
+                bullet = paragraph.get('bullet', None)
+
+                # Get alignment (default: START/left)
+                alignment_map = {
+                    'START': 'left',
+                    'CENTER': 'center',
+                    'END': 'right',
+                    'JUSTIFIED': 'justified'
+                }
+                alignment = alignment_map.get(para_style.get('alignment', 'START'), 'left')
+
+                # Get indentation
+                indent_start = para_style.get('indentStart', {}).get('magnitude', 0)
+                indent_first_line = para_style.get('indentFirstLine', {}).get('magnitude', 0)
+
+                # Determine bullet level
+                bullet_level = 0
+                if bullet:
+                    # Bullet level is determined by nesting level
+                    nesting_level = bullet.get('nestingLevel', 0)
+                    bullet_level = nesting_level + 1
+                    # Add extra indent for bullets (typically 36 points per level)
+                    indent_start += bullet_level * 36
+
+                # Extract text content from paragraph
+                para_elements = paragraph.get('elements', [])
+                line_text = ''
+                for elem in para_elements:
+                    if 'textRun' in elem:
+                        line_text += elem.get('textRun', {}).get('content', '')
+
+                # Remove trailing newlines for analysis
+                line_text_stripped = line_text.rstrip('\n')
+
+                # Skip empty lines (but keep them in structure)
+                if not line_text_stripped:
+                    continue
+
+                # Calculate available width for FIRST line (with first line indent)
+                first_line_width = default_page_width - indent_start - indent_first_line
+                first_line_char_limit = max(0, int(first_line_width / avg_char_width))
+
+                # Calculate available width for CONTINUATION lines (without first line indent)
+                continuation_width = default_page_width - indent_start
+                continuation_char_limit = max(0, int(continuation_width / avg_char_width))
+
+                # Estimate how many visual lines this paragraph spans
+                current_length = len(line_text_stripped)
+                visual_lines = 1  # At least 1 line
+
+                if current_length > first_line_char_limit:
+                    # Text wraps beyond first line
+                    remaining_chars = current_length - first_line_char_limit
+                    additional_lines = (remaining_chars + continuation_char_limit - 1) // continuation_char_limit
+                    visual_lines += additional_lines
+
+                # For char_buffer calculation, use the last line's remaining space
+                if visual_lines == 1:
+                    char_buffer = max(0, first_line_char_limit - current_length)
+                else:
+                    # Calculate chars on the last line
+                    chars_before_last_line = first_line_char_limit + (visual_lines - 2) * continuation_char_limit
+                    chars_on_last_line = current_length - chars_before_last_line
+                    char_buffer = max(0, continuation_char_limit - chars_on_last_line)
+
+                line_metadata.append({
+                    'text': line_text_stripped,
+                    'alignment': alignment,
+                    'bullet_level': bullet_level,
+                    'indent_start': indent_start,
+                    'indent_first_line': indent_first_line,
+                    'char_limit_first_line': first_line_char_limit,
+                    'char_limit_continuation': continuation_char_limit,
+                    'current_length': current_length,
+                    'char_buffer': char_buffer,
+                    'visual_lines': visual_lines,
+                    'line_number': line_number
+                })
+
+                line_number += 1
+
+        return line_metadata
+
+    except HttpError as error:
+        print(f"Error extracting document structure: {error}")
+        return []
+
+def calculate_line_budget(line_metadata, max_additional_lines=0):
+    """Calculate how many lines can be added to the resume.
+
+    Args:
+        line_metadata: List of line metadata from extract_document_structure
+        max_additional_lines: Maximum number of lines that can be added (default 0 = strict page preservation)
+
+    Returns:
+        Dictionary with:
+        - current_paragraphs: number of paragraphs
+        - current_visual_lines: total visual lines (accounting for wrapping)
+        - max_allowed_lines: maximum lines allowed
+        - available_lines: how many more lines can be added
+        - underutilized_lines: potential lines that could be freed by shortening
+    """
+    current_paragraphs = len(line_metadata)
+
+    # Calculate TOTAL visual lines (accounting for text wrapping)
+    current_visual_lines = sum(line.get('visual_lines', 1) for line in line_metadata)
+
+    # Calculate potential lines that could be freed by shortening content
+    underutilized_lines = sum(
+        1 for line in line_metadata
+        if line.get('char_buffer', 0) > 20  # More than 20 chars of buffer
+    )
+
+    return {
+        'current_paragraphs': current_paragraphs,
+        'current_visual_lines': current_visual_lines,
+        'max_allowed_lines': current_visual_lines + max_additional_lines,
+        'available_lines': max_additional_lines,
+        'underutilized_lines': underutilized_lines
+    }
+
+def verify_document_length(docs_service, document_id, original_visual_lines, tolerance=0):
+    """Verify that document hasn't exceeded original page length.
     
+    Args:
+        docs_service: Google Docs API service
+        document_id: Document ID to check
+        original_visual_lines: Original number of visual lines
+        tolerance: Number of additional lines allowed (default 0 = strict)
+        
+    Returns:
+        Dictionary with:
+        - within_limit: True if document is within page limits
+        - current_visual_lines: Current visual line count
+        - overflow_lines: Number of lines over limit (0 if within limit)
+    """
+    try:
+        # Extract current document structure
+        current_metadata = extract_document_structure(docs_service, document_id)
+        current_visual_lines = sum(line.get('visual_lines', 1) for line in current_metadata)
+        
+        max_allowed = original_visual_lines + tolerance
+        within_limit = current_visual_lines <= max_allowed
+        overflow_lines = max(0, current_visual_lines - max_allowed)
+        
+        return {
+            'within_limit': within_limit,
+            'current_visual_lines': current_visual_lines,
+            'original_visual_lines': original_visual_lines,
+            'max_allowed_lines': max_allowed,
+            'overflow_lines': overflow_lines
+        }
+    except Exception as e:
+        print(f"Warning: Could not verify document length: {e}")
+        # In case of error, assume it's okay to be conservative
+        return {
+            'within_limit': True,
+            'current_visual_lines': original_visual_lines,
+            'original_visual_lines': original_visual_lines,
+            'max_allowed_lines': original_visual_lines,
+            'overflow_lines': 0
+        }
+
+def score_replacement(replacement, line_metadata):
+    """Score a replacement by its impact vs risk.
+    
+    Higher scores = better replacements (high impact, low risk of overflow)
+    
+    Returns:
+        Score (float): Higher is better. Returns -1 if replacement is risky.
+    """
+    original_text = replacement.get('original_text', '')
+    updated_text = replacement.get('updated_text', '')
+    
+    # Calculate length change
+    original_len = len(original_text)
+    updated_len = len(updated_text)
+    length_change = updated_len - original_len
+    
+    # Find matching metadata for char_buffer
+    char_buffer = None
+    for meta in line_metadata or []:
+        normalized_meta = _normalize_for_match(meta['text'])
+        normalized_original = _normalize_for_match(original_text)
+        if normalized_original in normalized_meta or normalized_meta in normalized_original:
+            char_buffer = meta.get('char_buffer', 0)
+            break
+    
+    # If we can't find metadata, be very conservative
+    if char_buffer is None:
+        if length_change > 0:
+            return -1  # Reject additions when we don't know the buffer
+        char_buffer = 0
+    
+    # Risk assessment
+    if length_change > char_buffer:
+        return -1  # Exceeds buffer - reject
+    
+    # Calculate impact score
+    # Factors:
+    # 1. Length-neutral or reductions are best (higher score)
+    # 2. Small additions with large buffer are safe
+    # 3. Longer original text = higher impact (more visible change)
+    
+    if length_change <= 0:
+        # Length-neutral or reduction - excellent
+        impact_score = 100 - length_change  # Reductions get bonus
+    else:
+        # Addition - score based on safety margin
+        buffer_usage = length_change / max(char_buffer, 1)
+        if buffer_usage > 0.6:  # Using >60% of buffer
+            return -1  # Too risky
+        impact_score = 50 * (1 - buffer_usage)  # Less buffer usage = higher score
+    
+    # Bonus for longer original text (more visible)
+    visibility_bonus = min(20, original_len / 5)
+    
+    # Bonus if it has quantified data (important to preserve)
+    if _extracts_quantified_data(original_text):
+        visibility_bonus += 10
+    
+    return impact_score + visibility_bonus
+
+def extract_job_keywords(job_description):
+    """Extract important keywords and themes from job description using AI.
+
+    Returns:
+        Dictionary with:
+        - required_skills: must-have technical/functional skills
+        - preferred_skills: nice-to-have skills
+        - key_themes: main themes (e.g., "leadership", "collaboration")
+        - prioritized_keywords: ranked list of keywords to emphasize
+    """
+    try:
+        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+        prompt = f"""Analyze this job description and extract the most important keywords and themes.
+Focus on skills, qualifications, and attributes that the employer is seeking.
+
+Your task:
+1. Identify REQUIRED skills (must-have technical and functional skills)
+2. Identify PREFERRED skills (nice-to-have skills mentioned)
+3. Extract KEY THEMES (e.g., "leadership", "innovation", "collaboration", "data-driven")
+4. Create a PRIORITIZED list of keywords that should appear in the resume (most important first)
+
+Return response in this JSON format:
+{{
+    "required_skills": ["skill1", "skill2", ...],
+    "preferred_skills": ["skill1", "skill2", ...],
+    "key_themes": ["theme1", "theme2", ...],
+    "prioritized_keywords": ["keyword1", "keyword2", ...]
+}}
+
+JOB DESCRIPTION:
+{job_description}
+"""
+
+        # Make API call
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt
+        )
+
+        text = response.candidates[0].content.parts[0].text.strip()
+        if text.startswith('```'):
+            text = text.replace('```json', '').replace('```', '').strip()
+
+        return json.loads(text)
+    except Exception as e:
+        print(f"Warning: Keyword extraction failed ({e}), continuing without keywords")
+        return {
+            "required_skills": [],
+            "preferred_skills": [],
+            "key_themes": [],
+            "prioritized_keywords": []
+        }
+
+def annotate_resume_with_metadata(resume_text, line_metadata):
+    """Annotate resume text with formatting constraints for each line.
+
+    Adds metadata tags like [alignment=center, bullet_level=0, char_buffer=10, visual_lines=2]
+    after each line to guide the AI.
+    """
+    lines = resume_text.split('\n')
+    annotated_lines = []
+
+    for idx, line in enumerate(lines):
+        line_stripped = line.strip()
+        if not line_stripped:
+            annotated_lines.append(line)
+            continue
+
+        # Find matching metadata (by text content)
+        matching_meta = None
+        for meta in line_metadata:
+            if line_stripped in meta['text'] or meta['text'] in line_stripped:
+                matching_meta = meta
+                break
+
+        if matching_meta:
+            # Add annotation with formatting constraints including visual_lines
+            visual_lines = matching_meta.get('visual_lines', 1)
+            annotation = f" [alignment={matching_meta['alignment']}, bullet_level={matching_meta['bullet_level']}, char_buffer={matching_meta['char_buffer']}, visual_lines={visual_lines}]"
+            annotated_lines.append(line + annotation)
+        else:
+            annotated_lines.append(line)
+
+    return '\n'.join(annotated_lines)
+
 def _normalize_for_match(text):
     """Normalize text to reduce unicode/whitespace variance for matching-only checks."""
     if text is None:
@@ -174,13 +512,59 @@ def _contains_banned_phrases(text):
     t = _normalize_for_match(text).lower()
     return any(re.search(p, t) for p in banned_patterns)
 
-def _validate_replacements(raw_replacements):
+def _extracts_quantified_data(original_text):
+    """Check if original text contains numbers, percentages, or metrics."""
+    # Match numbers, percentages, dollar amounts, etc.
+    quantified_patterns = [
+        r'\d+%',  # Percentages: 40%, 99%
+        r'\d+[kKmMbB]?',  # Numbers with optional K/M/B: 100, 5K, 2M
+        r'\$\d+',  # Dollar amounts: $100K
+        r'\d+x',  # Multipliers: 10x, 2x
+        r'\d+\+',  # Plus notation: 50+
+    ]
+    return any(re.search(p, original_text) for p in quantified_patterns)
+
+def _removes_quantified_data(original_text, updated_text):
+    """Check if updated text removes quantified data that was in original."""
+    # Extract numbers from both
+    original_numbers = re.findall(r'\d+\.?\d*', original_text)
+    updated_numbers = re.findall(r'\d+\.?\d*', updated_text)
+
+    # If original had numbers but updated doesn't, that's bad
+    if len(original_numbers) > 0 and len(updated_numbers) == 0:
+        return True
+
+    # If original had more numbers than updated, check if significant ones were removed
+    if len(original_numbers) > len(updated_numbers):
+        # Allow minor differences (like year changes), but flag major removals
+        return True
+
+    return False
+
+def _validate_replacements(raw_replacements, line_metadata=None, safety_margin=0.6):
+    """Validate replacements including character limit checks with safety margins.
+
+    Args:
+        raw_replacements: List of replacement dictionaries
+        line_metadata: Optional line metadata for character limit validation
+        safety_margin: Use only this fraction of available char_buffer (default 0.6 = 60%)
+    """
     valid = []
     invalid = []
+
+    # Create lookup for line metadata by text
+    metadata_lookup = {}
+    if line_metadata:
+        for meta in line_metadata:
+            # Store by normalized text for fuzzy matching
+            normalized_text = _normalize_for_match(meta['text'])
+            metadata_lookup[normalized_text] = meta
+
     for rep in raw_replacements:
         original_text = (rep.get('original_text') or '').strip()
         updated_text = (rep.get('updated_text') or '').strip()
         reason = None
+
         if not original_text or not updated_text:
             reason = 'missing_text'
         elif '\n' in original_text or '\n' in updated_text:
@@ -191,11 +575,42 @@ def _validate_replacements(raw_replacements):
             reason = 'banned_phrase'
         elif _is_low_content_change(original_text, updated_text):
             reason = 'low_content_change'
+        elif _removes_quantified_data(original_text, updated_text):
+            reason = 'removes_quantified_data'
+        elif line_metadata:
+            # Check character limit constraints with SAFETY MARGIN
+            # Remove metadata annotations from original_text for comparison
+            original_clean = re.sub(r'\s*\[alignment=.*?\]', '', original_text)
+            normalized_original = _normalize_for_match(original_clean)
+
+            # Find matching metadata
+            matching_meta = None
+            for norm_text, meta in metadata_lookup.items():
+                if normalized_original in norm_text or norm_text in normalized_original:
+                    matching_meta = meta
+                    break
+
+            if matching_meta:
+                # Calculate character difference
+                original_len = len(original_clean)
+                updated_len = len(updated_text)
+                char_diff = updated_len - original_len
+
+                # Apply safety margin to buffer (use only 60% by default)
+                safe_buffer = int(matching_meta['char_buffer'] * safety_margin)
+                
+                # Check if it exceeds the SAFE buffer
+                if char_diff > safe_buffer:
+                    reason = f'exceeds_char_limit (added {char_diff}, safe limit {safe_buffer}/{matching_meta["char_buffer"]})'
+            elif char_diff > 0:
+                # No metadata found and it's an addition - reject to be safe
+                reason = 'no_metadata_found_for_addition'
 
         if reason:
             invalid.append({'original_text': original_text, 'reason': reason})
         else:
             valid.append({'original_text': original_text, 'updated_text': updated_text})
+
     return valid, invalid
 
 def _parse_styled_text(text: str) -> Tuple[str, List[dict]]:
@@ -310,38 +725,101 @@ def _apply_styles_from_tags(docs_service, document_id, strip_tags: bool):
                 pos = next_close + close_len
         return ranges
 
-    bold_ranges = find_tag_ranges(doc_text, '<b>', '</b>')
-    italic_ranges = find_tag_ranges(doc_text, '<i>', '</i>')
-    
+    # Extract text snippets that should be bold/italic with their CLEAN versions
+    # (without tags, as they will appear after tag stripping)
+    bold_texts = []
+    italic_texts = []
+
+    for start, end in find_tag_ranges(doc_text, '<b>', '</b>'):
+        if end > start:
+            text_with_tags = doc_text[start:end]
+            # Remove nested tags from the text we're searching for
+            clean_text = text_with_tags.replace('<b>', '').replace('</b>', '').replace('<i>', '').replace('</i>', '')
+            if clean_text.strip():
+                bold_texts.append(clean_text)
+
+    for start, end in find_tag_ranges(doc_text, '<i>', '</i>'):
+        if end > start:
+            text_with_tags = doc_text[start:end]
+            clean_text = text_with_tags.replace('<b>', '').replace('</b>', '').replace('<i>', '').replace('</i>', '')
+            if clean_text.strip():
+                italic_texts.append(clean_text)
+
+    print(f"Found {len(bold_texts)} text snippets to bold and {len(italic_texts)} to italicize")
+
+    # Debug: print ALL bold texts we're looking for
+    print("\n📋 All text to be bolded:")
+    for idx, text in enumerate(bold_texts):
+        print(f"  {idx+1}. '{text}'")
+
+    # Save debug file showing what text has bold tags
+    debug_bold_file = f"../Resumes/bold_debug_{uuid.uuid4().hex[:8]}.txt"
+    with open(debug_bold_file, 'w', encoding='utf-8') as f:
+        f.write("=== DOCUMENT WITH BOLD MARKERS ===\n\n")
+        f.write("This shows what Gemini returned with <b> tags:\n\n")
+        f.write(doc_text)
+        f.write("\n\n=== LIST OF TEXT TO BE BOLDED ===\n\n")
+        for idx, text in enumerate(bold_texts):
+            f.write(f"{idx+1}. '{text}'\n")
+    print(f"📄 Bold debug file saved to: {debug_bold_file}")
+
+    # First, strip all tags from the document
+    cleanup_requests = []
+    for tok in ['<b>', '</b>', '<i>', '</i>']:
+        cleanup_requests.append({
+            'replaceAllText': {
+                'containsText': {
+                    'text': tok,
+                    'matchCase': True
+                },
+                'replaceText': ''
+            }
+        })
+
+    if cleanup_requests:
+        docs_service.documents().batchUpdate(
+            documentId=document_id,
+            body={'requests': cleanup_requests}
+        ).execute()
+        print("Stripped tags from document")
+        time.sleep(1)  # Wait for API to settle
+
+    # Now apply formatting by finding the text snippets
+    # Re-read the document after tag removal
+    document = docs_service.documents().get(documentId=document_id).execute()
+    content = document.get('body').get('content')
+    clean_doc_text = read_structural_elements_plain(content) or ''
 
     format_requests = []
-    # Apply bold first
-    for idx, (start, end) in enumerate(bold_ranges):
-        if end <= start:
+
+    # Apply bold formatting by finding each text snippet
+    print("\n🎨 Applying bold formatting:")
+    for idx, text_to_bold in enumerate(bold_texts):
+        text_position = clean_doc_text.find(text_to_bold)
+        if text_position == -1:
+            print(f"❌ {idx+1}. Could not find: '{text_to_bold}'")
+            print(f"   Searching in: ...{clean_doc_text[max(0, text_position-50):text_position+100]}...")
             continue
-        
-        # Optional shift fix for known numeric-left-shift issue
-        shift_fix = 0
-        if os.getenv('BOLD_SHIFT_DIGITS_PLUS_ONE', 'false').lower() in ('1','true','yes'):
-            snippet_local = doc_text[start:end]
-            digit_count = sum(1 for ch in snippet_local if ch.isdigit())
-            if digit_count > 0:
-                shift_fix = digit_count + 1
-        # Include trailing '%' if present in snippet
-        extra_end = 0
-        if doc_text[start:end].endswith('%'):
-            extra_end = 1
-        s_idx = start + 1 + shift_fix
-        e_idx = end + 1 + shift_fix + extra_end
-        # Clamp end index to document length (Docs API endIndex is exclusive)
-        max_end = len(doc_text) + 1
-        if e_idx > max_end:
-            e_idx = max_end
+
+        # Google Docs uses 1-based indexing
+        # endIndex is EXCLUSIVE, so we need +2 (one for 1-based, one for exclusive end)
+        start_idx = text_position + 1
+        end_idx = text_position + len(text_to_bold) + 2
+
+        # Show context
+        context_start = max(0, text_position - 20)
+        context_end = min(len(clean_doc_text), text_position + len(text_to_bold) + 20)
+        context = clean_doc_text[context_start:context_end]
+
+        print(f"✓ {idx+1}. '{text_to_bold}' at position {text_position}")
+        print(f"   Context: ...{context}...")
+        print(f"   Range: [{start_idx}, {end_idx})")
+
         format_requests.append({
             'updateTextStyle': {
                 'range': {
-                    'startIndex': s_idx,
-                    'endIndex': e_idx
+                    'startIndex': start_idx,
+                    'endIndex': end_idx
                 },
                 'textStyle': {
                     'bold': True
@@ -349,15 +827,27 @@ def _apply_styles_from_tags(docs_service, document_id, strip_tags: bool):
                 'fields': 'bold'
             }
         })
-    # Then italic
-    for idx, (start, end) in enumerate(italic_ranges):
-        if end <= start:
+
+    # Apply italic formatting
+    for idx, text_to_italicize in enumerate(italic_texts):
+        text_position = clean_doc_text.find(text_to_italicize)
+        if text_position == -1:
+            print(f"Warning: Could not find text to italicize: '{text_to_italicize[:30]}...'")
             continue
+
+        # Same as bold - 1-based indexing with exclusive endIndex
+        start_idx = text_position + 1
+        end_idx = text_position + len(text_to_italicize) + 2
+
+        print(f"Italicizing: '{text_to_italicize[:50]}...'")
+        print(f"  Text position in doc: {text_position}, length: {len(text_to_italicize)}")
+        print(f"  Applied range: [{start_idx}, {end_idx}) (endIndex is exclusive)")
+
         format_requests.append({
             'updateTextStyle': {
                 'range': {
-                    'startIndex': start + 1,
-                    'endIndex': end + 1
+                    'startIndex': start_idx,
+                    'endIndex': end_idx
                 },
                 'textStyle': {
                     'italic': True
@@ -376,36 +866,82 @@ def _apply_styles_from_tags(docs_service, document_id, strip_tags: bool):
             documentId=document_id,
             body={'requests': batch}
         ).execute()
-        print(f"Applied tag-based style batch {i//batch_size + 1}")
+        print(f"Applied formatting batch {i//batch_size + 1}")
 
-    if strip_tags:
-        # Remove tags everywhere
-        cleanup_requests = []
-        for tok in ['<b>', '</b>', '<i>', '</i>']:
-            cleanup_requests.append({
-                'replaceAllText': {
-                    'containsText': {
-                        'text': tok,
-                        'matchCase': True
-                    },
-                    'replaceText': ''
-                }
-            })
+    print(f"✓ Bold/italic formatting applied successfully!")
 
-        batch_size = 15
-        for i in range(0, len(cleanup_requests), batch_size):
-            batch = cleanup_requests[i:i + batch_size]
-            if not batch:
-                continue
-            docs_service.documents().batchUpdate(
-                documentId=document_id,
-                body={'requests': batch}
-            ).execute()
-            print(f"Stripped tag batch {i//batch_size + 1}")
+    # Create a visual debug file showing what SHOULD be bold
+    debug_visual_file = f"../Resumes/bold_visual_{uuid.uuid4().hex[:8]}.txt"
+    with open(debug_visual_file, 'w', encoding='utf-8') as f:
+        f.write("=== VISUAL REPRESENTATION OF WHAT SHOULD BE BOLD ===\n\n")
+        f.write("Legend: **text** = should be bold\n\n")
 
-    # Optional verification: if tags were stripped, pause briefly to allow styles to settle
-    if strip_tags:
-        time.sleep(2)
+        # Create a marked-up version of the clean text
+        visual_text = clean_doc_text
+
+        # Sort bold_texts by position (longest first to avoid substring issues)
+        bold_positions = []
+        for text in bold_texts:
+            pos = clean_doc_text.find(text)
+            if pos != -1:
+                bold_positions.append((pos, len(text), text))
+
+        bold_positions.sort(reverse=True)  # Start from end to not mess up positions
+
+        # Insert markers
+        for pos, length, text in bold_positions:
+            visual_text = visual_text[:pos] + '**' + text + '**' + visual_text[pos+length:]
+
+        f.write(visual_text)
+
+        f.write("\n\n=== SUMMARY ===\n")
+        f.write(f"Total bold requests: {len(bold_texts)}\n")
+        f.write(f"Successfully found: {len([t for t in bold_texts if clean_doc_text.find(t) != -1])}\n")
+        f.write(f"Not found: {len([t for t in bold_texts if clean_doc_text.find(t) == -1])}\n")
+
+        not_found = [t for t in bold_texts if clean_doc_text.find(t) == -1]
+        if not_found:
+            f.write("\nText that couldn't be found:\n")
+            for text in not_found:
+                f.write(f"  - '{text}'\n")
+
+    print(f"📄 Visual bold debug saved to: {debug_visual_file}")
+
+    # IMPORTANT: Read the actual document after formatting to see what's REALLY bold
+    print("\n🔍 Reading actual document to verify bold formatting...")
+    time.sleep(2)  # Wait for formatting to settle
+
+    final_document = docs_service.documents().get(documentId=document_id).execute()
+    final_content = final_document.get('body', {}).get('content', [])
+
+    # Create a debug file showing what's ACTUALLY bold in the document
+    actual_bold_file = f"../Resumes/actual_bold_{uuid.uuid4().hex[:8]}.txt"
+    with open(actual_bold_file, 'w', encoding='utf-8') as f:
+        f.write("=== ACTUAL BOLD TEXT IN GOOGLE DOC ===\n\n")
+        f.write("This shows what's actually bold in the final document:\n\n")
+
+        for element in final_content:
+            if 'paragraph' in element:
+                para = element['paragraph']
+                para_elements = para.get('elements', [])
+
+                for elem in para_elements:
+                    if 'textRun' in elem:
+                        text_run = elem['textRun']
+                        content = text_run.get('content', '')
+                        text_style = text_run.get('textStyle', {})
+                        is_bold = text_style.get('bold', False)
+
+                        if is_bold:
+                            f.write(f"**{content}**")
+                        else:
+                            f.write(content)
+
+        f.write("\n\n=== SUMMARY ===\n")
+        f.write("Text marked with **bold** is what's actually bold in the document.\n")
+        f.write("Compare this with bold_visual_*.txt to see discrepancies.\n")
+
+    print(f"📄 Actual bold formatting saved to: {actual_bold_file}")
 
 
 def _regenerate_invalid_replacements(client, resume_text, job_description, invalid_items):
@@ -415,10 +951,24 @@ def _regenerate_invalid_replacements(client, resume_text, job_description, inval
     originals_list = "\n".join([f"- {item['original_text']}" for item in invalid_items])
     prompt = f"""
 You previously proposed replacements for tailoring a resume, but some items violated constraints
-(generic language, headers, newlines, or low-value changes). For the list below, regenerate ONLY the
-updated_text values. Keep original_text exactly the same.
+(generic language, headers, newlines, removed quantified data, or low-value changes). 
 
-Constraints:
+For the list below, regenerate ONLY the updated_text values. Keep original_text exactly the same.
+
+⚠️  CRITICAL - PRESERVE ALL QUANTIFIED DATA:
+- If original has "95%", your updated_text MUST include "95%"
+- If original has "team of 3", your updated_text MUST include "3" or "team of 3"
+- If original has "1,500+", your updated_text MUST include "1,500+"
+- If original has "70% and 30%", your updated_text MUST include BOTH "70%" AND "30%"
+- ONLY change words AROUND the numbers, NEVER remove the numbers!
+
+EXAMPLES:
+✅ GOOD: "Led team of 3 to design RAG engine" → "Led team of 3 building RAG engine for document analysis"
+✅ GOOD: "70% expanded query + 30% RAG" → "hybrid approach (70% query expansion + 30% RAG retrieval)"
+❌ BAD: "Led team of 3" → "Led cross-functional team" (REMOVED the number 3!)
+❌ BAD: "70% expanded + 30% RAG" → "hybrid retrieval pipeline" (REMOVED both percentages!)
+
+Other Constraints:
 - No generic phrases (e.g., demonstrating, showcasing, ability to)
 - No newlines, bullets, or headers
 - Make concrete, job-relevant improvements using the job description
@@ -451,8 +1001,18 @@ JOB DESCRIPTION:
     except Exception:
         return []
 
-def apply_json_replacements_to_doc(docs_service, document_id, replacements_json, resume_text=None, job_description_text=None, keep_tags_literal=None):
-    """Applies text replacements from JSON to Google Doc while preserving all formatting."""
+def apply_json_replacements_to_doc(docs_service, document_id, replacements_json, resume_text=None, job_description_text=None, keep_tags_literal=None, line_metadata=None):
+    """Applies text replacements from JSON to Google Doc while preserving all formatting.
+
+    Args:
+        docs_service: Google Docs API service
+        document_id: Document ID to apply replacements to
+        replacements_json: JSON string with replacements
+        resume_text: Optional original resume text for regeneration
+        job_description_text: Optional job description for regeneration
+        keep_tags_literal: Optional flag to keep HTML tags visible
+        line_metadata: Optional line metadata for character limit validation
+    """
     try:
         # Parse the JSON response from Gemini
         try:
@@ -464,25 +1024,35 @@ def apply_json_replacements_to_doc(docs_service, document_id, replacements_json,
             elif json_text.startswith('```'):
                 # Handle generic code blocks
                 json_text = json_text.replace('```', '').strip()
-            
+
             replacements_data = json.loads(json_text)
             replacements = replacements_data.get('replacements', [])
+
+            # Extract line tracking info if present
+            lines_added = replacements_data.get('lines_added', 0)
+            lines_freed = replacements_data.get('lines_freed', 0)
+            net_lines = replacements_data.get('net_lines', 0)
+
+            if net_lines > 0:
+                print(f"📊 Line budget tracking: Added {lines_added}, Freed {lines_freed}, Net {net_lines}")
+
         except json.JSONDecodeError as e:
             print(f"Error parsing JSON response: {e}")
             print(f"Raw response: {replacements_json}")
             return
-        
+
         if not replacements:
             print("No replacements needed - resume is already well-tailored!")
             return
-        
+
         print(f"Found {len(replacements)} text replacements from model")
 
-        # Validate and regenerate invalid items
+        # Validate and regenerate invalid items with SAFETY MARGINS
         client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-        valid, invalid = _validate_replacements(replacements)
+        safety_margin = float(os.getenv('REPLACEMENT_SAFETY_MARGIN', '0.5'))  # Default 50% of buffer
+        valid, invalid = _validate_replacements(replacements, line_metadata=line_metadata, safety_margin=safety_margin)
         
-        print(f"🔍 Validation Results: {len(valid)} valid, {len(invalid)} invalid replacements")
+        print(f"🔍 Validation Results: {len(valid)} valid, {len(invalid)} invalid replacements (safety margin: {int(safety_margin*100)}%)")
         
         if invalid:
             print(f"⚠️  Invalid items detected:")
@@ -508,6 +1078,37 @@ def apply_json_replacements_to_doc(docs_service, document_id, replacements_json,
         if not valid:
             print("No valid replacements after validation. Aborting.")
             return
+
+        # Score and prioritize replacements (best first)
+        print(f"\n📊 Scoring and prioritizing {len(valid)} valid replacements...")
+        scored_replacements = []
+        for rep in valid:
+            score = score_replacement(rep, line_metadata)
+            if score >= 0:  # Only include non-negative scores
+                scored_replacements.append({
+                    'replacement': rep,
+                    'score': score
+                })
+        
+        # Sort by score (highest first)
+        scored_replacements.sort(key=lambda x: x['score'], reverse=True)
+        
+        # Limit number of replacements to reduce risk
+        max_replacements = int(os.getenv('MAX_REPLACEMENTS_PER_ITERATION', '5'))
+        if len(scored_replacements) > max_replacements:
+            print(f"⚠️  Limiting to top {max_replacements} replacements (from {len(scored_replacements)}) to minimize overflow risk")
+            scored_replacements = scored_replacements[:max_replacements]
+        
+        # Show prioritized list
+        print(f"📋 Prioritized replacements (top {len(scored_replacements)}):")
+        for i, item in enumerate(scored_replacements, 1):
+            rep = item['replacement']
+            score = item['score']
+            orig_preview = rep['original_text'][:40]
+            print(f"  {i}. Score {score:.1f}: '{orig_preview}...'")
+        
+        # Extract just the replacements
+        valid = [item['replacement'] for item in scored_replacements]
 
         # Read doc plain text to count occurrences (use plain version for matching)
         document = docs_service.documents().get(documentId=document_id).execute()
@@ -548,30 +1149,28 @@ def apply_json_replacements_to_doc(docs_service, document_id, replacements_json,
                     })
                     print(f"Queued literal-tag replace for: '{plain_original_text[:60]}...'")
                 else:
-                    # Tag-first flow: insert updated_text with literal tags, then apply styles from tags, then strip tags
+                    # ALWAYS use plain text (no tags) in replaceAllText
+                    api_requests.append({
+                        'replaceAllText': {
+                            'containsText': {
+                                'text': plain_original_text,
+                                'matchCase': True
+                            },
+                            'replaceText': plain_updated_text
+                        }
+                    })
+
+                    # Store formatting info if there are style ranges
                     if style_ranges:
-                        api_requests.append({
-                            'replaceAllText': {
-                                'containsText': {
-                                    'text': plain_original_text,
-                                    'matchCase': True
-                                },
-                                'replaceText': updated_text
-                            }
+                        marker_specs_all.append({
+                            'text': plain_updated_text,
+                            'style_ranges': style_ranges
                         })
-                        # We will not create markers here; tags will be parsed from the doc itself post-replace
-                        print(f"Queued tag-first replace for: '{plain_original_text[:60]}...' with {len(style_ranges)} style ranges")
+                        print(f"Queued plain replace for: '{plain_original_text[:60]}...' (with {len(style_ranges)} style ranges)")
+                        print(f"  → Will format: '{plain_updated_text[:60]}...'")
+                        print(f"  → Updated text (with tags): '{updated_text[:80]}...'")
+                        print(f"  → Style ranges: {style_ranges}")
                     else:
-                        # No styles, plain replacement
-                        api_requests.append({
-                            'replaceAllText': {
-                                'containsText': {
-                                    'text': plain_original_text,
-                                    'matchCase': True
-                                },
-                                'replaceText': plain_updated_text
-                            }
-                        })
                         print(f"Queued plain replace for: '{plain_original_text[:60]}...'")
             elif count == 0:
                 # Attempt a normalized check to warn about unicode issues (no replacement applied)
@@ -584,7 +1183,7 @@ def apply_json_replacements_to_doc(docs_service, document_id, replacements_json,
 
         print(f"Applying {len(api_requests)} replaceAllText operations")
 
-        # Apply text replacements first in batches [[memory:5605113]]
+        # Apply text replacements in batches (preserving existing formatting)
         batch_size = 10
         for i in range(0, len(api_requests), batch_size):
             batch = api_requests[i:i + batch_size]
@@ -595,16 +1194,205 @@ def apply_json_replacements_to_doc(docs_service, document_id, replacements_json,
                 ).execute()
                 print(f"Applied batch {i//batch_size + 1}")
 
-        # Apply styling
-        if keep_tags_literal:
-            print("KEEP_TAGS_LITERAL=true: Applying style from literal tags and keeping tags visible.")
-            _apply_styles_from_tags(docs_service, document_id, strip_tags=False)
-        else:
-            # Prefer tag-first flow if any tags exist in the current doc after replacement
-            # We'll attempt tag-based styling/stripping; if there are no tags, nothing will happen
-            _apply_styles_from_tags(docs_service, document_id, strip_tags=True)
+        print("✓ Text replacements applied successfully")
 
-        print("✓ Text replacements applied with replaceAllText while preserving formatting!")
+        # Now apply formatting if we have marker specs
+        if marker_specs_all:
+            print(f"\n🎨 Applying bold/italic formatting using Google Docs API structure...")
+            print(f"📋 Debug: marker_specs_all contains {len(marker_specs_all)} items:")
+            for i, spec in enumerate(marker_specs_all):
+                print(f"  {i+1}. Text: '{spec['text'][:60]}...'")
+                print(f"      Style ranges: {spec['style_ranges']}")
+            time.sleep(1)  # Wait for replacements to settle
+
+            # Re-read the document to get the updated structure
+            doc_after_replace = docs_service.documents().get(documentId=document_id).execute()
+            print(f"🔍 Debug: doc_after_replace keys: {doc_after_replace.keys()}")
+            body = doc_after_replace.get('body', {})
+            print(f"🔍 Debug: body keys: {body.keys() if body else 'None'}")
+            content_after = body.get('content', [])
+            print(f"🔍 Debug: content_after type: {type(content_after)}, length: {len(content_after)}")
+
+            format_requests = []
+
+            # Build complete document text with index mapping
+            # Text can span multiple textRuns, so we need to reconstruct the full text
+            # We manually track the cumulative index since startIndex may not be present after replacements
+            doc_text_parts = []
+            cumulative_index = 1  # Google Docs uses 1-based indexing
+            
+            print(f"🔍 Debug: content_after has {len(content_after)} elements")
+            for idx, element in enumerate(content_after):
+                if 'paragraph' in element:
+                    para = element['paragraph']
+                    para_elements = para.get('elements', [])
+                    if idx < 5:  # Only show first 5 for brevity
+                        print(f"🔍 Debug: Element {idx} is paragraph with {len(para_elements)} elements")
+                    for elem in para_elements:
+                        if 'textRun' in elem:
+                            text_run = elem['textRun']
+                            content = text_run.get('content', '')
+                            # Use provided startIndex if available, otherwise use our cumulative tracker
+                            start_index = text_run.get('startIndex')
+                            if start_index is None:
+                                start_index = cumulative_index
+                            
+                            if idx < 5 and len(doc_text_parts) < 10:  # Only show first few
+                                print(f"🔍 Debug: Found textRun with startIndex={start_index}, content[:30]='{content[:30]}'")
+                            
+                            doc_text_parts.append({
+                                'content': content,
+                                'start_index': start_index
+                            })
+                            
+                            # Update cumulative index for next textRun
+                            cumulative_index = start_index + len(content)
+            
+            print(f"🔍 Debug: Collected {len(doc_text_parts)} text parts")
+
+            # Reconstruct full document text
+            full_doc_text = ''.join([part['content'] for part in doc_text_parts])
+
+            print(f"\n🔍 Debug: Full document text length: {len(full_doc_text)}")
+            print(f"🔍 Debug: First 200 chars: '{full_doc_text[:200]}'")
+
+            for spec in marker_specs_all:
+                target_text = spec['text']
+                style_ranges = spec['style_ranges']
+
+                # Search for target text in full document
+                text_position = full_doc_text.find(target_text)
+                if text_position == -1:
+                    print(f"⚠️  Could not find text to format: '{target_text[:50]}...'")
+                    # Debug: show where we're searching
+                    print(f"   🔍 Debug: Searching for text with length {len(target_text)}")
+                    print(f"   🔍 Debug: First 100 chars of target: '{target_text[:100]}'")
+                    # Try partial match
+                    if target_text[:30] in full_doc_text:
+                        print(f"   ✓ Found first 30 chars in document!")
+                        pos = full_doc_text.find(target_text[:30])
+                        print(f"   Context: ...{full_doc_text[max(0,pos-20):pos+80]}...")
+                    else:
+                        print(f"   ✗ Not even first 30 chars found in document")
+                    continue
+
+                # Find the Google Docs startIndex for this position
+                # Walk through doc_text_parts to find which textRun contains this position
+                cumulative_length = 0
+                found_start_index = None
+
+                for part in doc_text_parts:
+                    part_length = len(part['content'])
+                    if cumulative_length <= text_position < cumulative_length + part_length:
+                        # Found the textRun containing the start of our text
+                        offset_in_run = text_position - cumulative_length
+                        found_start_index = part['start_index'] + offset_in_run
+                        break
+                    cumulative_length += part_length
+
+                if found_start_index is None:
+                    print(f"⚠️  Could not determine document index for: '{target_text[:50]}...'")
+                    continue
+
+                # Apply each style range within this text
+                for style_range in style_ranges:
+                    range_start = found_start_index + style_range['start']
+                    range_end = found_start_index + style_range['end']
+                    
+                    # Extract the text to be formatted
+                    text_to_format = target_text[style_range['start']:style_range['end']]
+
+                    if style_range['bold']:
+                        # Check if text starts with numeric data (digits, percentages, etc.)
+                        # Google Docs API has issues recognizing digits, so we shift the start index
+                        # Example: "95%" → shift by 3, "~80%" → shift by 4, "1500+" → shift by 5
+                        numeric_match = re.match(r'^[~]?\d+[+%kKmMbB]?\s*', text_to_format)
+                        
+                        if numeric_match:
+                            # Shift start index by the length of numeric portion
+                            numeric_length = len(numeric_match.group(0))
+                            adjusted_range_start = range_start + numeric_length
+                            
+                            # Only apply if there's text remaining after the numeric part
+                            if adjusted_range_start < range_end:
+                                format_requests.append({
+                                    'updateTextStyle': {
+                                        'range': {
+                                            'startIndex': adjusted_range_start,
+                                            'endIndex': range_end
+                                        },
+                                        'textStyle': {'bold': True},
+                                        'fields': 'bold'
+                                    }
+                                })
+                                print(f"  Bold (shifted +{numeric_length} for digits): '{text_to_format}' → applying to chars after '{numeric_match.group(0).strip()}' at [{adjusted_range_start}, {range_end})")
+                            else:
+                                print(f"  Skipped bold (text is only numeric): '{text_to_format}' (no text after digits to format)")
+                        else:
+                            # No numeric prefix, apply bold normally
+                            format_requests.append({
+                                'updateTextStyle': {
+                                    'range': {
+                                        'startIndex': range_start,
+                                        'endIndex': range_end
+                                    },
+                                    'textStyle': {'bold': True},
+                                    'fields': 'bold'
+                                }
+                            })
+                            print(f"  Bold: '{text_to_format}' at [{range_start}, {range_end})")
+
+                    if style_range['italic']:
+                        # Same workaround for italic with numeric prefixes
+                        numeric_match = re.match(r'^[~]?\d+[+%kKmMbB]?\s*', text_to_format)
+                        
+                        if numeric_match:
+                            # Shift start index by the length of numeric portion
+                            numeric_length = len(numeric_match.group(0))
+                            adjusted_range_start = range_start + numeric_length
+                            
+                            # Only apply if there's text remaining after the numeric part
+                            if adjusted_range_start < range_end:
+                                format_requests.append({
+                                    'updateTextStyle': {
+                                        'range': {
+                                            'startIndex': adjusted_range_start,
+                                            'endIndex': range_end
+                                        },
+                                        'textStyle': {'italic': True},
+                                        'fields': 'italic'
+                                    }
+                                })
+                                print(f"  Italic (shifted +{numeric_length} for digits): '{text_to_format}' at [{adjusted_range_start}, {range_end})")
+                            else:
+                                print(f"  Skipped italic (text is only numeric): '{text_to_format}' (no text after digits to format)")
+                        else:
+                            format_requests.append({
+                                'updateTextStyle': {
+                                    'range': {
+                                        'startIndex': range_start,
+                                        'endIndex': range_end
+                                    },
+                                    'textStyle': {'italic': True},
+                                    'fields': 'italic'
+                                }
+                            })
+                            print(f"  Italic: '{text_to_format}' at [{range_start}, {range_end})")
+
+            # Apply all formatting requests
+            if format_requests:
+                batch_size = 10
+                for i in range(0, len(format_requests), batch_size):
+                    batch = format_requests[i:i + batch_size]
+                    docs_service.documents().batchUpdate(
+                        documentId=document_id,
+                        body={'requests': batch}
+                    ).execute()
+                print(f"✅ Applied {len(format_requests)} formatting operations")
+            else:
+                print("No formatting to apply")
+        else:
+            print("No formatting specified")
         
     except HttpError as error:
         print(f"An error occurred while applying changes: {error}")
@@ -623,42 +1411,117 @@ def download_doc_as_pdf(drive_service, doc_id, pdf_path):
     except HttpError as error:
         print(f"An error occurred during PDF download: {error}")
 
-def tailor_resume(resume_text, job_description):
+def tailor_resume(resume_text, job_description, line_metadata=None, line_budget=None, keywords=None):
+    """Enhanced resume tailoring with format preservation and keyword optimization.
+
+    Args:
+        resume_text: Original resume text (possibly annotated with metadata)
+        job_description: Job description text
+        line_metadata: Optional line metadata from extract_document_structure
+        line_budget: Optional line budget from calculate_line_budget
+        keywords: Optional keywords from extract_job_keywords
+    """
     client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-    prompt = f"""
-You are an expert resume writer specializing in tailoring resumes for specific job applications.
+    # Build format constraints section
+    format_constraints = ""
+    if line_budget:
+        format_constraints = f"""
+FORMAT PRESERVATION CONSTRAINTS (CRITICAL - MUST FOLLOW):
+- Current resume: {line_budget['current_visual_lines']} visual lines (some paragraphs wrap to multiple lines)
+- Available lines to add: {line_budget['available_lines']} (STRICT: DO NOT EXCEED)
+- Each paragraph shows [char_buffer=X, visual_lines=Y]
+  * char_buffer: MAX characters you can ADD before causing text to wrap to next line
+  * visual_lines: How many lines this paragraph currently spans
+- Example: "Led team [char_buffer=10, visual_lines=1]" → Can add up to 10 chars
+- DO NOT remove or reduce quantified data (numbers, percentages, metrics)
+  * WRONG: "Improved performance by 40%" → "Improved performance significantly"
+  * RIGHT: "Improved performance by 40%" → "Optimized performance by 40%"
+- PRESERVE original resume length - if it was 1 page, keep it 1 page
+- Text that naturally wraps is ONE paragraph - don't treat wrapped lines as separate items
+"""
 
-Your task: Analyze the resume and job description, then suggest ONLY high-quality, strategic text replacements that will better align the resume with the job requirements.
+    # Build keyword prioritization section
+    keyword_section = ""
+    if keywords:
+        required_skills_str = ", ".join(keywords.get('required_skills', []))
+        key_themes_str = ", ".join(keywords.get('key_themes', []))
+        prioritized_str = ", ".join(keywords.get('prioritized_keywords', [])[:10])  # Top 10
 
-QUALITY STANDARDS:
-- Only suggest replacements that significantly improve job relevance
-- Keep the professional tone and avoid repetitive phrases
-- Incorporate specific keywords from the job description naturally
-- DO NOT add generic phrases like "showcasing ability to..." or "demonstrating..."
-- DO NOT modify headers, section titles, or contact information
-- Focus on concrete improvements that highlight relevant skills/experience
+        keyword_section = f"""
+KEYWORD OPTIMIZATION STRATEGY:
+- REQUIRED SKILLS TO EMPHASIZE: {required_skills_str}
+- KEY THEMES TO HIGHLIGHT: {key_themes_str}
+- TOP PRIORITY KEYWORDS: {prioritized_str}
 
-TECHNICAL REQUIREMENTS:
-- "original_text" must be EXACT text from the resume (word-for-word match)
-- Do not include bullet points, formatting, or section headers
-- Only replace complete sentences or meaningful phrases
-- Maximum 5-8 strategic replacements for best results
-- You can use <b>text</b> for bold and <i>text</i> for italic styling in updated_text if needed or matches the style of original_text.
+STRATEGIC PLACEMENT:
+- Place content matching required skills and key themes EARLY in relevant sections
+- If job emphasizes "leadership", move leadership accomplishments to TOP of experience bullets
+- If job needs "Python", ensure Python experience appears prominently
+- Reorder bullets within sections to showcase most relevant achievements first
+- Use exact keywords from the job description when replacing text
+"""
 
+    prompt = f"""Tailor this resume for the job while preserving formatting. Make strategic replacements using job keywords.
 
+CRITICAL RULES - QUANTIFIED DATA PRESERVATION:
+⚠️  NEVER REMOVE OR MODIFY ANY NUMBERS, PERCENTAGES, OR METRICS!
+- If original says "95%", your replacement MUST contain "95%"
+- If original says "team of 3", your replacement MUST contain "3" or "team of 3"
+- If original says "1,500+ documents", your replacement MUST contain "1,500+"
+- If original says "70% expanded query + 30% RAG", KEEP ALL NUMBERS: "70%", "30%"
+- Only change the WORDS AROUND the numbers, NEVER the numbers themselves
 
-Return your response in this JSON format:
+EXAMPLES OF CORRECT QUANTIFIED DATA PRESERVATION:
+✅ GOOD: "Improved accuracy by 95% through automation" → "Enhanced accuracy by 95% via data analysis"
+✅ GOOD: "Led team of 3 engineers" → "Managed team of 3 developing solutions"
+✅ GOOD: "Processed 1,500+ documents" → "Analyzed 1,500+ documents for insights"
+✅ GOOD: "70% expanded + 30% RAG" → "hybrid pipeline (70% query expansion + 30% RAG)"
+
+❌ BAD: "Improved accuracy by 95%" → "Significantly improved accuracy" (REMOVED 95%)
+❌ BAD: "Led team of 3" → "Led cross-functional team" (REMOVED 3)
+❌ BAD: "70% expanded + 30% RAG" → "hybrid retrieval approach" (REMOVED percentages)
+
+OTHER CRITICAL RULES:
+- Use EXACT text matches from resume (ignore [metadata] annotations)
+- Respect char_buffer limits (max chars you can add per line)
+- No generic phrases, headers, or contact info changes
+- Use <b> and <i> tags for styling if needed
+- Max 8-10 high-impact replacements
+
+{format_constraints}
+
+{keyword_section}
+
+WHAT YOU CAN CHANGE (examples using job keywords):
+✅ "Developed web applications" → "Built data analysis dashboards" (aligns with Data Scientist role)
+✅ "Created automation tools" → "Designed experimentation frameworks" (emphasizes experimentation)
+✅ "Improved system performance" → "Enhanced product performance through data-driven insights"
+✅ "Analyzed user data" → "Investigated user behavior patterns to guide product decisions"
+
+WHAT YOU CANNOT CHANGE:
+❌ Any numbers, percentages, metrics (95%, 3, 1500+, 70%, $100K, 5 years, etc.)
+❌ Headers (PROFILE, EDUCATION, EXPERIENCE)
+❌ Contact information
+❌ Company names, job titles, dates
+
+CHARACTER LIMIT EXAMPLES:
+Good: "Developed web apps [char_buffer=12]" → "Developed React apps" (+6 chars, under limit)
+Bad: "Managed team [char_buffer=5]" → "Managed cross-functional team" (+20 chars - EXCEEDS limit!)
+
+JSON FORMAT:
 {{
     "replacements": [
         {{
-            "original_text": "exact text from resume to replace",
-            "updated_text": "improved version with job-relevant keywords"
+            "original_text": "exact text from resume",
+            "updated_text": "improved version with keywords",
+            "reason": "why this improves fit"
         }}
-    ]
+    ],
+    "lines_added": 0,
+    "lines_freed": 0,
+    "net_lines": 0
 }}
-
-If the resume already aligns well, return fewer high-impact replacements rather than many minor ones.
 
 RESUME:
 {resume_text}
@@ -666,12 +1529,178 @@ RESUME:
 JOB DESCRIPTION:
 {job_description}
 """
+
+    try:
+        # Increase timeout for complex tailoring operations
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt
+        )
+        return response.candidates[0].content.parts[0].text
+    except Exception as e:
+        print(f"Error during AI tailoring: {e}")
+        # Return empty replacements on error
+        return json.dumps({"replacements": [], "lines_added": 0, "lines_freed": 0, "net_lines": 0})
+
+def iterative_tailor_with_verification(docs_service, drive_service, copied_doc_id, original_doc_id, 
+                                        original_resume_text, original_resume_text_plain, 
+                                        job_description, line_metadata, line_budget, keywords,
+                                        max_iterations=3):
+    """Iteratively tailor resume with verification and rollback capability.
     
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=prompt
-    )
-    return response.candidates[0].content.parts[0].text
+    This function will:
+    1. Apply tailoring changes
+    2. Verify document length
+    3. If overflow detected, restore from backup and retry with stricter constraints
+    4. Repeat until success or max iterations reached
+    
+    Returns:
+        Dictionary with:
+        - success: True if tailoring succeeded without overflow
+        - iterations: Number of iterations performed
+        - final_length: Final document length in visual lines
+        - final_doc_id: Final document ID (may change during rollback)
+    """
+    original_visual_lines = line_budget['current_visual_lines']
+    
+    # Create a backup by copying the document again (for rollback)
+    print(f"\n🔄 Starting iterative tailoring (max {max_iterations} iterations)...")
+    print(f"📏 Original document: {original_visual_lines} visual lines (strict limit)")
+    
+    for iteration in range(1, max_iterations + 1):
+        print(f"\n{'='*60}")
+        print(f"ITERATION {iteration}/{max_iterations}")
+        print(f"{'='*60}")
+        
+        # Calculate safety margin for this iteration (more conservative each time)
+        # Iteration 1: 50%, Iteration 2: 40%, Iteration 3: 30%
+        safety_margin = max(0.3, 0.6 - (iteration - 1) * 0.1)
+        max_replacements = max(3, 6 - iteration)  # Fewer replacements each iteration
+        
+        # Set environment variables for this iteration
+        os.environ['REPLACEMENT_SAFETY_MARGIN'] = str(safety_margin)
+        os.environ['MAX_REPLACEMENTS_PER_ITERATION'] = str(max_replacements)
+        
+        print(f"⚙️  Iteration settings: safety_margin={int(safety_margin*100)}%, max_replacements={max_replacements}")
+        
+        # Get tailoring suggestions
+        print(f"\n📝 Getting tailoring suggestions (iteration {iteration})...")
+        annotated_resume_text = annotate_resume_with_metadata(original_resume_text, line_metadata)
+        
+        replacements_json = tailor_resume(
+            annotated_resume_text,
+            job_description,
+            line_metadata=line_metadata,
+            line_budget=line_budget,
+            keywords=keywords
+        )
+        
+        # Before applying, create a backup of current state
+        print(f"💾 Creating backup before applying changes...")
+        backup_doc_id = copy_google_doc(
+            drive_service,
+            copied_doc_id,
+            f"BACKUP_ITER{iteration}_{uuid.uuid4().hex[:8]}"
+        )
+        
+        # Apply changes
+        print(f"🔧 Applying tailoring changes...")
+        apply_json_replacements_to_doc(
+            docs_service,
+            copied_doc_id,
+            replacements_json,
+            original_resume_text,
+            job_description,
+            line_metadata=line_metadata
+        )
+        
+        # Verify document length
+        print(f"\n📏 Verifying document length...")
+        time.sleep(2)  # Wait for changes to settle
+        verification = verify_document_length(docs_service, copied_doc_id, original_visual_lines, tolerance=0)
+        
+        print(f"📊 Length verification:")
+        print(f"   Original: {verification['original_visual_lines']} lines")
+        print(f"   Current:  {verification['current_visual_lines']} lines")
+        print(f"   Limit:    {verification['max_allowed_lines']} lines")
+        
+        if verification['within_limit']:
+            print(f"✅ SUCCESS! Document is within page limit.")
+            # Clean up backup
+            try:
+                drive_service.files().delete(fileId=backup_doc_id).execute()
+                print(f"🗑️  Backup deleted")
+            except:
+                pass
+            
+            return {
+                'success': True,
+                'iterations': iteration,
+                'final_length': verification['current_visual_lines'],
+                'overflow_lines': 0,
+                'final_doc_id': copied_doc_id
+            }
+        else:
+            # Overflow detected - rollback
+            overflow = verification['overflow_lines']
+            print(f"❌ OVERFLOW DETECTED! Document exceeded limit by {overflow} lines.")
+            
+            if iteration < max_iterations:
+                print(f"🔄 Rolling back changes and retrying with stricter constraints...")
+                
+                # Simple approach: just use the original document again
+                # Delete the overflowing copy and create a fresh one
+                try:
+                    drive_service.files().delete(fileId=copied_doc_id).execute()
+                    print(f"🗑️  Deleted overflowing document")
+                    
+                    # Create fresh copy from original
+                    copied_doc_id = copy_google_doc(
+                        drive_service,
+                        original_doc_id,
+                        f"Retry_{iteration+1}_{uuid.uuid4().hex[:6]}"
+                    )
+                    print(f"✅ Rollback successful - created fresh copy")
+                except Exception as e:
+                    print(f"⚠️  Rollback failed: {e}")
+                    # If rollback fails, we can't continue reliably
+                    return {
+                        'success': False,
+                        'iterations': iteration,
+                        'final_length': verification['current_visual_lines'],
+                        'overflow_lines': overflow,
+                        'final_doc_id': copied_doc_id
+                    }
+                
+                # Clean up backup
+                try:
+                    drive_service.files().delete(fileId=backup_doc_id).execute()
+                except:
+                    pass
+            else:
+                print(f"❌ Max iterations reached. Could not fit changes within page limit.")
+                # Clean up backup
+                try:
+                    drive_service.files().delete(fileId=backup_doc_id).execute()
+                except:
+                    pass
+                
+                return {
+                    'success': False,
+                    'iterations': iteration,
+                    'final_length': verification['current_visual_lines'],
+                    'overflow_lines': overflow,
+                    'final_doc_id': copied_doc_id
+                }
+    
+    # Should not reach here, but just in case
+    return {
+        'success': False,
+        'iterations': max_iterations,
+        'final_length': original_visual_lines,
+        'overflow_lines': 0,
+        'final_doc_id': copied_doc_id
+    }
 
 def tailor_resume_and_return_url(original_resume_url, job_description, job_title, company, credentials=None):
     """Tailor resume and return publicly accessible Google Doc URL
@@ -708,24 +1737,123 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
         if not copied_doc_id:
             raise ValueError("Could not copy the Google Doc")
 
-        # Read content from the ORIGINAL document
+        # Read content from the ORIGINAL document (optimize by getting document once)
         print("Reading original resume from Google Docs...")
-        original_resume_text = read_google_doc_content(docs_service, original_doc_id)
-        if original_resume_text is None:
-            raise ValueError("Could not read content from the original Google Doc")
-        
-        # Also get plain text version for internal operations
-        document = docs_service.documents().get(documentId=original_doc_id).execute()
-        original_resume_text_plain = read_structural_elements_plain(document.get('body').get('content'))
-        
-        # Get tailoring suggestions from Gemini
-        print("Getting tailoring suggestions from Gemini...")
-        replacements_json = tailor_resume(original_resume_text, job_description)
-        print("Tailoring suggestions received successfully.")
+        try:
+            document = docs_service.documents().get(documentId=original_doc_id).execute()
+        except Exception as e:
+            raise ValueError(f"Could not read the Google Doc: {e}")
 
-        # Apply JSON-based replacements to the COPIED document
-        print("Applying tailoring changes to the copied document...")
-        apply_json_replacements_to_doc(docs_service, copied_doc_id, replacements_json, original_resume_text, job_description)
+        # Get both styled and plain text content from the same document
+        content = document.get('body', {}).get('content', [])
+        original_resume_text = read_structural_elements(content)
+        if not original_resume_text:
+            raise ValueError("Could not read content from the original Google Doc")
+
+        original_resume_text_plain = read_structural_elements_plain(content)
+
+        # Check if enhanced tailoring is enabled (can be disabled for faster processing)
+        use_enhanced_tailoring = os.getenv('USE_ENHANCED_TAILORING', 'true').lower() in ('1', 'true', 'yes')
+
+        if use_enhanced_tailoring:
+            print("Using enhanced tailoring with format preservation...")
+
+            # Extract document structure and metadata
+            print("Extracting document structure and formatting metadata...")
+            try:
+                line_metadata = extract_document_structure(docs_service, original_doc_id)
+                print(f"Extracted metadata for {len(line_metadata)} lines")
+
+                # Save metadata to file for debugging
+                metadata_debug_file = f"../Resumes/metadata_debug_{uuid.uuid4().hex[:8]}.json"
+                with open(metadata_debug_file, 'w', encoding='utf-8') as f:
+                    json.dump({
+                        'total_lines': len(line_metadata),
+                        'job_title': job_title,
+                        'company': company,
+                        'lines': line_metadata
+                    }, f, indent=2)
+                print(f"📄 Metadata saved to: {metadata_debug_file}")
+
+            except Exception as e:
+                print(f"Warning: Structure extraction failed ({e}), using basic tailoring")
+                use_enhanced_tailoring = False
+                line_metadata = None
+
+            if use_enhanced_tailoring and line_metadata:
+                # Calculate line budget (0 additional lines = strict page preservation)
+                line_budget = calculate_line_budget(line_metadata, max_additional_lines=0)
+                print(f"Line budget: {line_budget['current_paragraphs']} paragraphs, {line_budget['current_visual_lines']} visual lines")
+                print(f"⚠️  STRICT MODE: Resume length must stay exactly the same!")
+
+                # Extract keywords from job description (with timeout protection)
+                print("Extracting keywords from job description...")
+                try:
+                    keywords = extract_job_keywords(job_description)
+                    print(f"Extracted {len(keywords.get('prioritized_keywords', []))} prioritized keywords")
+                    if keywords.get('key_themes'):
+                        print(f"Key themes: {', '.join(keywords.get('key_themes', [])[:5])}")
+                except Exception as e:
+                    print(f"Warning: Keyword extraction failed, continuing without: {e}")
+                    keywords = None
+
+                # Annotate resume with metadata for AI guidance
+                print("Annotating resume with formatting constraints...")
+                annotated_resume_text = annotate_resume_with_metadata(original_resume_text, line_metadata)
+
+                # Save annotated resume for debugging
+                annotated_debug_file = f"../Resumes/annotated_resume_{uuid.uuid4().hex[:8]}.txt"
+                with open(annotated_debug_file, 'w', encoding='utf-8') as f:
+                    f.write("=== ANNOTATED RESUME (What Gemini Receives) ===\n\n")
+                    f.write(annotated_resume_text)
+                print(f"📄 Annotated resume saved to: {annotated_debug_file}")
+            else:
+                line_budget = None
+                keywords = None
+                annotated_resume_text = original_resume_text
+        else:
+            print("Using basic tailoring (set USE_ENHANCED_TAILORING=true for format preservation)...")
+            line_metadata = None
+            line_budget = None
+            keywords = None
+            annotated_resume_text = original_resume_text
+
+        # Use iterative tailoring with verification and rollback
+        print("🚀 Starting iterative tailoring with automatic verification...")
+        result = iterative_tailor_with_verification(
+            docs_service,
+            drive_service,
+            copied_doc_id,
+            original_doc_id,
+            original_resume_text,
+            original_resume_text_plain,
+            job_description,
+            line_metadata,
+            line_budget,
+            keywords,
+            max_iterations=3
+        )
+        
+        # Report results
+        if result['success']:
+            print(f"\n{'='*60}")
+            print(f"✅ TAILORING SUCCESSFUL!")
+            print(f"   Completed in {result['iterations']} iteration(s)")
+            print(f"   Final length: {result['final_length']} lines")
+            print(f"   Status: Within page limit ✓")
+            print(f"{'='*60}\n")
+        else:
+            print(f"\n{'='*60}")
+            print(f"⚠️  TAILORING COMPLETED WITH WARNINGS")
+            print(f"   Iterations performed: {result['iterations']}")
+            print(f"   Final length: {result['final_length']} lines")
+            print(f"   Overflow: {result['overflow_lines']} lines")
+            print(f"   Status: Exceeded page limit by {result['overflow_lines']} lines")
+            print(f"{'='*60}\n")
+            print(f"⚠️  Document may have exceeded page limit. Manual review recommended.")
+        
+        # Update copied_doc_id in case it changed during rollback
+        copied_doc_id = result.get('final_doc_id', copied_doc_id)
 
         # Make the document publicly accessible
         print("Making document publicly accessible...")
