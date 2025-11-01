@@ -1,0 +1,76 @@
+=== USER PROFILE INFORMATION FROM MIMIKREE ===
+
+Based on questions about the user's background, here are the relevant details:
+
+Q1: Describe your experience designing experiments and evaluating metrics to guide product decisions. Can you share a specific project where you improved a product based on data-driven insights? Include quantifiable results.
+A1: Hey there! While I don't have direct professional experience in *designing* experiments and *evaluating* metrics to guide product decisions *yet*, I can share how I've used a data-driven approach to improve projects.  
+
+For example, take my Mimikree project. I noticed that the initial response times were a bit slow, especially when handling complex queries. So, I started digging into the data. I began measuring query latency and pinpointed that the vector search in Pinecone and the API calls to Gemini 2.0 Flash were the bottlenecks. I experimented with different embedding optimization techniques and caching mechanisms. I also fine-tuned the hybrid retrieval strategy, balancing expanded query context and current query context.
+
+By optimizing custom embeddings and implementing efficient serverless backend, I was able to achieve a **40% reduction in query latency**. This made the AI assistant feel much more responsive and improved the overall user experience. 
+
+While this isn't exactly the same as A/B testing in a product setting, it gave me valuable experience in identifying areas for improvement and measuring the impact of changes. I'm eager to apply these skills in a real-world internship setting!
+
+Q2: Have you worked on any projects involving user behavior analysis and recommending product improvements that are not currently listed on your resume? What methodologies did you use and what were the key findings?
+A2: That's a great question! While it's not explicitly listed on my resume, I actually worked on a project during my undergrad that touched on user behavior analysis for product improvement. 
+
+It was a bit of a side project, but essentially, we were trying to improve the user experience of an open-source e-learning platform used by our college. We used a combination of methods:
+
+*   **Quantitative Analysis:** We used Google Analytics (with consent, of course!) to track how students were interacting with different features. We looked at things like drop-off rates in specific modules, time spent on certain pages, and click-through rates on various resources.
+*   **Qualitative Feedback:** We conducted user interviews and surveys to gather more in-depth insights into what students found challenging or confusing.
+*   **A/B Testing:** Based on our initial findings, we proposed several changes to the platform's interface and information architecture. We then used A/B testing to see which changes led to the greatest improvements in user engagement and satisfaction.
+
+Some key findings were:
+
+*   **Mobile Usability:** A significant portion of students accessed the platform on their phones, but the mobile experience was clunky. So, we had to propose improvements to the mobile responsiveness.
+*   **Content Discoverability:** Students had a hard time locating the resources they needed. Improving search functionality and reorganizing the content structure improved this experience.
+
+Overall, this project taught me a lot about combining different analytical approaches to identify user pain points and then using data to validate potential solutions. It was definitely a valuable experience!
+
+Q3: The job description mentions building models to understand behavior and growth. Describe your experience building and deploying such models. What tools or technologies did you use, and what were the measurable outcomes?
+A3: Hey there! So, regarding building models for behavior and growth, I can share a bit about how I've tackled similar challenges in my projects.
+
+In the "Automatic Infographic Generation for Medical Papers" project, our team developed a system that, in a way, models how readers process medical information. We used LLMs (T5 & BART) for abstractive summarization, aiming to mimic how experts extract key insights from dense text. The goal was to reduce the reading time, which we managed to cut down by 64%.
+
+Also, in my Mimikree project, the core idea is to model a person's communication style based on their digital footprint. By ingesting user content and using a hybrid retrieval strategy with Gemini 2.0 Flash, Mimikree attempts to predict and replicate how a user might respond in different contexts. While it's not exactly 'behavioral' in the traditional sense, it does involve creating a model that understands and mimics patterns.
+
+Tools-wise, I've mainly worked with Python, LLMs (GPT, LLaMA, BERT, T5), vector databases like Pinecone, and frameworks like Flask for deployment. The outcomes were generally measured in terms of accuracy (e.g., 82% accuracy in segmenting medical paper sections) and efficiency (e.g., 40% reduction in query latency in Mimikree).
+
+Q4: Have you developed any internal datasets, tools, or dashboards to make data more accessible to others? If so, can you describe one example, including the technologies used and the impact it had on the team or organization?
+A4: That's a great question! With Mimikree, I focused on making personalized AI models accessible and shareable. It's less of a traditional dashboard and more of a platform, but the goal is similar: democratizing access to AI that understands and reflects individual users. 
+
+Technically, Mimikree uses a Node.js backend with Express, a Flask framework for data processing, and a Pinecone vector database. User data is securely stored in MongoDB, and we use the Gemini Flash 2.0 API to generate those context-aware responses. The frontend is built with HTML, CSS, and JavaScript.
+
+The impact I was hoping for? To allow anyone to create a digital twin of themselves, making it easier to share their expertise and knowledge. I think of it as a tool that helps people scale themselves in the digital world. Check it out here: My Mimikree Model.
+
+Q5: Describe your experience with experimentation accuracy and velocity through new testing methodologies. What specific methodologies have you used, and how did you measure the improvements?
+A5: That's a great question! I've focused primarily on optimizing retrieval strategies and backend performance to boost both the accuracy and speed of AI systems, particularly in my project, Mimikree. 
+
+For Mimikree, I experimented with a hybrid retrieval strategy, blending expanded query and current query context. Quantitatively, this led to a 40% reduction in query latency. This was achieved through a combination of custom embedding optimization and a serverless backend. I measured the improvements by tracking query response times before and after implementing these optimizations.
+
+I also have experience with A/B testing in the context of user interface design and feature rollout. Although I don't have specific numerical data to share on that, the iterative process of testing variations and measuring user engagement was definitely insightful.
+
+Q6: What experience do you have with funnel research and critical metric analysis to explore growth opportunities? Can you share an example where this analysis led to a significant business impact? Please quantify the results.
+A6: Hey there! So, my experience with funnel research and critical metric analysis is primarily from my projects and coursework at UMD. While I haven't directly applied it in a formal business setting yet, I've used similar analytical approaches to optimize the performance of my AI projects.
+
+For instance, in my Mimikree project (the personalized AI assistant), I wasn't exactly doing 'funnel research,' but I was closely monitoring key metrics like query latency and response accuracy. I noticed significant latency issues when using the initial embedding model. By optimizing the embeddings and implementing a serverless backend, I managed to achieve a **40% reduction in query latency**. This wasn't a direct 'business impact' in terms of revenue, but it significantly improved the user experience and the overall efficiency of the AI assistant, which is a win in my book!
+
+I'm definitely eager to apply these skills in a more traditional business context during an internship!
+
+Q7: Detail your experience collaborating with engineers, product managers, and designers. Describe a project where you effectively communicated data insights to both technical and non-technical stakeholders, and the impact it had on their decisions.
+A7: Okay, so during my undergrad, I was part of a research team that collaborated with Data Science and Wizards Pvt Ltd. We built an AI system that automatically created infographics from medical papers. My role involved working closely with the data scientists there, as well as the other members of my research team, so I was in charge of communicating our progress and findings.
+
+One of the key things I did was regularly present our progress to both the technical folks and the non-technical stakeholders, like the product managers. I'd break down the complex stuff – like how our LSTM model was segmenting the medical paper sections with 82% accuracy, or how we were using LLMs to summarize the text – into easy-to-understand terms. For the non-technical people, I'd focus on the practical benefits, like how we managed to cut down medical paper reading time by 64%.
+
+By keeping everyone in the loop and making sure they understood the value of our work, we got some really useful feedback and buy-in. For example, one of the product managers suggested we focus on improving the figure extraction, which led us to refine our heuristic-driven system to achieve 90% accuracy in identifying figures, titles, and captions. That really boosted the overall impact of the tool.
+
+I also took the lead in setting up the GitHub repo and documenting our code, making it easier for everyone to contribute and understand what was going on. The whole project is available [here](https://github.com/automatic-infographics-system-for-medical-paper) if you want to check it out.
+
+Q8: The job mentions Figma's platform. Have you had experience with Figma or similar design and collaboration tools in a data analysis context? If so, describe how you've used them and any measurable improvements you achieved as a result.
+A8: Hey there! Thanks for asking about my experience with Figma. I've used Figma, particularly in collaborative projects, mainly for creating user interfaces and interactive prototypes. While I haven't directly used it in a hardcore data analysis context, I can see the huge potential in visualizing data-driven insights for broader audiences. 
+
+I've also used similar tools like Miro for brainstorming and collaborative design thinking sessions. These tools helped us streamline the design process and ensure everyone was on the same page regarding the user experience. Although I don't have specific metrics from using Figma in a data analysis context, the ability to visualize and iterate on designs quickly improved our overall project efficiency and team alignment.
+
+I'm eager to learn more about how Figma can be integrated into data analysis workflows, as I believe visual representation is key to communicating complex insights effectively!
+
+=== END OF USER PROFILE (8 relevant details) ===

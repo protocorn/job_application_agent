@@ -1,0 +1,70 @@
+=== USER PROFILE INFORMATION FROM MIMIKREE ===
+
+Based on questions about the user's background, here are the relevant details:
+
+Q1: Describe any experience you have designing and evaluating experiments to guide product decisions, including the specific metrics used and quantifiable improvements achieved.
+A1: Hey there! So, while I'm still a student and don't have extensive industry experience in formally designing and evaluating experiments *specifically* for guiding product decisions, I've definitely tackled similar challenges in my projects and coursework. 
+
+For example, in one of my machine learning projects, I was working on that recommendation system you see mentioned in the Stylvee Readme. To fine-tune the model and figure out the best approach for vectorization and cosine similarity, I had to run a bunch of tests. 
+
+I used metrics like **precision, recall, and F1-score** to evaluate the performance of different model configurations. I also tracked the **click-through rate** on recommended items when presenting options to users. The goal was to increase the click-through rate by at least 15% through improved recommendations, and after about 3 iterations, I got the click through rate to increase by 18%! These improvements were quantifiable since it directly reflected user engagement. I also measured the amount of time spent browsing similar items.
+
+Here's the Mimikree Flyer, which explains features of mimikree:
+
+https://res.cloudinary.com/dkyloeuir/image/upload/v1746068787/user_sahil_1746068785736.png
+This is a flyer explaining the features of Mimikree.
+
+Basically, my experience boils down to a strong understanding of experimental design principles and statistical analysis, which I’m really eager to apply in a more formal product-driven setting. Let me know if you have any other questions!
+
+Q2: What projects, even if not currently listed on your resume, demonstrate your ability to build models or conduct analyses to understand user behavior and growth?
+A2: That's a great question! While my resume highlights specific projects, I've also explored user behavior and growth in a few other areas. 
+
+*   **Personalized Recommendation Systems:** I experimented with building a movie recommendation system using collaborative filtering and content-based filtering techniques. Although it's not a formal project, I learned a lot about analyzing user ratings and preferences to predict what movies they might enjoy. 
+*   **Analyzing Social Media Engagement:** I've done some personal projects involving analyzing social media data (using public APIs, of course!) to understand trends in user engagement and content virality. It was fascinating to see how different factors influence what gets shared and how people interact with content online.
+
+These experiences, while not as structured as the projects on my resume, have given me valuable insights into how to build models and conduct analyses to understand user behavior and growth.
+
+Q3: Have you developed any tools, datasets, or dashboards that made data more accessible to others? Quantify the impact of these contributions, such as increased data usage or improved decision-making.
+A3: That's a great question! With Mimikree, I aimed to make personalized AI more accessible. The goal was to empower anyone to create their own AI model using their own data, making the tech more approachable and useful for everyday folks.
+
+While I don't have specific metrics on increased data usage or improved decision-making *yet*, the core idea was to democratize AI. By allowing users to create AI models tailored to their own information, Mimikree helps them access and leverage their data in a more intuitive way.
+
+I'm actively working on gathering feedback and usage data to better quantify the impact. Definitely stay tuned for updates!
+
+Q4: Describe your experience with A/B testing methodologies. How have you improved experimentation accuracy or velocity in previous projects?
+A4: Hey there! So, regarding A/B testing, it's something I've touched on in a few projects, although it wasn't always the primary focus. 
+
+I've been involved in projects where we tweaked models and features and then used A/B testing to see which version performed better with real users. For example, in the Mimikree project, while I didn't explicitly conduct formal A/B tests, the iterative process of refining the hybrid retrieval strategy was heavily driven by comparing the performance of different configurations. I played around with the weights for expanded vs. current query context in RAG, and used user feedback (informally) to guide the improvements and optimize response accuracy.
+
+In terms of improving accuracy or velocity, one thing I've found helpful is to really nail down the metrics you're tracking *before* you start. Defining clear, measurable goals upfront makes it easier to interpret the results and iterate quickly. Also, having a solid understanding of the underlying statistical principles helps in designing tests that are actually meaningful.
+
+I'm always looking to improve my skills in this area, so if you have any specific tips or resources you'd recommend, I'm all ears!
+
+Q5: Outline any projects where you investigated user behavior and recommended product improvements based on your findings. What specific data analysis techniques did you employ?
+A5: Hey there!
+
+So, regarding projects where I looked into user behavior and suggested product improvements, Stylvee is a prime example. In that project, I implemented a machine learning model that recommends similar items to users based on vectorization and cosine similarity. This was directly aimed at improving user engagement by providing personalized shopping experiences. 
+
+Specifically, the data analysis techniques I employed were:
+
+*   **Vectorization:** Converting product descriptions into numerical vectors to represent their features.
+*   **Cosine Similarity:** Calculating the cosine similarity between product vectors to identify items with similar characteristics. This helped in suggesting related products to users based on their browsing history and preferences.
+
+Let me know if you'd like more details!
+
+Q6: What is your experience collaborating with engineers, product managers, and designers to translate business questions into data problems and actionable insights?
+A6: That's a great question! I've had some cool opportunities to work with different teams throughout my projects and research. 
+
+For instance, when I was leading the research team for the automatic infographic generation project, I collaborated closely with Data Science and Wizards Pvt Ltd. It was awesome working with engineers, understanding their perspectives, and figuring out how to translate the business needs into actual data problems we could solve. We used LLMs and graph-based models to cut down the time it takes to read medical papers, which was a direct result of understanding the business question.
+
+Also, during the i.mobilothon 3.0 competition, I had to think about how our AI-powered vehicle safety system could address real-world challenges. This involved understanding the needs from a product perspective and figuring out the best way to integrate our tech for real-time weather alerts and collision avoidance. It's all about taking those big business questions and breaking them down into actionable insights that we can implement with data and AI. So, it's been a pretty hands-on learning experience for me!
+
+Q7: Have you worked with critical metric analysis and funnel research to explore growth opportunities? What were the key findings and resulting recommendations?
+A7: Hey there! As a student, I haven't had formal experience with critical metric analysis and funnel research in a professional setting just yet. My projects have been more focused on the development and deployment side of AI/ML. However, I'm definitely interested in learning more about growth opportunities through data analysis! It's something I'd love to dive deeper into as I gain more experience. Maybe we could chat about it sometime?
+
+Q8: Beyond what is currently listed, what skills or experiences do you possess that demonstrate your ability to contribute to data-driven decision-making at a company like Figma?
+A8: Hey there! While my resume highlights my technical skills, I've also honed my ability to translate data insights into actionable strategies. For instance, in my research on automated infographic generation, we didn't just aim for accuracy; we focused on how the visualizations could drastically cut down the time doctors spent understanding medical papers. That's a user-centric approach, similar to what Figma does. 
+
+I also have experience using data to understand user behavior from building Mimikree. Analyzing how users interacted with their personalized AI models gave me insights into user preferences and pain points, which helped refine the platform and optimize its performance. I would bring a similar data-driven and user focused lens to Figma!
+
+=== END OF USER PROFILE (8 relevant details) ===

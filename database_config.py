@@ -93,6 +93,7 @@ class UserProfile(Base):
 
     # Basic Information
     resume_url = Column(String)
+    cover_letter_template = Column(Text)  # Cover letter template (text or Google Doc URL)
     date_of_birth = Column(String)
     gender = Column(String)
     nationality = Column(String)

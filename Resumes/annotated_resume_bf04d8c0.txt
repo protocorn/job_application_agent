@@ -1,0 +1,52 @@
+=== ANNOTATED RESUME (What Gemini Receives) ===
+
+<b>Sahil Chordia [alignment=center, bullet_level=0, char_buffer=53, visual_lines=1]
+</b>College Park, MD | (240) 610-1453 | chordiasahil24@gmail.com | linkedin/in/sahil–chordia | github/protocorn 
+<b>PROFILE [alignment=center, bullet_level=0, char_buffer=59, visual_lines=1]
+</b><b>
+</b>AI/ML Engineer & Data Science M.S. candidate delivering AI-powered search and automation systems with 50–80% efficiency gains. Skilled in vector search, multimodal RAG, and production deployment. [alignment=left, bullet_level=0, char_buffer=3, visual_lines=3]
+<b>SKILLS [alignment=center, bullet_level=0, char_buffer=60, visual_lines=1]
+</b><b>
+</b>Python, JavaScript, TypeScript <b>| </b>PyTorch, TensorFlow, LangChain<b> |</b> React.js, Node.js, Express.js<b> |</b> MongoDB, PostgreSQL, Pinecone, FAISS, Qdrant<b> |</b> AWS, Docker, Git, Streamlit | Ollama, Gemini API, CLIP
+<b>
+</b><b>EDUCATION [alignment=center, bullet_level=0, char_buffer=57, visual_lines=1]
+</b><b>
+</b><b>University of Maryland | CGPA: 3.62	College Park, MD [alignment=left, bullet_level=0, char_buffer=14, visual_lines=1]
+</b>Master of Science in Data Science	August 2024 - May 2026 [alignment=left, bullet_level=0, char_buffer=10, visual_lines=1]
+<b>A.P. Shah Institute of Technology | CGPA: 3.52	Thane, MH [alignment=left, bullet_level=0, char_buffer=10, visual_lines=1]
+</b>Bachelor of Engineering in Computer Science	June 2020 - May 2024 [alignment=left, bullet_level=0, char_buffer=2, visual_lines=1]
+
+<b>WORK EXPERIENCE [alignment=center, bullet_level=0, char_buffer=51, visual_lines=1]
+</b><b>
+</b><b>Raising The Floor – </b><i>Nonprofit focused on accessibility technology</i><b>	Washington D.C (Remote)
+</b>AI Intern	June 2025 - August 2025 [alignment=left, bullet_level=0, char_buffer=33, visual_lines=1]
+Automated AT tool discovery via two-pass Gemini 2.0 Pro pipeline, cutting manual verification time by <b>50%
+</b>Resolved <b>95%</b> of detected dataset inconsistencies (mislabeled categories, duplicates, outdated entries) by automating enrichment workflows for a database of 300+ tools.
+Built an inclusive chatbot (Ollama Gemma2:9B), improving ambiguous query handling accuracy to <b>90%
+</b>Boosted search by integrating cosine similarity–based vector search (Qdrant) for AT tool recommendations. [alignment=left, bullet_level=1, char_buffer=10, visual_lines=2]
+Reduced QA cycles from days to under <b>2 hours</b> by developing reusable AI audit scripts.
+
+<b>PROJECTS [alignment=center, bullet_level=0, char_buffer=58, visual_lines=1]
+</b><b>
+</b><b>Mimikree - Personalized AI Assistant | </b>mimikree.com<b>	</b>February 2025 - Present
+Built an AI assistant that ingests diverse content (social media, PDFs, images) to generate personalized LLMs [alignment=left, bullet_level=1, char_buffer=6, visual_lines=2]
+Engineered a hybrid retrieval pipeline (70% expanded query + 30% original), improving RAG accuracy. [alignment=left, bullet_level=1, char_buffer=16, visual_lines=2]
+Integrated Gemini 2.0 Flash with Pinecone for dynamic vector search and real-time responses.<b> [alignment=left, bullet_level=1, char_buffer=23, visual_lines=2]
+</b><b>AI Document Generator – Capital Area Food Bank AI Challenge	</b>February 2025 - May 2025
+Led a team of 3 to design a RAG engine generating grant proposals, PPTs, & posts from <b>1,500+ documents.
+</b>Embedded text and images (CLIP model + Cloudinary) into Pinecone with metadata for multimodal retrieval. [alignment=left, bullet_level=1, char_buffer=11, visual_lines=2]
+Decreased revision time by <b>60%</b> through AI-assisted selective edits, full-document re-generation from a single prompt, and content suggestions with error detection.
+
+<b>Local Document Search Engine</b><b>	</b>March 2025 - May 2025
+Built privacy-first vector search (FAISS + Sentence Transformers) with intelligent code-aware chunking. [alignment=left, bullet_level=1, char_buffer=12, visual_lines=2]
+Reduced re-indexing time by <b>~80%</b> for large repos through caching and parallel indexing.
+Integrated Ollama Llama3:8B for query expansion, improving semantic relevance by<b> ~20%.
+</b>
+<b>PUBLICATIONS [alignment=center, bullet_level=0, char_buffer=54, visual_lines=1]
+</b><b>
+</b><b>Chordia, S. et al.</b> Cross-Domain Sentiment Analysis: An Extensive Study of Machine Learning and Deep Learning Models, Datasets, and Preprocessing Techniques for Predictive Performance. CSCT 2023,  Link.
+
+<b>ACHIEVEMENTS [alignment=center, bullet_level=0, char_buffer=54, visual_lines=1]
+</b><b>
+</b><b>Finalist (Top 3%)</b> – i.mobilothon 3.0, Volkswagen Group Technology Solution India (Nov 2023)
+<b>3rd Place</b> – Firefly Hackathon, NIT Warangal (Apr 2022)

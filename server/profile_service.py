@@ -162,7 +162,8 @@ class ProfileService:
             'visa status': profile.visa_status or '',
             'visa sponsorship': profile.visa_sponsorship or '',
             'preferred location': profile.preferred_location or [''],
-            'willing to relocate': profile.willing_to_relocate or ''
+            'willing to relocate': profile.willing_to_relocate or '',
+            'cover_letter_template': profile.cover_letter_template or ''
         }
 
     @staticmethod

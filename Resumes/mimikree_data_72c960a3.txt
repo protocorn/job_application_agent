@@ -1,0 +1,107 @@
+=== USER PROFILE INFORMATION FROM MIMIKREE ===
+
+Based on questions about the user's background, here are the relevant details:
+
+Q1: Describe your experience designing and evaluating experiments to guide product decisions, including the metrics you used and the impact on the product. What tools did you use for experimentation and statistical analysis?
+A1: Hey there! So, while my resume doesn't explicitly detail formal A/B testing experience in a product role, I've definitely applied experimental design and data analysis in other projects. For example, with my Mimikree project, I constantly tweaked the RAG pipeline to improve response accuracy and reduce latency.
+
+Specifically, I experimented with different hybrid retrieval strategies, like the 70% expanded query/30% current query context approach I used. To evaluate performance, I tracked metrics like:
+
+*   **Query Latency:** Measured the time taken to generate a response.
+*   **Response Accuracy:**  Assessed subjectively based on how well the response matched the user's intent and the provided context.
+
+I also experimented with different embedding optimizations and backend configurations to bring down that query latency, eventually achieving a 40% reduction. For analyzing the data, I relied on Python with libraries like Pandas and NumPy for statistical analysis and visualization to understand the impact of changes.
+
+For the Automatic Infographic Generation project, we measured the accuracy of section segmentation using an LSTM model, achieving 82% accuracy. We also tracked the accuracy of our heuristic-driven extraction system for figures, titles, and captions, reaching 90%.
+
+While I didn't use dedicated A/B testing platforms, I used a similar experimental approach, tracking key metrics and iterating based on the results. I'm eager to learn more about formal experimentation frameworks and apply them in a product-focused role!
+
+Q2: Have you ever built models or conducted analyses to understand user behavior and growth? If so, describe the problem, the data you used, the techniques you employed, and the resulting insights and their impact.
+A2: That's a great question! While my resume doesn't explicitly mention building user behavior models, my work on Mimikree actually involved quite a bit of implicit analysis in that area.
+
+The core problem Mimikree addresses is creating personalized AI models. To achieve this, I had to understand how users interact with their data and how that data could be used to generate meaningful and relevant responses. I gathered data from various sources:
+
+*   **User-provided data:** Social media profiles, self-assessment forms, uploaded PDFs, and images with captions.
+*   **Interaction data:** User queries and the AI's responses.
+
+I used a combination of techniques:
+
+*   **Natural Language Processing (NLP):** Analyzing the text data to extract key topics, sentiment, and writing style.
+*   **Vector Embeddings:** Converting text and images into vector representations to capture semantic meaning and similarity. This was crucial for Pinecone's vector search, ensuring the AI retrieved the most contextually relevant data for each query.
+*   **Prompt Engineering:** Carefully crafting the prompts sent to the Gemini Flash 2.0 API to guide the AI's response style and format.
+
+Some key insights that came out of this:
+
+*   **Hybrid Retrieval Works Best:** Combining expanded query and current query context improved RAG performance and response accuracy.
+*   **Personalization Matters:** Users greatly appreciated the AI's ability to adopt their unique voice and knowledge base.
+
+These insights directly impacted the design and functionality of Mimikree, making it a more personalized and engaging experience for users.
+
+Q3: The job description mentions 'building internal datasets and models'. Detail any experience you have creating datasets or models that have been used by product, marketing, or business teams, focusing on their purpose and the value they provided.
+A3: That's a great question! While working on my Mimikree project, I essentially built a system that creates personalized datasets and LLMs that could be used by various teams. The core idea was to allow users to upload their data (social media, PDFs, images) to train a personalized AI model.
+
+Here's how it relates to your question:
+
+*   **Purpose:** The primary purpose was to create a shareable and personalized AI that understands an individual's unique context and can respond in their style. For marketing or business teams, imagine using this to create AI models representing key stakeholders or even customers. This could help simulate responses to different strategies or understand customer preferences in a more nuanced way.
+
+*   **Dataset Creation:** The system automatically creates a dataset from the user's uploaded content, including text extraction, image captioning, and embedding generation. This dataset is then stored in a vector database (Pinecone) for efficient retrieval.
+
+*   **Model Building:** The system uses the generated dataset with Gemini 2.0 Flash API to generate context-aware responses. The hybrid retrieval strategy (expanded query + current context) further optimizes the RAG performance and response accuracy.
+
+*   **Value:** This project has reduced query latency by 40% and helped create a system that answers availability related queries accurately by syncing with Google Calendar to determine available time slots. I see potential for businesses to similarly train their own internal knowledge bases for customer service, internal support, or sales enablement.
+
+While Mimikree was primarily a solo project, the concepts and technologies used are directly applicable to building internal datasets and models for product, marketing, or business teams.
+
+Q4: Describe any projects where you investigated user behavior to recommend product improvements. Include the methods used for investigation, the recommendations you made, and any quantifiable results from those recommendations.
+A4: That's a great question! While my resume doesn't explicitly highlight projects focused on direct user behavior analysis for product improvements, my work on **Mimikree** involved significant investigation into user interaction to optimize the AI assistant's performance and personalization.
+
+Here's how it breaks down:
+
+*   **Investigation Methods:** I closely monitored user engagement with the AI assistant, paying attention to query patterns, the types of data users uploaded (social media, PDFs, etc.), and the frequency of interactions. A key aspect was analyzing the effectiveness of the hybrid retrieval strategy (70% expanded query, 30% current query context) by observing how well the generated responses matched user expectations and the relevance of the retrieved context.
+
+*   **Recommendations:** Based on these observations, I continuously tweaked the prompt engineering and the balance between expanded and current query context in the retrieval strategy. I also optimized the custom embedding process to reduce query latency, which directly improved the responsiveness of the AI assistant and user satisfaction.
+
+*   **Quantifiable Results:** I achieved a **40% reduction in query latency** through these optimizations. While I don't have specific metrics on direct product improvements tied to user behavior recommendations in a traditional A/B testing sense, the improved query latency directly translated to a smoother, more responsive user experience, encouraging more frequent and prolonged engagement with Mimikree.
+
+In summary, although my experience isn't a perfect match for your specific request, my work on Mimikree reflects a strong commitment to understanding user needs and iteratively improving AI system performance based on user interaction patterns. I am confident that I can apply these skills to user behavior analysis for product improvements in future roles.
+
+Q5: Do you have experience improving experimentation accuracy and velocity through new testing methodologies? If so, what methodologies did you use and what were the quantifiable improvements?
+A5: That's a great question! While my resume doesn't explicitly mention experimentation methodologies, I can share how I've approached optimization and achieving quantifiable improvements in my projects. For example, in the Mimikree project, I focused on optimizing the RAG pipeline by experimenting with different hybrid retrieval strategies (expanded query vs. current query context). By A/B testing different ratios, I was able to see a **40% reduction in query latency** through custom embedding optimization and efficient serverless backend deployment. I also carefully evaluated the performance of different embedding models to ensure the quality of vector search results.
+
+In the Automatic Infographic Generation for Medical Papers project, our team achieved **82% accuracy in segmenting paper sections** by iteratively tuning the LSTM model and refining the heuristic-driven extraction system to **90% accuracy** in identifying figures, titles, and captions. We didn't formally document specific A/B testing methodologies in that research paper, but the iterative process and quantifiable improvements reflect a similar approach to improving accuracy.
+
+I'm always eager to learn more about formal experimentation methodologies and apply them to future projects. Can you tell me about some methodologies you find effective?
+
+Q6: The role involves 'sharing insights with both technical and non-technical teammates.' Can you describe a situation where you successfully communicated complex data insights to a non-technical audience, and what strategies you used to ensure clarity?
+A6: Hey there! Absolutely, I can share an experience where I communicated complex data insights to a non-technical audience. During my research project on automatic infographic generation for medical papers, our team needed to explain the AI-driven system we were building to doctors and medical professionals who weren't necessarily familiar with the technical aspects of machine learning.
+
+To ensure clarity, I used a few strategies:
+
+*   **Visual Aids:** Instead of diving into the algorithms, I focused on illustrating how the system simplified their workflow. We created mock-ups of the infographics, showing how the AI could automatically extract key data and present it in an easy-to-understand format.
+*   **Analogies:** To explain the summarization process of LLMs, I used the analogy of a medical resident summarizing a patient's chart for a senior doctor – highlighting only the most critical information.
+*   **Focus on Benefits:** I emphasized the benefits of the system, such as reducing paper reading time and quickly identifying critical insights. I avoided jargon and concentrated on the practical value they would gain.
+*   **Iterative Feedback:** We had regular feedback sessions where we presented our progress and asked for input. This helped us refine our explanations and ensure that the medical professionals understood the concepts.
+
+By using these strategies, we successfully communicated the value and functionality of our AI system, which ultimately led to valuable insights and adoption of our work!
+
+Q7: Beyond what is currently listed, what experience do you have with analyzing product funnels and identifying opportunities for growth, including specific metrics you tracked and the impact of your recommendations?
+A7: Hey there! That's a great question. While my resume highlights my technical skills and project experience, I haven't explicitly mentioned analyzing product funnels. However, in my role as a researcher for the Automatic Infographic Generation project, I focused on identifying key metrics to improve the user experience and effectiveness of the infographics. 
+
+Specifically, we tracked:
+
+*   **Reading Time Reduction:** We measured how much time users saved when reading medical papers with our infographics compared to the original papers. Our goal was a significant reduction, and we achieved a 64% reduction by leveraging LLMs for summarization and graph-based models for content structuring.
+*   **Section Segmentation Accuracy:** We used an LSTM model to segment the medical papers into Abstract, Results, and Conclusion sections. We tracked the accuracy of this segmentation, aiming for high precision to ensure the infographic's structure was accurate. We achieved 82% accuracy.
+*   **Figure Extraction Accuracy:** We monitored how accurately our heuristic-driven extraction system identified figures, titles, and captions. This was crucial for populating the infographics with relevant visuals. We achieved 90% accuracy.
+
+While this wasn't a typical e-commerce product funnel, the principles are similar. We were essentially trying to optimize a user's journey through information, reduce friction, and ensure they extracted the key insights efficiently. The impact of our recommendations, based on these metrics, was a more user-friendly and time-saving method for understanding complex medical papers. If I were working on an e-commerce product, I would apply the same data-driven approach, focusing on metrics like conversion rates, cart abandonment rates, and customer engagement to identify areas for improvement and growth.
+
+Q8: What experience do you have with data visualization tools (e.g., Tableau, Looker, or similar) to create dashboards and make data more accessible to others? Describe a specific dashboard you created and how it was used to inform decision-making.
+A8: Hey there! As a data science student, I've definitely had my hands in a few data visualization tools. I'm most familiar with Python libraries like Matplotlib, Seaborn, and Plotly for creating visualizations directly within my analysis workflows. I've also dabbled with Streamlit (as you might have guessed from the README we're looking at 😉) to build interactive dashboards. 
+
+While I don't have extensive experience with dedicated dashboarding tools like Tableau or Looker *yet*, I can tell you about a specific project where I used Python and Streamlit to visualize and present data.
+
+I worked on a project analyzing sentiment in a large dataset of tweets related to different brands. I built a Streamlit app that allowed users to select a brand, view the overall sentiment distribution (positive, negative, neutral), and see sample tweets for each sentiment category. I incorporated interactive charts using Plotly to show sentiment trends over time and breakdowns by various factors.
+
+The app was used by a marketing team to quickly assess public perception of their brand and identify potential issues or areas for improvement. They found it helpful for making data-driven decisions about marketing campaigns and social media strategy. It wasn't as sophisticated as a full-fledged Tableau dashboard, but it was a fast and effective way to turn raw data into actionable insights!
+
+=== END OF USER PROFILE (8 relevant details) ===

@@ -721,22 +721,105 @@ def tailor_resume():
                     "needs_google_auth": True
                 }), 403
 
+            # Get user's full name and cover letter template from database
+            from database_config import SessionLocal, User
+            db = SessionLocal()
+            try:
+                user = db.query(User).filter(User.id == user_id).first()
+                user_full_name = f"{user.first_name} {user.last_name}" if user else "Resume"
+
+                # Get cover letter template if exists
+                cover_letter_template = None
+                if user and user.profile:
+                    cover_letter_template = user.profile.cover_letter_template
+            finally:
+                db.close()
+
+            # Get Mimikree credentials from environment
+            mimikree_email = os.getenv('MIMIKREE_EMAIL')
+            mimikree_password = os.getenv('MIMIKREE_PASSWORD')
+
             # Use the resume tailor agent to create tailored Google Doc
             tailored_url = tailor_resume_and_return_url(
                 resume_url,
                 job_description,
                 job_id,
                 company_name,
-                credentials=credentials
+                credentials=credentials,
+                user_full_name=user_full_name,
+                mimikree_email=mimikree_email,
+                mimikree_password=mimikree_password
             )
+
+            # Tailor cover letter if template exists
+            tailored_cover_letter_id = None
+            if cover_letter_template:
+                from Agents.cover_letter_tailoring import tailor_cover_letter
+                from googleapiclient.discovery import build
+
+                # Tailor the cover letter text
+                tailored_cl_text = tailor_cover_letter(
+                    cover_letter_template,
+                    job_description,
+                    company_name,
+                    job_id,
+                    user_full_name
+                )
+
+                # Create a Google Doc for the cover letter
+                docs_service = build('docs', 'v1', credentials=credentials)
+                drive_service = build('drive', 'v3', credentials=credentials)
+
+                # Clean company name for filename
+                clean_company = ''.join(c if c.isalnum() else '_' for c in company_name)
+                cover_letter_title = f"{user_full_name}_{clean_company}_CoverLetter"
+
+                # Create empty document
+                doc = docs_service.documents().create(body={'title': cover_letter_title}).execute()
+                cover_letter_doc_id = doc['documentId']
+
+                # Insert the tailored cover letter text
+                requests = [{
+                    'insertText': {
+                        'location': {'index': 1},
+                        'text': tailored_cl_text
+                    }
+                }]
+                docs_service.documents().batchUpdate(
+                    documentId=cover_letter_doc_id,
+                    body={'requests': requests}
+                ).execute()
+
+                tailored_cover_letter_id = cover_letter_doc_id
+                logging.info(f"Created cover letter doc: {cover_letter_doc_id}")
+
             return jsonify({
                 "tailored_document_id": tailored_url,
+                "tailored_cover_letter_id": tailored_cover_letter_id,
                 "success": True,
-                "message": "Resume tailored successfully",
+                "message": "Resume and cover letter tailored successfully" if tailored_cover_letter_id else "Resume tailored successfully",
                 "error": None
                 }), 200
+        except ValueError as ve:
+            # Check if it's an authentication error
+            error_msg = str(ve)
+            if 'authentication' in error_msg.lower() or 'reconnect' in error_msg.lower():
+                logging.warning(f"Authentication error for user {user_id}: {error_msg}")
+                return jsonify({
+                    "error": error_msg,
+                    "needs_google_auth": True
+                }), 403
+            logging.error(f"Validation error tailoring resume: {error_msg}")
+            return jsonify({"error": error_msg}), 400
         except Exception as e:
             logging.error(f"Error tailoring resume: {str(e)}")
+            # Check if the error message indicates auth issues
+            error_str = str(e).lower()
+            if 'invalid_grant' in error_str or 'credentials' in error_str or '401' in error_str:
+                return jsonify({
+                    "error": "Your Google account connection has expired. Please reconnect your account.",
+                    "needs_google_auth": True
+                }), 403
             return jsonify({"error": str(e)}), 500
     except Exception as e:
         logging.error(f"Error tailoring resume: {str(e)}")
@@ -1391,6 +1474,37 @@ def oauth_authorize():
 def oauth_callback():
     """Handle Google OAuth callback"""
     try:
+        # Check for error parameter from Google (user denied access, scope changed, etc.)
+        error = request.args.get('error')
+        if error:
+            error_description = request.args.get('error_description', 'Authorization denied')
+            logging.warning(f"OAuth error from Google: {error} - {error_description}")
+            return f"""
+                <html>
+                    <head>
+                        <style>
+                            body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
+                            .error {{ color: #d32f2f; }}
+                            .button {{
+                                background: #1976d2;
+                                color: white;
+                                padding: 10px 20px;
+                                text-decoration: none;
+                                border-radius: 5px;
+                                display: inline-block;
+                                margin-top: 20px;
+                            }}
+                        </style>
+                    </head>
+                    <body>
+                        <h2 class="error">Authorization Failed</h2>
+                        <p>{error_description}</p>
+                        <p>Please try connecting your Google account again.</p>
+                        <a href="http://localhost:3000/tailor-resume" class="button">Return to App</a>
+                    </body>
+                </html>
+            """
+
         code = request.args.get('code')
         state = request.args.get('state')  # user_id
 
@@ -1404,31 +1518,51 @@ def oauth_callback():
             # Redirect to frontend with success message
             return f"""
                 <html>
-                    <script>
-                        window.opener.postMessage({{
-                            type: 'GOOGLE_AUTH_SUCCESS',
-                            email: '{result.get('google_email', '')}'
-                        }}, '*');
-                        window.close();
-                    </script>
+                    <head>
+                        <style>
+                            body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
+                            .success {{ color: #2e7d32; }}
+                            .button {{
+                                background: #1976d2;
+                                color: white;
+                                padding: 10px 20px;
+                                text-decoration: none;
+                                border-radius: 5px;
+                                display: inline-block;
+                                margin-top: 20px;
+                            }}
+                        </style>
+                    </head>
                     <body>
-                        <h2>Authorization successful! You can close this window.</h2>
+                        <h2 class="success">✓ Authorization Successful!</h2>
+                        <p>Your Google account has been connected.</p>
+                        <p>Email: {result.get('google_email', '')}</p>
+                        <a href="http://localhost:3000/tailor-resume" class="button">Return to Resume Tailoring</a>
                     </body>
                 </html>
             """
         else:
             return f"""
                 <html>
-                    <script>
-                        window.opener.postMessage({{
-                            type: 'GOOGLE_AUTH_ERROR',
-                            error: '{result.get('error', 'Unknown error')}'
-                        }}, '*');
-                        window.close();
-                    </script>
+                    <head>
+                        <style>
+                            body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
+                            .error {{ color: #d32f2f; }}
+                            .button {{
+                                background: #1976d2;
+                                color: white;
+                                padding: 10px 20px;
+                                text-decoration: none;
+                                border-radius: 5px;
+                                display: inline-block;
+                                margin-top: 20px;
+                            }}
+                        </style>
+                    </head>
                     <body>
-                        <h2>Authorization failed. Please try again.</h2>
-                        <p>{result.get('error', '')}</p>
+                        <h2 class="error">Authorization Failed</h2>
+                        <p>{result.get('error', 'Unknown error occurred')}</p>
+                        <a href="http://localhost:3000/tailor-resume" class="button">Try Again</a>
                     </body>
                 </html>
             """

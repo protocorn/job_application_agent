@@ -4,17 +4,33 @@ import uuid
 import re
 import json
 import unicodedata
+import requests
 from google import genai
 import dotenv
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Dict, Any
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+# Systematic tailoring imports
+try:
+    from systematic_tailoring_complete import (
+        run_systematic_tailoring,
+        recover_from_overflow_if_needed
+    )
+    from mimikree_cache import get_cached_mimikree_data, cache_mimikree_data
+    SYSTEMATIC_TAILORING_AVAILABLE = True
+    print("[INIT] Systematic tailoring modules loaded successfully")
+except ImportError as e:
+    print(f"[INIT] WARNING: Systematic tailoring not available: {e}")
+    SYSTEMATIC_TAILORING_AVAILABLE = False
 
 dotenv.load_dotenv()
+
+# Mimikree API Configuration
+MIMIKREE_BASE_URL = os.getenv("MIMIKREE_BASE_URL", "http://localhost:3000")
 
 # --- Google API Setup ---
 SCOPES = [
@@ -575,8 +591,8 @@ def _validate_replacements(raw_replacements, line_metadata=None, safety_margin=0
             reason = 'banned_phrase'
         elif _is_low_content_change(original_text, updated_text):
             reason = 'low_content_change'
-        elif _removes_quantified_data(original_text, updated_text):
-            reason = 'removes_quantified_data'
+        # Removed: _removes_quantified_data check - trust Gemini's judgment
+        # If Gemini removed metrics, it had a good reason (e.g., better phrasing)
         elif line_metadata:
             # Check character limit constraints with SAFETY MARGIN
             # Remove metadata annotations from original_text for comparison
@@ -1311,23 +1327,18 @@ def apply_json_replacements_to_doc(docs_service, document_id, replacements_json,
                         if numeric_match:
                             # Shift start index by the length of numeric portion
                             numeric_length = len(numeric_match.group(0))
-                            adjusted_range_start = range_start + numeric_length
-                            
-                            # Only apply if there's text remaining after the numeric part
-                            if adjusted_range_start < range_end:
-                                format_requests.append({
-                                    'updateTextStyle': {
-                                        'range': {
-                                            'startIndex': adjusted_range_start,
-                                            'endIndex': range_end
-                                        },
-                                        'textStyle': {'bold': True},
-                                        'fields': 'bold'
-                                    }
-                                })
-                                print(f"  Bold (shifted +{numeric_length} for digits): '{text_to_format}' → applying to chars after '{numeric_match.group(0).strip()}' at [{adjusted_range_start}, {range_end})")
-                            else:
-                                print(f"  Skipped bold (text is only numeric): '{text_to_format}' (no text after digits to format)")
+                            # Bold the entire text INCLUDING numbers (numbers should be bold too!)
+                            format_requests.append({
+                                'updateTextStyle': {
+                                    'range': {
+                                        'startIndex': range_start,
+                                        'endIndex': range_end
+                                    },
+                                    'textStyle': {'bold': True},
+                                    'fields': 'bold'
+                                }
+                            })
+                            print(f"  Bold (including numbers): '{text_to_format}' at [{range_start}, {range_end})")
                         else:
                             # No numeric prefix, apply bold normally
                             format_requests.append({
@@ -1351,21 +1362,18 @@ def apply_json_replacements_to_doc(docs_service, document_id, replacements_json,
                             numeric_length = len(numeric_match.group(0))
                             adjusted_range_start = range_start + numeric_length
                             
-                            # Only apply if there's text remaining after the numeric part
-                            if adjusted_range_start < range_end:
-                                format_requests.append({
-                                    'updateTextStyle': {
-                                        'range': {
-                                            'startIndex': adjusted_range_start,
-                                            'endIndex': range_end
-                                        },
-                                        'textStyle': {'italic': True},
-                                        'fields': 'italic'
-                                    }
-                                })
-                                print(f"  Italic (shifted +{numeric_length} for digits): '{text_to_format}' at [{adjusted_range_start}, {range_end})")
-                            else:
-                                print(f"  Skipped italic (text is only numeric): '{text_to_format}' (no text after digits to format)")
+                            # Italicize the entire text INCLUDING numbers
+                            format_requests.append({
+                                'updateTextStyle': {
+                                    'range': {
+                                        'startIndex': range_start,
+                                        'endIndex': range_end
+                                    },
+                                    'textStyle': {'italic': True},
+                                    'fields': 'italic'
+                                }
+                            })
+                            print(f"  Italic (including numbers): '{text_to_format}' at [{range_start}, {range_end})")
                         else:
                             format_requests.append({
                                 'updateTextStyle': {
@@ -1400,6 +1408,45 @@ def apply_json_replacements_to_doc(docs_service, document_id, replacements_json,
         print(f"An unexpected error occurred: {e}")
         import traceback
         traceback.print_exc()
+
+def get_actual_page_count(drive_service, document_id):
+    """Get ACTUAL page count by exporting to PDF and checking PDF pages.
+    
+    This is the ONLY reliable way to get true page count with formatting considered.
+    
+    Args:
+        drive_service: Google Drive API service
+        document_id: Document ID to check
+        
+    Returns:
+        int: Actual number of pages in the document
+    """
+    try:
+        import io
+        from PyPDF2 import PdfReader
+        
+        # Export document as PDF
+        request = drive_service.files().export_media(
+            fileId=document_id,
+            mimeType='application/pdf'
+        )
+        
+        # Download PDF to memory
+        pdf_bytes = io.BytesIO()
+        pdf_bytes.write(request.execute())
+        pdf_bytes.seek(0)
+        
+        # Read PDF and count pages
+        pdf_reader = PdfReader(pdf_bytes)
+        page_count = len(pdf_reader.pages)
+        
+        return page_count
+    except ImportError:
+        print("WARNING: PyPDF2 not installed. Run: pip install PyPDF2")
+        return None
+    except Exception as e:
+        print(f"WARNING: Could not get PDF page count: {e}")
+        return None
 
 def download_doc_as_pdf(drive_service, doc_id, pdf_path):
     """Downloads a Google Doc as a PDF file."""
@@ -1464,23 +1511,45 @@ STRATEGIC PLACEMENT:
 
     prompt = f"""Tailor this resume for the job while preserving formatting. Make strategic replacements using job keywords.
 
-CRITICAL RULES - QUANTIFIED DATA PRESERVATION:
-⚠️  NEVER REMOVE OR MODIFY ANY NUMBERS, PERCENTAGES, OR METRICS!
-- If original says "95%", your replacement MUST contain "95%"
-- If original says "team of 3", your replacement MUST contain "3" or "team of 3"
-- If original says "1,500+ documents", your replacement MUST contain "1,500+"
-- If original says "70% expanded query + 30% RAG", KEEP ALL NUMBERS: "70%", "30%"
-- Only change the WORDS AROUND the numbers, NEVER the numbers themselves
+==================================================================================
+🚨 RULE #1: PRESERVE ALL QUANTIFIABLE METRICS - ABSOLUTELY CRITICAL 🚨
+==================================================================================
+⚠️  NEVER REMOVE OR MODIFY ANY NUMBERS, PERCENTAGES, DOLLAR AMOUNTS, OR METRICS!
 
-EXAMPLES OF CORRECT QUANTIFIED DATA PRESERVATION:
+This is THE MOST IMPORTANT RULE. Quantifiable metrics are the most valuable part of a resume.
+If you remove a number, the entire replacement is worthless.
+
+WHAT COUNTS AS QUANTIFIABLE DATA:
+- Percentages: 95%, 40%, 2.5%
+- Counts: team of 3, 1500+ documents, 5 years
+- Dollar amounts: $100K, $5M budget
+- Ratios: 70% + 30%, 3:1 ratio
+- Growth metrics: 10x improvement, 2x faster
+- ANY number that shows impact or scale
+
+PRESERVATION RULES:
+- If original has "95%", replacement MUST have "95%" in it
+- If original has "team of 3", replacement MUST have "3" somewhere
+- If original has "1,500+ documents", replacement MUST have "1,500+"
+- If original has TWO numbers like "70% + 30%", keep BOTH numbers
+- You can ONLY change the WORDS AROUND the numbers, NEVER the numbers
+
+EXAMPLES OF CORRECT PRESERVATION:
 ✅ GOOD: "Improved accuracy by 95% through automation" → "Enhanced accuracy by 95% via data analysis"
-✅ GOOD: "Led team of 3 engineers" → "Managed team of 3 developing solutions"
-✅ GOOD: "Processed 1,500+ documents" → "Analyzed 1,500+ documents for insights"
+✅ GOOD: "Led team of 3 engineers" → "Managed 3-person team developing ML solutions"
+✅ GOOD: "Processed 1,500+ documents" → "Analyzed 1,500+ documents using NLP"
 ✅ GOOD: "70% expanded + 30% RAG" → "hybrid pipeline (70% query expansion + 30% RAG)"
+✅ GOOD: "$5M budget" → "Managed $5M data infrastructure budget"
 
+EXAMPLES OF VIOLATIONS (DO NOT DO THIS):
 ❌ BAD: "Improved accuracy by 95%" → "Significantly improved accuracy" (REMOVED 95%)
 ❌ BAD: "Led team of 3" → "Led cross-functional team" (REMOVED 3)
 ❌ BAD: "70% expanded + 30% RAG" → "hybrid retrieval approach" (REMOVED percentages)
+❌ BAD: "$5M budget" → "Large budget" (REMOVED dollar amount)
+
+IMPORTANT: Only remove metrics if the original text is completely irrelevant to the job and
+cannot be reworded to fit. In 99% of cases, you should preserve metrics.
+==================================================================================
 
 OTHER CRITICAL RULES:
 - Use EXACT text matches from resume (ignore [metadata] annotations)
@@ -1542,167 +1611,8 @@ JOB DESCRIPTION:
         # Return empty replacements on error
         return json.dumps({"replacements": [], "lines_added": 0, "lines_freed": 0, "net_lines": 0})
 
-def iterative_tailor_with_verification(docs_service, drive_service, copied_doc_id, original_doc_id, 
-                                        original_resume_text, original_resume_text_plain, 
-                                        job_description, line_metadata, line_budget, keywords,
-                                        max_iterations=3):
-    """Iteratively tailor resume with verification and rollback capability.
-    
-    This function will:
-    1. Apply tailoring changes
-    2. Verify document length
-    3. If overflow detected, restore from backup and retry with stricter constraints
-    4. Repeat until success or max iterations reached
-    
-    Returns:
-        Dictionary with:
-        - success: True if tailoring succeeded without overflow
-        - iterations: Number of iterations performed
-        - final_length: Final document length in visual lines
-        - final_doc_id: Final document ID (may change during rollback)
-    """
-    original_visual_lines = line_budget['current_visual_lines']
-    
-    # Create a backup by copying the document again (for rollback)
-    print(f"\n🔄 Starting iterative tailoring (max {max_iterations} iterations)...")
-    print(f"📏 Original document: {original_visual_lines} visual lines (strict limit)")
-    
-    for iteration in range(1, max_iterations + 1):
-        print(f"\n{'='*60}")
-        print(f"ITERATION {iteration}/{max_iterations}")
-        print(f"{'='*60}")
-        
-        # Calculate safety margin for this iteration (more conservative each time)
-        # Iteration 1: 50%, Iteration 2: 40%, Iteration 3: 30%
-        safety_margin = max(0.3, 0.6 - (iteration - 1) * 0.1)
-        max_replacements = max(3, 6 - iteration)  # Fewer replacements each iteration
-        
-        # Set environment variables for this iteration
-        os.environ['REPLACEMENT_SAFETY_MARGIN'] = str(safety_margin)
-        os.environ['MAX_REPLACEMENTS_PER_ITERATION'] = str(max_replacements)
-        
-        print(f"⚙️  Iteration settings: safety_margin={int(safety_margin*100)}%, max_replacements={max_replacements}")
-        
-        # Get tailoring suggestions
-        print(f"\n📝 Getting tailoring suggestions (iteration {iteration})...")
-        annotated_resume_text = annotate_resume_with_metadata(original_resume_text, line_metadata)
-        
-        replacements_json = tailor_resume(
-            annotated_resume_text,
-            job_description,
-            line_metadata=line_metadata,
-            line_budget=line_budget,
-            keywords=keywords
-        )
-        
-        # Before applying, create a backup of current state
-        print(f"💾 Creating backup before applying changes...")
-        backup_doc_id = copy_google_doc(
-            drive_service,
-            copied_doc_id,
-            f"BACKUP_ITER{iteration}_{uuid.uuid4().hex[:8]}"
-        )
-        
-        # Apply changes
-        print(f"🔧 Applying tailoring changes...")
-        apply_json_replacements_to_doc(
-            docs_service,
-            copied_doc_id,
-            replacements_json,
-            original_resume_text,
-            job_description,
-            line_metadata=line_metadata
-        )
-        
-        # Verify document length
-        print(f"\n📏 Verifying document length...")
-        time.sleep(2)  # Wait for changes to settle
-        verification = verify_document_length(docs_service, copied_doc_id, original_visual_lines, tolerance=0)
-        
-        print(f"📊 Length verification:")
-        print(f"   Original: {verification['original_visual_lines']} lines")
-        print(f"   Current:  {verification['current_visual_lines']} lines")
-        print(f"   Limit:    {verification['max_allowed_lines']} lines")
-        
-        if verification['within_limit']:
-            print(f"✅ SUCCESS! Document is within page limit.")
-            # Clean up backup
-            try:
-                drive_service.files().delete(fileId=backup_doc_id).execute()
-                print(f"🗑️  Backup deleted")
-            except:
-                pass
-            
-            return {
-                'success': True,
-                'iterations': iteration,
-                'final_length': verification['current_visual_lines'],
-                'overflow_lines': 0,
-                'final_doc_id': copied_doc_id
-            }
-        else:
-            # Overflow detected - rollback
-            overflow = verification['overflow_lines']
-            print(f"❌ OVERFLOW DETECTED! Document exceeded limit by {overflow} lines.")
-            
-            if iteration < max_iterations:
-                print(f"🔄 Rolling back changes and retrying with stricter constraints...")
-                
-                # Simple approach: just use the original document again
-                # Delete the overflowing copy and create a fresh one
-                try:
-                    drive_service.files().delete(fileId=copied_doc_id).execute()
-                    print(f"🗑️  Deleted overflowing document")
-                    
-                    # Create fresh copy from original
-                    copied_doc_id = copy_google_doc(
-                        drive_service,
-                        original_doc_id,
-                        f"Retry_{iteration+1}_{uuid.uuid4().hex[:6]}"
-                    )
-                    print(f"✅ Rollback successful - created fresh copy")
-                except Exception as e:
-                    print(f"⚠️  Rollback failed: {e}")
-                    # If rollback fails, we can't continue reliably
-                    return {
-                        'success': False,
-                        'iterations': iteration,
-                        'final_length': verification['current_visual_lines'],
-                        'overflow_lines': overflow,
-                        'final_doc_id': copied_doc_id
-                    }
-                
-                # Clean up backup
-                try:
-                    drive_service.files().delete(fileId=backup_doc_id).execute()
-                except:
-                    pass
-            else:
-                print(f"❌ Max iterations reached. Could not fit changes within page limit.")
-                # Clean up backup
-                try:
-                    drive_service.files().delete(fileId=backup_doc_id).execute()
-                except:
-                    pass
-                
-                return {
-                    'success': False,
-                    'iterations': iteration,
-                    'final_length': verification['current_visual_lines'],
-                    'overflow_lines': overflow,
-                    'final_doc_id': copied_doc_id
-                }
-    
-    # Should not reach here, but just in case
-    return {
-        'success': False,
-        'iterations': max_iterations,
-        'final_length': original_visual_lines,
-        'overflow_lines': 0,
-        'final_doc_id': copied_doc_id
-    }
-
-def tailor_resume_and_return_url(original_resume_url, job_description, job_title, company, credentials=None):
+def tailor_resume_and_return_url(original_resume_url, job_description, job_title, company,
+                                   credentials=None, mimikree_email=None, mimikree_password=None, user_full_name=None):
     """Tailor resume and return publicly accessible Google Doc URL
 
     Args:
@@ -1711,6 +1621,9 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
         job_title: Job title
         company: Company name
         credentials: Optional Google OAuth2 Credentials object for user-specific access
+        mimikree_email: Optional Mimikree account email for profile integration
+        mimikree_password: Optional Mimikree account password for profile integration
+        user_full_name: Optional user's full name for document naming
     """
     try:
         # Get Google Services (with user-specific credentials if provided)
@@ -1730,8 +1643,13 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
             print(f"Error fetching document name: {error}")
             original_doc_name = "Resume"
 
-        # Create a copy of the document
-        copied_doc_title = f"{original_doc_name} - Tailored for {job_title} at {company}"
+        # Create a copy of the document with custom naming
+        if user_full_name:
+            # Simple format: FullName_CompanyName
+            clean_company = ''.join(c if c.isalnum() else '_' for c in company)
+            copied_doc_title = f"{user_full_name}_{clean_company}"
+        else:
+            copied_doc_title = f"{original_doc_name} - Tailored for {job_title} at {company}"
         print(f"Creating a copy of the document: '{copied_doc_title}'")
         copied_doc_id = copy_google_doc(drive_service, original_doc_id, copied_doc_title)
         if not copied_doc_id:
@@ -1797,8 +1715,87 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
                     print(f"Warning: Keyword extraction failed, continuing without: {e}")
                     keywords = None
 
+                # Mimikree Integration (if credentials provided)
+                mimikree_data = None
+                mimikree_responses = {}
+                if mimikree_email and mimikree_password:
+                    print("\n" + "="*60)
+                    print("MIMIKREE PROFILE INTEGRATION")
+                    print("="*60)
+
+                    try:
+                        # Check cache first
+                        cached_data = get_cached_mimikree_data(job_description)
+                        if cached_data:
+                            print("✅ Using cached Mimikree data")
+                            mimikree_data = cached_data.get('formatted_data', '')
+                            mimikree_responses = cached_data.get('responses', {})
+                        else:
+                            # Import Mimikree integration
+                            from mimikree_integration import MimikreeClient, generate_questions_from_resume_and_jd
+
+                            # Initialize client
+                            print("🔑 Authenticating with Mimikree...")
+                            client = MimikreeClient()
+
+                            if client.authenticate(mimikree_email, mimikree_password):
+                                print("✅ Mimikree authentication successful!")
+
+                                # Generate questions based on job description
+                                print("💬 Generating questions from job description...")
+                                questions = generate_questions_from_resume_and_jd(
+                                    original_resume_text_plain, 
+                                    job_description, 
+                                    max_questions=10
+                                )
+
+                                if questions:
+                                    print(f"📋 Generated {len(questions)} questions")
+                                    
+                                    # Query Mimikree chatbot
+                                    print("💬 Querying Mimikree chatbot for answers...")
+                                    response_data = client.ask_batch_questions(questions)
+
+                                    if response_data.get('success'):
+                                        # Extract successful question-answer pairs
+                                        mimikree_responses = client.extract_successful_answers(response_data)
+                                        
+                                        if mimikree_responses:
+                                            # Format for resume tailoring
+                                            formatted_parts = []
+                                            for q, a in mimikree_responses.items():
+                                                formatted_parts.append(f"Q: {q}\nA: {a}")
+                                            mimikree_data = "\n\n".join(formatted_parts)
+
+                                            # Cache for future use
+                                            cache_data = {
+                                                'responses': mimikree_responses,
+                                                'formatted_data': mimikree_data
+                                            }
+                                            cache_mimikree_data(job_description, cache_data)
+                                            print(f"💾 Cached Mimikree data for future runs")
+
+                                            print(f"✅ Mimikree integration complete!")
+                                        else:
+                                            print("⚠️ No successful responses from Mimikree chatbot")
+                                    else:
+                                        print(f"⚠️ Failed to get responses from Mimikree chatbot: {response_data.get('message', 'Unknown error')}")
+                                else:
+                                    print("⚠️ No questions generated from job description")
+                            else:
+                                print("⚠️ Mimikree authentication failed - proceeding without profile data")
+
+                    except Exception as e:
+                        print(f"⚠️ Mimikree integration failed: {e}")
+                        print("   Proceeding without Mimikree data")
+
+                    print("="*60)
+                else:
+                    print("\n⚠️ Mimikree credentials not provided - skipping profile integration")
+                    print("   To use Mimikree integration, provide mimikree_email and mimikree_password")
+
                 # Annotate resume with metadata for AI guidance
-                print("Annotating resume with formatting constraints...")
+                print("\nAnnotating resume with formatting constraints...")
                 annotated_resume_text = annotate_resume_with_metadata(original_resume_text, line_metadata)
 
                 # Save annotated resume for debugging
@@ -1818,42 +1815,202 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
             keywords = None
             annotated_resume_text = original_resume_text
 
-        # Use iterative tailoring with verification and rollback
-        print("🚀 Starting iterative tailoring with automatic verification...")
-        result = iterative_tailor_with_verification(
-            docs_service,
-            drive_service,
-            copied_doc_id,
-            original_doc_id,
-            original_resume_text,
-            original_resume_text_plain,
-            job_description,
-            line_metadata,
-            line_budget,
-            keywords,
-            max_iterations=3
-        )
+        # Use systematic tailoring approach (required)
+        if not SYSTEMATIC_TAILORING_AVAILABLE:
+            raise ImportError("Systematic tailoring modules are required but not available. Please ensure all dependencies are installed.")
         
-        # Report results
-        if result['success']:
-            print(f"\n{'='*60}")
-            print(f"✅ TAILORING SUCCESSFUL!")
-            print(f"   Completed in {result['iterations']} iteration(s)")
-            print(f"   Final length: {result['final_length']} lines")
-            print(f"   Status: Within page limit ✓")
-            print(f"{'='*60}\n")
-        else:
-            print(f"\n{'='*60}")
-            print(f"⚠️  TAILORING COMPLETED WITH WARNINGS")
-            print(f"   Iterations performed: {result['iterations']}")
-            print(f"   Final length: {result['final_length']} lines")
-            print(f"   Overflow: {result['overflow_lines']} lines")
-            print(f"   Status: Exceeded page limit by {result['overflow_lines']} lines")
-            print(f"{'='*60}\n")
-            print(f"⚠️  Document may have exceeded page limit. Manual review recommended.")
+        use_systematic_tailoring = os.getenv('USE_SYSTEMATIC_TAILORING', 'true').lower() == 'true'
         
-        # Update copied_doc_id in case it changed during rollback
-        copied_doc_id = result.get('final_doc_id', copied_doc_id)
+        if not use_systematic_tailoring:
+            print("⚠️  Systematic tailoring disabled via environment variable. Enabling it anyway (required).")
+            use_systematic_tailoring = True
+
+        print("🚀 Starting SYSTEMATIC tailoring...")
+        print("="*60)
+
+        # Run systematic tailoring
+        try:
+            # Conservative mode (default): Only edit Profile → Skills → Projects
+            # Aggressive mode: Edit everything including experience bullets
+            conservative_mode = os.getenv('CONSERVATIVE_TAILORING', 'true').lower() == 'true'
+            
+            if conservative_mode:
+                print("📊 Mode: CONSERVATIVE (Profile → Skills → Projects only)")
+            else:
+                print("📊 Mode: AGGRESSIVE (Full resume editing)")
+            
+            systematic_results = run_systematic_tailoring(
+                job_description=job_description,
+                job_keywords=keywords.get('prioritized_keywords', [])[:10] if keywords else [],
+                line_metadata=line_metadata if line_metadata else [],
+                resume_text=original_resume_text_plain,
+                mimikree_responses=mimikree_responses if 'mimikree_responses' in locals() else {},
+                mimikree_formatted_data=mimikree_data if mimikree_data else "",
+                conservative_mode=conservative_mode
+            )
+
+            # Apply replacements
+            if systematic_results['all_replacements']:
+                print(f"\n📝 Applying {len(systematic_results['all_replacements'])} replacements...")
+
+                for repl in systematic_results['all_replacements']:
+                    try:
+                        requests_list = [{
+                            'replaceAllText': {
+                                'containsText': {
+                                    'text': repl['old_text'],
+                                    'matchCase': True
+                                },
+                                'replaceText': repl['new_text']
+                            }
+                        }]
+                        docs_service.documents().batchUpdate(
+                            documentId=copied_doc_id,
+                            body={'requests': requests_list}
+                        ).execute()
+                    except Exception as e:
+                        print(f"      ⚠️  Skipped: {str(e)[:50]}...")
+
+                print("✅ Replacements applied")
+
+            # CRITICAL: Check page count - only run overflow recovery if needed
+            print(f"\n📄 Checking page count...")
+            time.sleep(2)  # Wait for changes to settle
+            current_page_count = get_actual_page_count(drive_service, copied_doc_id)
+            original_page_count = get_actual_page_count(drive_service, original_doc_id)
+
+            print(f"   Original: {original_page_count} page(s)")
+            print(f"   Current:  {current_page_count} page(s)")
+
+            if current_page_count > original_page_count:
+                print(f"\n⚠️  OVERFLOW DETECTED: {current_page_count} pages > {original_page_count} pages")
+                
+                # Multi-attempt overflow recovery (max 2 attempts)
+                max_recovery_attempts = 2
+                for attempt in range(1, max_recovery_attempts + 1):
+                    if current_page_count <= original_page_count:
+                        print(f"✅ Page count resolved!")
+                        break
+                    
+                    print(f"\n🔄 Running overflow recovery (attempt {attempt}/{max_recovery_attempts})...")
+                    
+                    # Refresh metadata
+                    current_line_metadata = extract_document_structure(docs_service, copied_doc_id)
+                    
+                    # Get the actual lines added from Phase 2 (if available)
+                    total_lines_added = 0
+                    if systematic_results.get('phase2_results'):
+                        total_lines_added = systematic_results['phase2_results'].get('total_lines_added', 0)
+
+                    # Run overflow recovery
+                    recovery = recover_from_overflow_if_needed(
+                        line_metadata=current_line_metadata,
+                        keywords=systematic_results['phase1_results']['feasible_keywords'],
+                        current_pages=current_page_count,
+                        target_pages=original_page_count,
+                        total_lines_added=total_lines_added,
+                        attempt=attempt
+                    )
+
+                    # Apply recovery replacements
+                    replacements = recovery.get('replacements', [])
+                    
+                    # Check if this is incremental (one-by-one)
+                    is_incremental_condense = replacements and replacements[0].get('type') == 'overflow_recovery_condense_incremental'
+                    is_incremental_remove = replacements and replacements[0].get('type') == 'overflow_recovery_remove_incremental'
+                    is_incremental = is_incremental_condense or is_incremental_remove
+                    
+                    if is_incremental:
+                        action_word = "Condensing" if is_incremental_condense else "Removing"
+                        print(f"   Applying {len(replacements)} {action_word.lower()} ONE AT A TIME...")
+                        applied_count = 0
+                        
+                        for i, repl in enumerate(replacements, 1):
+                            try:
+                                # Apply one bullet condensation or removal
+                                requests_list = [{
+                                    'replaceAllText': {
+                                        'containsText': {'text': repl['old_text'], 'matchCase': True},
+                                        'replaceText': repl['new_text']
+                                    }
+                                }]
+                                docs_service.documents().batchUpdate(
+                                    documentId=copied_doc_id,
+                                    body={'requests': requests_list}
+                                ).execute()
+                                applied_count += 1
+                                
+                                # Display appropriate message
+                                if is_incremental_condense:
+                                    lines_before = repl.get('lines_before', '?')
+                                    lines_after = repl.get('lines_after', '?')
+                                    print(f"      {i}. Condensed: {repl.get('bullet_text', 'bullet')} ({lines_before}→{lines_after} lines)")
+                                else:
+                                    print(f"      {i}. Removed: {repl.get('bullet_text', 'bullet')} (relevance: {repl.get('relevance', 0)})")
+                                
+                                # Check page count after THIS change
+                                current_page_count = get_actual_page_count(drive_service, copied_doc_id)
+                                
+                                if current_page_count <= original_page_count:
+                                    print(f"      ✅ Target reached after {action_word.lower()} {applied_count} bullet(s)!")
+                                    print(f"      📄 Page count: {current_page_count}/{original_page_count}")
+                                    break  # Stop - we've hit the target!
+                                    
+                            except Exception as e:
+                                print(f"      ⚠️ Failed to apply: {str(e)[:50]}...")
+                        
+                        print(f"   Applied {applied_count}/{len(replacements)} replacements")
+                    else:
+                        # Apply all at once (non-incremental)
+                        applied_count = 0
+                        for repl in replacements:
+                            try:
+                                requests_list = [{
+                                    'replaceAllText': {
+                                        'containsText': {'text': repl['old_text'], 'matchCase': True},
+                                        'replaceText': repl['new_text']
+                                    }
+                                }]
+                                docs_service.documents().batchUpdate(
+                                    documentId=copied_doc_id,
+                                    body={'requests': requests_list}
+                                ).execute()
+                                applied_count += 1
+                            except Exception as e:
+                                print(f"      ⚠️ Failed to apply: {str(e)[:50]}...")
+                        
+                        print(f"   Applied {applied_count}/{len(replacements)} replacements")
+                    
+                    # Check page count after recovery
+                    time.sleep(2)
+                    current_page_count = get_actual_page_count(drive_service, copied_doc_id)
+                    print(f"   After recovery: {current_page_count} page(s)")
+                    
+                    if current_page_count <= original_page_count:
+                        print(f"✅ Successfully recovered to {current_page_count} page(s)!")
+                        break
+                    elif attempt < max_recovery_attempts:
+                        print(f"   Still {current_page_count - original_page_count} page(s) over - trying more aggressive approach...")
+                    else:
+                        print(f"⚠️  Could not fully recover - still {current_page_count - original_page_count} page(s) over after {max_recovery_attempts} attempts")
+                        
+            else:
+                print(f"✅ No overflow - resume stays at {current_page_count} page(s)")
+
+            print(f"\n{'='*60}")
+            print("✅ SYSTEMATIC TAILORING COMPLETE")
+            print(f"{'='*60}")
+            print(f"   Match Rate: {systematic_results['phase1_results']['match_percentage']:.1f}%")
+            print(f"   Feasible Keywords: {len(systematic_results['phase1_results']['feasible_keywords'])}")
+            print(f"   Max Possible ATS: {systematic_results['phase1_results']['max_possible_ats_score']}/100")
+            print(f"   Final Pages: {current_page_count}")
+            print(f"{'='*60}")
+
+        except Exception as e:
+            print(f"❌ Systematic tailoring failed: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
 
         # Make the document publicly accessible
         print("Making document publicly accessible...")

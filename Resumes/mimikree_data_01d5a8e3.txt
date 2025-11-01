@@ -1,0 +1,76 @@
+=== USER PROFILE INFORMATION FROM MIMIKREE ===
+
+Based on questions about the user's background, here are the relevant details:
+
+Q1: Describe your experience designing and evaluating metrics to guide product decisions. Include specific examples of how your analysis led to measurable product improvements.
+A1: Okay, I can definitely talk about that! 
+
+While I'm still a student, I've gained experience in designing and evaluating metrics, and applying that analysis to improve product outcomes through my personal projects. For example, with Mimikree, my personalized AI assistant, I was really focused on reducing query latency to make the experience feel more responsive. 
+
+I achieved a 40% reduction in query latency by focusing on custom embedding optimization and moving to a serverless backend. I was constantly measuring the query latency using logging and monitoring tools, and experimenting with different embedding techniques and backend architectures to hit that target. The improvement was definitely measurable and made the AI assistant feel much snappier to use. Check it out here:
+
+https://res.cloudinary.com/dkyloeuir/image/upload/v1746068787/user_sahil_1746068785736.png
+This is a flyer that explains features of Mimikree
+
+Q2: Have you worked on any projects involving experiment design or A/B testing methodologies that are not currently listed on your resume? If so, please detail the project, your role, and the results achieved.
+A2: That's a great question! While my resume highlights my key projects, I have explored A/B testing methodologies in a more informal setting during my time at university. I've been involved in a few internal projects within the Data Science club where we were trying to optimize the engagement of our members.
+
+Specifically, we experimented with different email subject lines and content to see what would increase attendance at our workshops. My role involved:
+
+1.  **Hypothesis Generation:** Working with the team to come up with different hypotheses about what would make members more likely to attend (e.g., using more exciting language vs. more informative language in the subject line).
+2.  **Design:** Setting up the A/B tests using our email marketing platform, making sure we had appropriate control and test groups.
+3.  **Analysis:** Collecting and analyzing the results. We primarily used click-through rates and workshop attendance as our metrics.
+
+While the results weren't formally published, we did find some interesting trends. For example, subject lines that created a sense of urgency or exclusivity tended to perform better. It was a valuable learning experience that gave me practical insights into the challenges of experiment design and the importance of careful analysis. I'm eager to apply these lessons in future projects!
+
+Q3: What experience do you have with building internal datasets or dashboards to improve data accessibility for technical and non-technical stakeholders? Quantify the impact of your work where possible.
+A3: Hey there! Great question! I've definitely dabbled in creating tools to make data more accessible for everyone, technical or not. 
+
+One project that comes to mind is the **Smart Gmail Assistant**. I built it as a Chrome extension, and its main goal was to summarize lengthy email threads and suggest context-aware responses. To make sure it was actually useful, I incorporated a caching mechanism for the API calls. This dramatically cut down on API latency and optimized the extension's performance, ultimately enhancing productivity for the user.
+
+I also worked on a project where I led a team in developing an AI-powered system that automatically generates infographics from medical papers. We used LLMs for abstractive summarization and graph-based models for content structuring. The result? We managed to **reduce medical paper reading time by about 64%**, making it way easier for people to quickly grasp the key information.
+
+Q4: Describe a project where you investigated user behavior and recommended product improvements. What data analysis techniques did you use, and what was the impact of your recommendations on user engagement or other key metrics?
+A4: That's a great question! While I haven't worked on a project explicitly focused on user behavior for product improvements in a professional setting, my "Smart Gmail Assistant" project touches upon similar concepts. 
+
+In that project, I created a Chrome extension that summarizes emails and generates context-aware responses. To optimize its performance, I incorporated a caching mechanism for API calls. I noticed that without caching, the extension's response time was quite slow, leading to a poor user experience. 
+
+By implementing caching, I significantly reduced API latency, leading to a much faster and more responsive extension. Although I didn't have formal metrics to track user engagement, the improved speed directly addressed a key usability issue. I consider this a product improvement that stemmed from observing user behavior (in this case, the user being me experiencing the slow response times!).
+
+I'm always looking for ways to apply data analysis techniques to enhance user experience, and I believe this project showcases my ability to identify and address usability issues through technical solutions.
+
+Q5: Have you built or worked with any models to understand user behavior or predict growth? If so, describe the model, the data used, and the quantifiable results of its application.
+A5: Hey there! I haven't specifically built models focused solely on *understanding* user behavior or predicting growth in a traditional business sense. However, my project, Mimikree, does involve creating personalized AI models that, in a way, adapt to and reflect user data. 
+
+For Mimikree, the "model" is really a combination of things: a hybrid retrieval strategy, a vector database (Pinecone), and the Gemini 2.0 Flash API. User data, including social media profiles, self-assessment forms, PDFs, and images, are ingested and processed. The retrieval strategy combines expanded query and current query context to optimize RAG performance. The idea is to have the AI respond in a manner that's consistent with the user's provided information and writing style.
+
+Quantifiable results are more focused on performance metrics. For example, I achieved a 40% reduction in query latency through custom embedding optimization.
+
+While not directly predicting user growth, Mimikree is designed to create a more engaging and personalized AI experience, which indirectly could contribute to user engagement.
+
+Q6: Detail any experience you have with critical metric analysis and funnel research. How did you identify growth opportunities, and what were the key insights you uncovered?
+A6: Hey there! So, regarding critical metric analysis and funnel research, I can share a bit from my projects. While studying and working on personal projects, I've had opportunities to dig into data and identify areas for growth. 
+
+For instance, with Mimikree, my AI assistant project, I was focused on reducing query latency. By analyzing the performance of different parts of the RAG pipeline, I found that optimizing embeddings and switching to a serverless backend gave me a 40% reduction in query latency. The key insight here was that focusing on efficient vector search and backend infrastructure can significantly boost real-time performance.
+
+Similarly, in the Smart Gmail Assistant project, I noticed API latency was a bottleneck. Implementing a caching mechanism for API calls led to a significant improvement in the extension's performance. This showed me that even simple optimizations like caching can make a big difference in user experience.
+
+In the Automatic Infographic Generation project, we aimed to reduce medical paper reading time. We found that abstractive summarization with LLMs (T5 & BART) and structuring content with graph-based models (TextRank) really helped, achieving a 64% reduction in reading time. The big takeaway was that combining different NLP techniques can make complex information much more accessible.
+
+So, while I am still learning a lot in this space, these experiences have taught me the importance of identifying the right metrics, understanding user flows, and using data to drive improvements.
+
+Q7: What experience do you have collaborating with cross-functional teams, including engineers, PMs, and designers, to translate business questions into data problems and communicate insights? Provide a specific example.
+A7: Hey! So, while I'm still a student, I've had a few opportunities to collaborate with cross-functional teams, especially during hackathons and some university projects. While these weren't exactly formal PM/Eng/Design setups, the principles are the same: translate a problem, figure out a data-driven solution, and communicate clearly.
+
+For example, during i.mobilothon 3.0, my team and I were building a prototype. We had people with different skill sets - some were stronger with the UI/UX, others with the backend logic, and I was focusing on the data processing and ML parts. The 'business question' was something like: 'Can we make a system X more efficient'. We broke that down into data problems like, 'What are the key metrics to track efficiency?' and 'How can we visualize these to show improvements?'
+
+I worked with the UI/UX folks to understand what data visualizations would be most impactful and easy to understand for the end-user. Then, I collaborated with the backend folks to ensure the data pipeline was set up to collect and process the right information. Finally, I presented the results to the judges, explaining how our data-driven approach led to a more efficient system X. It was a great experience in aligning different skills towards a common goal and communicating technical insights to a non-technical audience!
+
+Q8: Beyond what's already listed, do you have any other experiences or projects demonstrating your ability to turn business questions into data problems and surface insights, even if those insights aren't directly related to the design industry?
+A8: Hey there! While my resume and projects like Mimikree and the Smart Gmail Assistant highlight my AI/ML and RAG skills, I've also tackled projects that involved translating business questions into data problems, even outside the design industry.
+
+For instance, in the Automatic Infographic Generation project, the core business question was: "How can we reduce the time doctors spend reading medical papers?" We turned that into a data problem by using NLP (LLMs and TextRank) to automatically summarize and structure the content, achieving a 64% reduction in reading time. The insight wasn't design-related, but more about efficient information extraction and presentation.
+
+During the i.mobilothon3.0 hackathon, the challenge was vehicle safety. We looked at how to leverage real-time data for this. Our AI-powered vehicle safety system used V2V cloud communication for weather alerts, stolen vehicle tracking, and collision avoidance. This project really pushed me to think about how data can directly impact real-world safety and efficiency, which is a valuable skill applicable across various industries.
+
+=== END OF USER PROFILE (8 relevant details) ===

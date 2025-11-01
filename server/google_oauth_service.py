@@ -12,7 +12,7 @@ from typing import Optional, Dict, Any
 # OAuth Configuration
 SCOPES = [
     'https://www.googleapis.com/auth/documents',
-    'https://www.googleapis.com/auth/drive.file',
+    'https://www.googleapis.com/auth/drive',  # Full Drive access needed for resume tailoring
     'https://www.googleapis.com/auth/userinfo.email',
     'openid'
 ]
@@ -78,22 +78,34 @@ class GoogleOAuthService:
             Dictionary with success status and message
         """
         try:
-            flow = Flow.from_client_config(
-                {
-                    "web": {
-                        "client_id": CLIENT_ID,
-                        "client_secret": CLIENT_SECRET,
-                        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                        "token_uri": "https://oauth2.googleapis.com/token",
-                        "redirect_uris": [REDIRECT_URI]
-                    }
-                },
-                scopes=SCOPES,
-                redirect_uri=REDIRECT_URI
+            # Exchange authorization code for tokens directly - no scope validation
+            import requests
+            token_response = requests.post(
+                'https://oauth2.googleapis.com/token',
+                data={
+                    'code': code,
+                    'client_id': CLIENT_ID,
+                    'client_secret': CLIENT_SECRET,
+                    'redirect_uri': REDIRECT_URI,
+                    'grant_type': 'authorization_code'
+                }
             )
 
-            flow.fetch_token(code=code)
-            credentials = flow.credentials
+            if token_response.status_code != 200:
+                raise Exception(f"Token exchange failed: {token_response.text}")
+
+            token_data = token_response.json()
+
+            # Create credentials from the token response
+            credentials = Credentials(
+                token=token_data['access_token'],
+                refresh_token=token_data.get('refresh_token'),
+                token_uri="https://oauth2.googleapis.com/token",
+                client_id=CLIENT_ID,
+                client_secret=CLIENT_SECRET,
+                scopes=token_data.get('scope', '').split(),
+                expiry=datetime.now() + timedelta(seconds=token_data.get('expires_in', 3600))
+            )
 
             # Get user email from token info (no API call needed)
             try:
@@ -176,19 +188,42 @@ class GoogleOAuthService:
 
             # Refresh if expired
             if credentials.expired and credentials.refresh_token:
-                credentials.refresh(Request())
+                try:
+                    credentials.refresh(Request())
 
-                # Update stored tokens
-                user.google_access_token = GoogleOAuthService._encrypt_token(credentials.token)
-                user.google_token_expiry = credentials.expiry
-                db.commit()
+                    # Update stored tokens
+                    user.google_access_token = GoogleOAuthService._encrypt_token(credentials.token)
+                    user.google_token_expiry = credentials.expiry
+                    db.commit()
 
-                logging.info(f"Refreshed Google token for user {user_id}")
+                    logging.info(f"Refreshed Google token for user {user_id}")
+                except Exception as refresh_error:
+                    # If refresh fails (invalid_grant), clear the tokens
+                    if 'invalid_grant' in str(refresh_error).lower():
+                        logging.warning(f"Invalid grant error for user {user_id}, clearing tokens")
+                        user.google_access_token = None
+                        user.google_refresh_token = None
+                        user.google_token_expiry = None
+                        db.commit()
+                        return None
+                    raise
 
             return credentials
 
         except Exception as e:
             logging.error(f"Error getting credentials for user {user_id}: {e}")
+            # If it's an invalid_grant error, clear tokens
+            if 'invalid_grant' in str(e).lower():
+                try:
+                    user = db.query(User).filter(User.id == user_id).first()
+                    if user:
+                        user.google_access_token = None
+                        user.google_refresh_token = None
+                        user.google_token_expiry = None
+                        db.commit()
+                        logging.info(f"Cleared invalid tokens for user {user_id}")
+                except Exception as clear_error:
+                    logging.error(f"Error clearing tokens: {clear_error}")
             return None
         finally:
             db.close()

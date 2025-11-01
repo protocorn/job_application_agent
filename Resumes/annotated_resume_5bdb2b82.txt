@@ -1,0 +1,72 @@
+=== ANNOTATED RESUME (What Gemini Receives) ===
+
+<b>Sahil Chordia
+[CHARACTER LIMIT: Current: 13 chars, Max: 66 chars (can add up to 53 chars)]
+</b>College Park, MD | (240) 610-1453 | chordiasahil24@gmail.com | linkedin/in/sahil–chordia | github/protocorn 
+<b>PROFILE
+[CHARACTER LIMIT: Current: 7 chars, Max: 66 chars (can add up to 59 chars)]
+</b><b>
+</b>AI/ML Engineer & Data Science M.S. candidate delivering AI-powered search and automation systems with 50–80% efficiency gains. Skilled in vector search, multimodal RAG, and production deployment.
+[CHARACTER LIMIT: ⚠️ TIGHT - Current: 195 chars, Max: 198 chars (only 3 chars available)]
+<b>SKILLS
+[CHARACTER LIMIT: Current: 6 chars, Max: 66 chars (can add up to 60 chars)]
+</b><b>
+</b>Python, JavaScript, TypeScript <b>| </b>PyTorch, TensorFlow, LangChain<b> |</b> React.js, Node.js, Express.js<b> |</b> MongoDB, PostgreSQL, Pinecone, FAISS, Qdrant<b> |</b> AWS, Docker, Git, Streamlit | Ollama, Gemini API, CLIP
+<b>
+</b><b>EDUCATION
+[CHARACTER LIMIT: Current: 9 chars, Max: 66 chars (can add up to 57 chars)]
+</b><b>
+</b><b>University of Maryland | CGPA: 3.62	College Park, MD
+[CHARACTER LIMIT: Current: 52 chars, Max: 66 chars (can add up to 14 chars)]
+</b>Master of Science in Data Science	August 2024 - May 2026
+[CHARACTER LIMIT: Current: 56 chars, Max: 66 chars (can add up to 10 chars)]
+<b>A.P. Shah Institute of Technology | CGPA: 3.52	Thane, MH
+[CHARACTER LIMIT: Current: 56 chars, Max: 66 chars (can add up to 10 chars)]
+</b>Bachelor of Engineering in Computer Science	June 2020 - May 2024
+[CHARACTER LIMIT: ⚠️ TIGHT - Current: 64 chars, Max: 66 chars (only 2 chars available)]
+
+<b>WORK EXPERIENCE
+[CHARACTER LIMIT: Current: 15 chars, Max: 66 chars (can add up to 51 chars)]
+</b><b>
+</b><b>Raising The Floor – </b><i>Nonprofit focused on accessibility technology</i><b>	Washington D.C (Remote)
+</b>AI Intern	June 2025 - August 2025
+[CHARACTER LIMIT: Current: 33 chars, Max: 66 chars (can add up to 33 chars)]
+Automated AT tool discovery via two-pass Gemini 2.0 Pro pipeline, cutting manual verification time by <b>50%
+</b>Resolved <b>95%</b> of detected dataset inconsistencies (mislabeled categories, duplicates, outdated entries) by automating enrichment workflows for a database of 300+ tools.
+Built an inclusive chatbot (Ollama Gemma2:9B), improving ambiguous query handling accuracy to <b>90%
+</b>Boosted search by integrating cosine similarity–based vector search (Qdrant) for AT tool recommendations.
+[CHARACTER LIMIT: Current: 105 chars, Max: 115 chars (can add up to 10 chars)]
+Reduced QA cycles from days to under <b>2 hours</b> by developing reusable AI audit scripts.
+
+<b>PROJECTS
+[CHARACTER LIMIT: Current: 8 chars, Max: 66 chars (can add up to 58 chars)]
+</b><b>
+</b><b>Mimikree - Personalized AI Assistant | </b>mimikree.com<b>	</b>February 2025 - Present
+Built an AI assistant that ingests diverse content (social media, PDFs, images) to generate personalized LLMs
+[CHARACTER LIMIT: Current: 109 chars, Max: 115 chars (can add up to 6 chars)]
+Engineered a hybrid retrieval pipeline (70% expanded query + 30% original), improving RAG accuracy.
+[CHARACTER LIMIT: Current: 99 chars, Max: 115 chars (can add up to 16 chars)]
+Integrated Gemini 2.0 Flash with Pinecone for dynamic vector search and real-time responses.<b>
+[CHARACTER LIMIT: Current: 92 chars, Max: 115 chars (can add up to 23 chars)]
+</b><b>AI Document Generator – Capital Area Food Bank AI Challenge	</b>February 2025 - May 2025
+Led a team of 3 to design a RAG engine generating grant proposals, PPTs, & posts from <b>1,500+ documents.
+</b>Embedded text and images (CLIP model + Cloudinary) into Pinecone with metadata for multimodal retrieval.
+[CHARACTER LIMIT: Current: 104 chars, Max: 115 chars (can add up to 11 chars)]
+Decreased revision time by <b>60%</b> through AI-assisted selective edits, full-document re-generation from a single prompt, and content suggestions with error detection.
+
+<b>Local Document Search Engine</b><b>	</b>March 2025 - May 2025
+Built privacy-first vector search (FAISS + Sentence Transformers) with intelligent code-aware chunking.
+[CHARACTER LIMIT: Current: 103 chars, Max: 115 chars (can add up to 12 chars)]
+Reduced re-indexing time by <b>~80%</b> for large repos through caching and parallel indexing.
+Integrated Ollama Llama3:8B for query expansion, improving semantic relevance by<b> ~20%.
+</b>
+<b>PUBLICATIONS
+[CHARACTER LIMIT: Current: 12 chars, Max: 66 chars (can add up to 54 chars)]
+</b><b>
+</b><b>Chordia, S. et al.</b> Cross-Domain Sentiment Analysis: An Extensive Study of Machine Learning and Deep Learning Models, Datasets, and Preprocessing Techniques for Predictive Performance. CSCT 2023,  Link.
+
+<b>ACHIEVEMENTS
+[CHARACTER LIMIT: Current: 12 chars, Max: 66 chars (can add up to 54 chars)]
+</b><b>
+</b><b>Finalist (Top 3%)</b> – i.mobilothon 3.0, Volkswagen Group Technology Solution India (Nov 2023)
+<b>3rd Place</b> – Firefly Hackathon, NIT Warangal (Apr 2022)

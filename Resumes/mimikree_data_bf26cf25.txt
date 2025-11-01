@@ -1,0 +1,90 @@
+=== USER PROFILE INFORMATION FROM MIMIKREE ===
+
+Based on questions about the user's background, here are the relevant details:
+
+Q1: Based on the job description, describe any projects or experiences you have, even if not explicitly listed on your resume, that demonstrate your ability to turn business questions into data problems and collaborate with cross-functional teams (engineers, PMs, designers).
+A1: Hey there! Absolutely, I'd love to share some experiences that highlight how I can translate business questions into data problems and collaborate with cross-functional teams. 
+
+Even though it's not explicitly on my resume, the "Automatic Infographic Generation for Medical Papers" project really showcases this.
+
+*   **Turning business needs into data problems**: We worked with Data Science and Wizards Pvt Ltd, who needed to reduce the time doctors spent reading medical papers. We translated this into a data science problem focused on abstractive summarization, content structuring, and information extraction.
+*   **Cross-functional collaboration**: As the team lead, I coordinated a 4-member research team. We collaborated closely, dividing tasks based on expertise (NLP, deep learning, heuristic-based extraction). I also communicated directly with stakeholders at Data Science and Wizards, gathering feedback and iterating on our solution.
+
+Also, in my solo project, Mimikree:
+*   **Turning business needs into data problems**: I wanted to make my digital presence more accessible, so I created a system where people could interact with an AI trained on my own data. This involved solving data problems related to personalized LLMs and RAG pipelines.
+*   **Cross-functional collaboration**: Since it's a solo project, I wore multiple hats -- from backend to frontend development, to even designing the user interface. I'm constantly getting feedback from users and figuring out how to translate that into actionable development tasks. The current stack involves Python, Flask, Node.js, Pinecone and Gemini 2.0 Flash. I also collaborated with other developers in online forums to get help with some roadblocks along the way.
+
+Q2: What experience do you have designing experiments and evaluating metrics to guide product decisions, and can you quantify the impact of those decisions in past projects?
+A2: That's a great question! While my experience is primarily academic and project-based, I've definitely focused on designing experiments and evaluating metrics to drive improvements. 
+
+For example, in my Mimikree project, I experimented with different hybrid retrieval strategies for RAG, combining expanded query context with current query context. By A/B testing these strategies and measuring query latency and response accuracy, I was able to achieve a 40% reduction in query latency through custom embedding optimization. This directly impacted the user experience by making the AI assistant feel much more responsive. Also, I used Gemini 2.0 which significantly helped in speed as well as cost reduction.
+
+In the Automatic Infographic Generation project, we measured the accuracy of our LSTM model for segmenting medical paper sections (Abstract, Results, Conclusion). Achieving 82% accuracy in this segmentation directly translated to more effective content structuring for the infographics, ultimately reducing medical paper reading time by 64%. We tracked this by user surveys.
+
+I'm always looking for ways to quantify the impact of my decisions, and I believe this is a crucial skill for any data scientist or ML engineer. Actively seeking internship opportunities to apply these skills in a more formal setting!
+
+Q3: The job description mentions building models or conducting analyses to understand user behavior and growth. Describe a project where you built a model or analysis, focusing on the specific methodologies used (e.g., regression, classification) and the quantifiable insights gained.
+A3: Hey there! I'm Sahil Chordia. That's a great question! 
+
+Let me tell you about the 'Smart Gmail Assistant' project I built. It was all about understanding and improving user email management, which touches on user behavior and growth in productivity.
+
+**Methodology:**
+
+*   **Problem:** I noticed a personal need to reduce the time I was spending on email. So, I built a Chrome extension using Google's Prompt, Summarizer, and Writer APIs to summarize emails, suggest replies, refine email drafts, and highlight key info. The core idea was to automate common email-related tasks.
+*   **Tech Stack:** I used JavaScript for the Chrome extension, connected it to the Google APIs, and incorporated a caching mechanism (since API calls can be slow). I also used Python to do some preprocessing of the data.
+*   **Analysis:** The key here was reducing *API Latency* via a caching mechanism, significantly optimizing extension performance. This was important because it sped up performance for the user.
+
+**Quantifiable Insights:**
+
+*   **Improved Productivity:** While I didn't conduct formal user testing, the extension drastically cut down the time I spent on email. It helped me prioritize important threads and respond quickly to common inquiries.
+*    **Caching for reduced API Latency:** Using caching greatly enhanced how the extension performed, reducing lag and making email management smoother.
+
+I learned a ton about user-centered design, API integration, and performance optimization from this project. It definitely fueled my interest in AI automation!
+
+
+Q4: Describe any experience you have developing tools, datasets, or dashboards to make data more accessible to others. Quantify how these resources improved data accessibility or decision-making.
+A4: Okay, so in my article about Mimikree, I describe how the platform allows users to upload data from various sources (social media, documents, etc.) to create a personalized AI model. I wouldn't necessarily call Mimikree a "dashboard," but the whole point is to make a user's own data more accessible *to themselves* (and others, if they choose to share their model) in a conversational way.
+
+Specifically, the Google Calendar integration is a good example. I worked on enabling users to sync their calendars so the model could accurately answer questions about their availability. This directly improves accessibility because instead of manually checking a calendar, someone can just ask the AI.
+
+Quantifying the impact is tricky since Mimikree is more of a prototype, but the goal was to reduce the time and effort needed to access and utilize personal data. Imagine quickly getting an answer about your schedule versus digging through your calendar – that’s the kind of improvement I was aiming for.
+
+Q5: Have you worked on any projects that involved investigating user behavior and recommending product improvements? What was your approach, and what quantifiable impact did your recommendations have?
+A5: Hey there!
+
+While I haven't specifically worked on projects focused *solely* on user behavior analysis for product improvements, my projects have definitely incorporated elements of that!
+
+For instance, with Mimikree, I built it to learn from diverse user content, like social media and documents. The idea was to create a personalized AI assistant. I was constantly tweaking the retrieval strategy based on how accurately it answered questions – things like playing around with the weighting of expanded query vs. current query context. I saw a 40% reduction in query latency through embedding optimization, which directly impacted user experience.
+
+Also, the Smart Gmail Assistant used email summarization and context-aware responses. While I didn't A/B test specific product changes based on user behavior *directly*, the whole concept was about making email management more efficient and personalized, which indirectly improves productivity.
+
+In the Automatic Infographic Generation project, we aimed to reduce medical paper reading time. We actually *did* measure the impact – we achieved a 64% reduction by using LLMs for summarization and graph-based models for structuring the content. That was pretty cool to see the quantifiable impact of our approach!
+
+So, while it's not exactly the same as a dedicated user behavior analysis role, I've always tried to incorporate data-driven improvements and measure the impact of my work whenever possible!
+
+Q6: Describe your experience improving experimentation accuracy and velocity through new testing methodologies (e.g., A/B testing, multivariate testing). Include specific examples and metrics demonstrating improved accuracy or velocity.
+A6: Okay, so while my resume doesn't explicitly detail A/B or multivariate testing, I can talk about how I've improved accuracy and velocity in other AI/ML projects through different methodologies.
+
+For instance, in the Mimikree project, I significantly improved the accuracy of the AI assistant's responses by implementing a hybrid retrieval strategy for the RAG pipeline. I played around with different ratios of expanded query context (70%) and current query context (30%). This boosted the accuracy and relevance of the generated responses. I also cut down query latency by 40% through custom embedding optimization and shifting to a serverless backend.
+
+Similarly, with the Automatic Infographic Generation project, our team's main goal was to cut down the time it takes to read medical papers. We used LLMs (T5 & BART) for abstractive summarization and graph-based models (TextRank) to structure the content. This system ended up reducing medical paper reading time by 64%. We also built a heuristic-driven extraction system that pulled out figures, titles, and captions with 90% accuracy, which was a big win. The LSTM model we used also had an accuracy of 82% when segmenting different sections of the paper.
+
+Q7: Have you built any internal datasets or models to support product, marketing, or business teams? If so, describe the problem the dataset or model solved and the quantifiable impact on the team's performance.
+A7: That's a great question! During my undergrad, I worked on a sentiment analysis project using machine learning and deep learning models. While it wasn't directly for a product, marketing, or business team in a professional setting, the goal was to analyze sentiments from sources like Twitter and movie reviews.  I used datasets like the Sentiment140 dataset from Kaggle for Twitter data and another one containing Amazon product reviews and IMDB movie reviews. 
+
+It was more of an academic exercise, but the core idea was to classify the sentiment (positive, negative, or neutral) expressed in the text.  If I were to apply this to a real business scenario, it could be used to gauge customer feedback on new products or marketing campaigns, identify areas for improvement, and potentially quantify the impact on customer satisfaction scores.
+
+Q8: Describe any experience you have exploring growth opportunities through critical metric analysis and funnel research. Include examples of specific metrics you analyzed and the actionable insights you derived from that analysis.
+A8: Hey there! As a student, my experience with critical metric analysis and funnel research is more project-based and geared towards optimizing AI models and applications.
+
+For example, in my Mimikree project, I was focused on reducing query latency. I analyzed metrics like:
+
+*   **API Latency:** How long it took for the Gemini 2.0 Flash API to respond.
+*   **Query Response Time:** The total time from when a user asked a question to when they received an answer.
+*   **Vector Search Latency:** How long it took Pinecone to retrieve relevant data.
+
+Through this, I found that optimizing my embeddings and using a serverless backend significantly reduced API latency, leading to a 40% reduction in query latency. I also did something similar in my Smart Gmail Assistant project by implementing a caching mechanism for API calls, which also drastically reduced latency.
+
+While these examples aren't traditional "growth opportunities" in a business sense, they reflect my analytical approach to improving performance and user experience in AI projects.
+
+=== END OF USER PROFILE (8 relevant details) ===

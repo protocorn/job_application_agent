@@ -1,0 +1,96 @@
+=== USER PROFILE INFORMATION FROM MIMIKREE ===
+
+Based on questions about the user's background, here are the relevant details:
+
+Q1: Describe any experience you have with A/B testing or other experimentation methodologies for product decisions, even if it's not explicitly detailed on your resume. Quantify the impact of your experimentation efforts whenever possible.
+A1: Hey! While A/B testing isn't explicitly listed on my resume, I've definitely used experimentation methodologies in a few of my projects to make data-driven decisions. 
+
+For example, in my Mimikree AI assistant project, I played around with different retrieval strategies for the RAG pipeline. I didn't run formal A/B tests, but I did experiment with different weights for the expanded query versus the current query context. I started with a 50/50 split and then tweaked it based on the relevance and accuracy of the generated responses. I ended up settling on 70% expanded query and 30% current query context. While it wasn't a rigorously quantified A/B test, it allowed me to achieve a noticeable improvement in the quality of responses.
+
+I've also done similar informal experiments while working on the Automatic Infographic Generation project. We tried different LLMs (T5 and BART) for abstractive summarization and compared their performance based on how well they captured the key information from the medical papers. This helped us choose the better model for that specific task.
+
+I'm always looking for ways to incorporate more structured experimentation into my workflow to make more informed decisions!
+
+Q2: Have you built any dashboards or tools to make data more accessible for non-technical teams? If so, what technologies did you use, and how did these tools improve data accessibility and understanding?
+A2: Hey there!
+
+Yeah, actually, I've tinkered with a few things to make data more digestible for non-techy folks. Streamlit is one of my go-to tools for whipping up quick and interactive dashboards from Python scripts. It's super straightforward, so you can transform data into something people can actually play around with in minutes.  I have experience using Node.js as well.
+
+For example, I built Mimikree, which leverages Node.js and the Gemini 2.0 Flash API.  It's all about making AI more accessible and personalized.  It's kind of a different beast, but the idea's the same: take something complex and make it user-friendly.  Accessibility and ease of use are the main goals!
+
+
+Q3: The job description mentions collaborating across teams to turn business questions into data problems. Describe a project where you successfully translated a business problem into a data analysis and what the outcome was, highlighting the cross-functional teamwork involved.
+A3: Hey there!
+
+That's a great question. One project that immediately comes to mind is the "Automatic Infographic Generation for Medical Papers" project I led. The core business problem we were addressing was the massive time investment required for medical professionals to digest research papers. They needed a faster way to grasp the key findings.
+
+So, we translated this into a data problem: How can we automatically extract and summarize the most important information from these papers and present it visually? Our approach involved a few key steps:
+
+1.  **Content Summarization:** We used LLMs (T5 & BART) for abstractive summarization to condense the papers.
+2.  **Content Structuring:** Graph-based models (TextRank) helped us identify key concepts and relationships.
+3.  **Section Segmentation:** We trained an LSTM model to accurately segment papers into sections like Abstract, Results, and Conclusion.
+4.  **Figure Extraction:** A heuristic-driven system identified figures, titles, and captions with high accuracy.
+
+The cross-functional teamwork was crucial. We were a 4-member team collaborating with Data Science and Wizards Pvt Ltd. Each team member had specific responsibilities, from model development to data extraction. Constant communication and brainstorming sessions ensured that our technical solutions aligned with the needs of the end-users (medical professionals). It helped that one of the guys on the team knew the medical field a little bit.
+
+The outcome was pretty cool! We managed to reduce medical paper reading time by 64%. The system could automatically generate infographics highlighting key results and conclusions. It was super satisfying to see our AI solution directly address a real-world need in the medical field. You can even check out the GitHub repo [here](automatic-infographics-system-for-medical-paper).
+
+Q4: What projects have you worked on that involved investigating user behavior to recommend product improvements? Provide specific examples of the insights you uncovered and how they were used to inform product decisions.
+A4: Hey there! That's a great question. I've definitely worked on some interesting projects where user behavior drove product improvements. My most recent one is called Mimikree.
+
+With Mimikree, I aimed to create personalized AI models that users could share. To enhance the user experience, I focused on how users interacted with the platform and their models.
+
+One key insight I uncovered was the importance of diverse data input. Users wanted to train their AI models with data from various sources, like social media, documents, and images. This led to the development of features that allowed users to easily upload and integrate data from different platforms, making the AI models more comprehensive and personalized. 
+
+Another thing was the challenge of making sure the responses were relevant and useful. To tackle this, I implemented a prompt engineering system that allowed users to customize the way their AI models responded. This ensured that the models aligned with the user's tone and preferences. I've also included Google Calendar integration to make availability-related queries much more accurate.
+
+Here's a flyer I created to explain the features of Mimikree:
+
+https://res.cloudinary.com/dkyloeuir/image/upload/v1746068787/user_sahil_1746068785736.png
+Mimikree Flyer which explains features of mimikree
+
+And another project I worked on recently was Stylvee:
+
+Stylvee is a modern and user-friendly e-commerce website that specializes in clothing and wearables for men, women, and kids. This repository contains the complete source code for the website, which is built using React.js and Next.js for the frontend and Sanity.io for managing products and user authentication. The website also employs machine learning techniques to offer users a personalized experience by showcasing similar items.
+
+
+User feedback showed that customers appreciated personalized recommendations, but the initial algorithm wasn't accurate enough. By analyzing user browsing and purchase history, I refined the machine learning model to suggest similar items more effectively. This led to a noticeable increase in click-through rates and sales.
+
+I'm always looking for ways to apply user insights to make products better. If you have any other questions, feel free to ask!
+
+Q5: Do you have experience building models or conducting analyses specifically related to user growth and funnel optimization? Quantify the results achieved through these models or analyses.
+A5: While I haven't directly worked on user growth and funnel optimization models in a professional setting yet, some of my projects touch upon related concepts. For instance, in the Mimikree project, I aimed to reduce query latency by 40% through embedding optimization and serverless backend enhancements. While this wasn't directly focused on user growth, improving the user experience is a key factor in retaining users and encouraging them to use the platform more.
+
+Also, my Smart Gmail Assistant project was designed to enhance user productivity by reducing API latency. This kind of performance optimization can contribute to a smoother user experience, which is important for user retention and engagement. Unfortunately, I don't have quantifiable results specifically for user growth or funnel optimization from these projects yet, as they were more focused on improving the underlying technology and user experience.
+
+Q6: Beyond what is listed in your current profile, what experience do you have with SQL, Python (especially data science libraries like Pandas, NumPy, Scikit-learn), or other relevant programming languages and tools that are useful for data analysis and modeling?
+A6: Hey there! Great question! So, yeah, my profile mentions Python, SQL, and some data science libraries, but let me give you a bit more detail.
+
+**Python:** I'm pretty comfortable with Python. I've used Pandas and NumPy extensively for data manipulation and cleaning. Scikit-learn is my go-to for implementing various machine learning models. I also have experience with TensorFlow and PyTorch for deep learning stuff, as you can see in my resume where I used them for the Automatic Infographic Generation project and other personal projects.
+
+**SQL:** I've used SQL for data querying and database management, especially in projects where I needed to pull data from relational databases. I'm familiar with writing complex queries and doing data aggregation.
+
+**Other relevant tools and languages:**
+*   **R:** I've dabbled in R for statistical analysis and data visualization.
+*   **MATLAB:** During my Computer Engineering undergrad, I got some hands-on experience with MATLAB as well.
+*   **Cloud:** I have experience with cloud platforms like AWS, Azure, and Google Cloud, which are super handy for deploying and scaling data science projects.
+
+Basically, I try to stay versatile and pick up whatever tools are best suited for the task at hand!
+
+Q7: The role involves building internal datasets. Can you describe your experience creating and maintaining datasets, including data cleaning, transformation, and ensuring data quality?
+A7: Hey there! So, regarding building internal datasets, it's something I've tackled in a few of my projects, and I've learned a ton along the way.
+
+In my research project on automatic infographic generation for medical papers, one of the critical tasks was creating a dataset from medical research papers. This involved a lot of data cleaning because, as you can imagine, the format and structure across different papers varied wildly. I used Python with libraries like Pandas and regular expressions to standardize the text, remove inconsistencies, and handle missing data.
+
+For the Mimikree project, creating personalized AI models, I dealt with user-uploaded data from social media, PDFs, and images. Data cleaning here meant handling diverse formats, extracting relevant text, and ensuring data quality before feeding it into the vector database (Pinecone). I also built a pipeline to process images and generate captions when needed.
+
+In terms of data transformation, I've used techniques like text summarization with LLMs (T5 & BART) and feature extraction using models like LSTM to convert raw data into a format suitable for machine learning models.
+
+Ensuring data quality is super important. I've implemented validation checks and monitoring scripts to catch inconsistencies and errors early on. Also, I created data dictionaries and documentation to maintain a clear understanding of the datasets and their characteristics.
+
+Basically, I'm all about making sure the data is clean, consistent, and ready to fuel some awesome AI applications!
+
+Q8: Describe any relevant coursework, personal projects, or professional experiences where you applied data science techniques to solve problems related to design or creative workflows, even if they are not directly featured on your resume.
+A8: Okay, so while my resume highlights my AI/ML and data science projects, I've actually dabbled in applying those techniques to design and creative workflows too, even if it wasn't the main focus. For instance, I was playing around with generative models to help with creating unique graphic designs. I used GANs (Generative Adversarial Networks) to generate different design patterns and color palettes, which could be used as inspiration for graphic design projects. I also experimented with using NLP techniques to analyze trends in design aesthetics from sources like Dribbble and Behance to predict what kind of designs would be popular.
+
+=== END OF USER PROFILE (8 relevant details) ===

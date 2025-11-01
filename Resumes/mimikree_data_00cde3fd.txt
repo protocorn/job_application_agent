@@ -1,0 +1,72 @@
+=== USER PROFILE INFORMATION FROM MIMIKREE ===
+
+Based on questions about the user's background, here are the relevant details:
+
+Q1: Describe any projects, even those not currently on your resume, where you designed experiments and evaluated metrics to guide product decisions, quantifying the impact of those decisions.
+A1: Hey there! It's Sahil Chordia.
+
+While my resume highlights specific projects, I can share a bit more about how I approach experimentation and evaluation in my projects.
+
+For Mimikree, even though it's a side project, I put a lot of thought into how I could measure its effectiveness. One area was optimizing the RAG (Retrieval-Augmented Generation) pipeline. Initially, I used a basic query to retrieve context from Pinecone. But, after some user feedback from my friends, I realized the responses weren't always as relevant as I'd hoped. So, I experimented with a hybrid retrieval strategy, blending the original query with the current conversation context. I allocated 70% weight to the expanded query and 30% to the current query context. This change led to a noticeable improvement in response accuracy, although I didn't have a formal A/B test setup. I primarily tracked query latency and user satisfaction, observing a 40% reduction in query latency thanks to custom embedding optimization.
+
+In the Automatic Infographic Generation project, we tracked the accuracy of abstract, results, and conclusion segmentation using an LSTM model, reaching 82% accuracy. For figure extraction, we aimed for high precision, achieving 90% accuracy in identifying figures, titles, and captions from medical papers using a heuristic-driven system. The key metric we focused on was reducing medical paper reading time, and we were able to achieve a 64% reduction through abstractive summarization and content structuring.
+
+Here's the flyer that explains mimikree, including its features
+
+https://res.cloudinary.com/dkyloeuir/image/upload/v1746068787/user_sahil_1746068785736.png
+This image is a flyer which explains features of Mimikree
+
+Q2: What experience do you have with analyzing user behavior and recommending product improvements, detailing the specific methodologies used and the resulting impact on user engagement or other key metrics?
+A2: That's a great question! While my resume doesn't directly highlight experience with analyzing user behavior for *product* improvements specifically, my projects have definitely involved understanding user needs and iterating based on feedback. For instance, with Mimikree, I focused on creating a personalized AI assistant. To optimize the RAG pipeline, I experimented with different retrieval strategies (70% expanded query, 30% current context) and monitored query latency. Achieving a 40% reduction in query latency through custom embedding optimization was a direct result of trying to improve the user experience.
+
+Similarly, the Smart Gmail Assistant project involved streamlining email summarization and response. Although I didn't A/B test different versions, the caching mechanism I implemented drastically reduced API latency, making the extension much more responsive for users.
+
+In terms of methodologies, I'm familiar with techniques like A/B testing, user surveys, and analyzing user interaction data (e.g., click-through rates, time spent on features). As I continue my Master's in Data Science, I am eager to gain deeper expertise in these areas and apply them to product development. I'm always looking for opportunities to learn and contribute to projects that prioritize user-centric design!
+
+Q3: Have you built any internal datasets or models to support product, marketing, or business teams? Quantify the benefits of these resources, such as time saved or improved decision-making.
+A3: That's a great question! While I haven't directly built datasets or models specifically for product, marketing, or business teams in a corporate setting, I've definitely applied my AI/ML skills in ways that mirror those benefits.
+
+For example, with Mimikree, the personalized AI assistant, a core part of the project was creating a system that efficiently ingests and processes diverse user data (social media, PDFs, images). The hybrid retrieval strategy I engineered (70% expanded query, 30% current query context) resulted in a **40% reduction in query latency**, streamlining the information retrieval process. This translates to faster access to relevant information, which is a key advantage for product and marketing teams needing quick insights.
+
+Similarly, the automatic infographic generation project I led reduced medical paper reading time by **64%** by using LLMs and graph-based models. I believe, this kind of efficiency gain could be applied in business settings to save time for business teams.
+
+Q4: Detail your experience with experimentation accuracy and velocity, highlighting any specific testing methodologies (e.g., A/B testing, multivariate testing) you've utilized and the improvements you achieved.
+A4: Hey there! While my experience isn't directly in traditional A/B or multivariate testing in a dedicated experimentation role, I've definitely focused on optimizing for accuracy and speed in my AI/ML projects.  For example, with Mimikree, I experimented quite a bit with different RAG strategies to improve response accuracy.  I mentioned in my resume that I saw a **40% reduction in query latency** through custom embedding optimization and a serverless backend. This came from iteratively testing different embedding models and backend configurations to find the sweet spot between speed and accuracy.
+
+For the Mimikree project, I used a hybrid retrieval strategy (70% expanded query, 30% current query context) to optimize RAG performance. This was achieved by constantly evaluating the quality of responses and adjusting the weights of different retrieval components based on user feedback and performance metrics.
+
+In the Automatic Infographic Generation project, we aimed for high accuracy in segmenting medical paper sections. We achieved **82% accuracy in segmenting Abstract, Results, and Conclusion** sections using an LSTM model. The figure/title/caption extraction system reached **90% accuracy** through a heuristic-driven approach. We tracked precision and recall metrics and manually verified outputs to ensure these accuracy levels.
+
+Q5: Beyond what's currently listed, do you possess skills in statistical modeling, data visualization, or programming languages (like Python or R) applicable to analyzing large datasets and communicating insights to both technical and non-technical audiences?
+A5: Hey there! Absolutely, my resume highlights Python and R, which I use extensively for data analysis. I'm also proficient in SQL for data wrangling. I've got experience using libraries like Pandas, NumPy, and Scikit-Learn in Python, which are key for statistical modeling. For visualizing data, I'm comfortable with tools like Matplotlib. I've worked on projects where I've had to explain complex findings to people without a technical background, so I'm pretty good at making data understandable for everyone.
+
+Q6: Can you describe any projects where you collaborated with engineers, PMs, and designers to translate business questions into data problems and then effectively communicated the findings?
+A6: That's a great question! While my resume doesn't explicitly highlight projects with PMs or designers, my experience with the Automatic Infographic Generation project comes pretty close. I led a team of four researchers, and we worked with a company called Data Science and Wizards Pvt Ltd. Our goal was to automate infographic creation from medical papers.
+
+Essentially, we were translating the business need (reducing the time doctors spend reading papers) into a data science problem. We used LLMs for summarization and graph-based models to structure the content. We even built an LSTM model to segment the papers and a system to extract figures and captions.
+
+While I didn't directly work with people with the titles 'Project Manager' or 'Designer,' presenting our findings to Data Science and Wizards definitely involved communicating technical details in a way that non-technical stakeholders could understand. Does that make sense?
+
+Q7: Have you explored growth opportunities through critical metric analysis and funnel research? If so, describe the methodologies you used and the quantifiable results achieved.
+A7: Hey there! That's an interesting question. While my resume doesn't explicitly detail growth opportunities through critical metric analysis and funnel research in a business context, the principles definitely apply to how I approach AI project development and optimization. 
+
+For example, with my Mimikree project, I was constantly analyzing metrics like query latency and response accuracy. To improve performance, I experimented with different retrieval strategies (like the hybrid query approach I mentioned - 70% expanded, 30% current context). I saw a 40% reduction in query latency through custom embedding optimization. That's kind of like optimizing a funnel, right? Identify the bottleneck and tweak the parameters to improve the flow.
+
+Similarly, with the Smart Gmail Assistant, I focused on API latency. By implementing a caching mechanism, I was able to significantly reduce API call times, which directly enhanced the extension's usability. 
+
+So, while I haven't worked in a traditional 'growth' role, I've definitely applied those analytical and optimization principles to my AI projects to improve performance and user experience.
+
+Q8: Outline any experience you have creating dashboards or tools that make data more accessible to others, focusing on the technologies used and the positive impact on team productivity or decision-making.
+A8: Hey there! Sahil Chordia here. 👋
+
+So, dashboards and data accessibility, huh? That's right up my alley! While I haven't worked on massive enterprise-level dashboards *yet*, I've definitely dabbled in creating tools to make data more digestible, especially using Streamlit (which you can see from the info you have!).
+
+Here's a quick rundown:
+
+*   **Streamlit Apps:** I've built a few internal apps using Streamlit to visualize data from various projects. It's awesome because it lets you whip up interactive dashboards with Python super fast. I usually hook it up with libraries like Pandas and Plotly to create charts and tables.  These tools help me to quickly see trends that I can't see from pure data.
+
+*   **Impact:** These dashboards have helped me and my close team members keep track of our KPIs more easily. The live editing and shareability of Streamlit apps have made iterating on the visualizations really smooth.
+
+I'm always looking to expand my skills in this area, so I'm keen to work on more complex data visualization projects! Learning new stacks like Tableau, PowerBI, and D3 is something I plan on getting to. Open to ideas if you have any!
+
+=== END OF USER PROFILE (8 relevant details) ===
