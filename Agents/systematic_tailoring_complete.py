@@ -627,39 +627,48 @@ class SystematicEditorComplete:
             max_length=500
         )
 
-        prompt = f"""You are a professional resume writer. Rewrite this resume profile to sound natural, engaging, and professional while incorporating relevant skills.
+        prompt = f"""You are a professional resume writer. Rewrite this resume profile to sound natural, engaging, and professional while incorporating SPECIFIC skills (not vague terms).
 
 ORIGINAL PROFILE:
 {original_profile}
 
-TARGET SKILLS/KEYWORDS (incorporate naturally):
+TARGET SKILLS/KEYWORDS (incorporate ONLY if you can be specific):
 {', '.join(validation['feasible_keywords'][:7])}
 
 {f"CANDIDATE'S BACKGROUND (use for context):\\n{mimikree_context}\\n" if mimikree_context else ""}
 
-CRITICAL RULES - READ CAREFULLY:
-1. **NATURAL FLOW**: Write like a human, not a robot. The text should flow naturally and tell a story.
-2. **NO KEYWORD STUFFING**: Never list keywords like "proficient in X, Y, and Z" or "skilled in A, B, C"
-3. **SHOW, DON'T TELL**: Instead of saying "skilled in Machine Learning", say what they built/achieved with it
-4. **CONNECT IDEAS**: Use natural transitions. Make sentences flow into each other.
-5. **ACTIVE VOICE**: Use action verbs and active voice. Avoid passive constructions.
+CRITICAL RULES - PROFESSIONALISM FIRST:
+1. **BE SPECIFIC, NOT VAGUE**: Use concrete terms. "Natural Language Processing" > "Machine Learning". "TensorFlow" > "AI". "Python data pipelines" > "programming".
+2. **ONLY USE BROAD TERMS AS LAST RESORT**: If a keyword is vague (e.g., "Machine Learning", "AI", "Data Science"), only include it if:
+   - There's NO specific alternative available
+   - You can tie it to a concrete achievement (e.g., "Machine Learning for medical diagnosis")
+   - It's absolutely critical for the role
+3. **NATURAL FLOW**: Write like a human, not a robot. Tell a story, don't list keywords.
+4. **NO KEYWORD STUFFING**: Never list keywords like "proficient in X, Y, and Z" or "skilled in A, B, C"
+5. **SHOW, DON'T TELL**: Instead of saying "skilled in Machine Learning", say "built ML-powered search systems"
 6. **SAME LENGTH**: Keep similar length to original (±10%)
 
-GOOD EXAMPLES (natural, flowing):
+GOOD EXAMPLES (specific, professional):
 ❌ BAD: "AI/ML Engineer skilled in Machine Learning, Python, and Data Analysis"
-✅ GOOD: "AI/ML Engineer building intelligent search systems that automate data analysis workflows"
+✅ GOOD: "AI Engineer building retrieval-augmented generation systems with vector databases"
 
-❌ BAD: "Data Scientist proficient in TensorFlow, PyTorch, and Python for AI model development"
-✅ GOOD: "Data Scientist developing production AI models that reduced processing time by 60%"
+❌ BAD: "Data Scientist with expertise in AI and Machine Learning"
+✅ GOOD: "Data Scientist developing production NLP models for medical document analysis"
 
 ❌ BAD: "leveraging Machine Learning and Python to deliver AI-powered systems"
-✅ GOOD: "designing AI-powered search systems using deep learning and natural language processing"
+✅ GOOD: "designing search systems using semantic embeddings and transformer models"
+
+VAGUE TERMS TO AVOID (unless no alternative):
+- "Machine Learning" (use: NLP, Computer Vision, Deep Learning, etc.)
+- "AI" (use: LLMs, Neural Networks, Transformers, etc.)
+- "Data Science" (use: Statistical Analysis, Predictive Modeling, etc.)
+- "Programming" (use: Python, TypeScript, etc.)
 
 WHAT TO AVOID:
 - Don't use "leveraging", "proficient in", "skilled in", "expertise in"
 - Don't list technologies in comma-separated lists
 - Don't use generic phrases like "deliver solutions" or "drive results"
-- Don't stuff multiple keywords in one sentence awkwardly
+- Don't force vague keywords just to include them
 
 OUTPUT:
 Return ONLY the rewritten profile text. No explanations, no metadata, no commentary."""
@@ -998,17 +1007,31 @@ CRITICAL OUTPUT FORMAT:
                 print(f"      📝 Reorganizing skills to prioritize job keywords")
 
         # Use Gemini to reorganize skills to prioritize feasible keywords
-        prompt = f"""Reorganize this skills section to highlight these prioritized keywords: {', '.join(validation['feasible_keywords'][:10])}
+        prompt = f"""Reorganize this skills section to highlight SPECIFIC skills from the priority list. NEVER add vague terms.
 
 ORIGINAL SKILLS:
 {skills_text}
 
-REQUIREMENTS:
-- Keep ALL original skills
-- Reorganize to put prioritized keywords first
-- Maintain the same format (comma-separated or with pipes)
-- Group related skills together
-- Keep approximately the same length
+PRIORITY SKILLS (only reorganize to highlight SPECIFIC ones that exist):
+{', '.join(validation['feasible_keywords'][:10])}
+
+STRICT REQUIREMENTS - NO EXCEPTIONS:
+1. **NEVER ADD NEW SKILLS** - Only reorganize existing skills
+2. **NEVER ADD VAGUE TERMS** - Don't add broad terms like "Machine Learning", "AI", "Data Science" unless they already exist in original
+3. **PRIORITIZE SPECIFIC SKILLS** - Move specific tools/technologies to front (e.g., "TensorFlow", "PyTorch", "LangChain")
+4. **KEEP ALL ORIGINAL SKILLS** - Don't remove anything
+5. **SAME FORMAT** - Maintain exact format (comma-separated or with pipes)
+6. **SAME LENGTH** - Keep approximately the same character count
+
+VAGUE TERMS TO NEVER ADD (unless already present):
+- "Machine Learning" (specific alternatives: NLP, Computer Vision, Deep Learning)
+- "AI" (specific alternatives: LLMs, Transformers, Neural Networks)
+- "Data Science" (specific alternatives: Statistical Modeling, Time Series Analysis)
+- "Programming" (specific alternatives: Python, JavaScript, TypeScript)
+
+EXAMPLE:
+❌ BAD: Adding "Machine Learning" when not present
+✅ GOOD: Reorganizing to put "PyTorch, TensorFlow, LangChain" at the front
 
 CRITICAL OUTPUT FORMAT:
 - Return ONLY the reorganized skills text
