@@ -4,12 +4,10 @@ providers = ["python"]
 nixPkgs = ["python311Full", "python311Packages.pip", "python311Packages.virtualenv", "postgresql"]
 
 [phases.install]
-# Use pip caching and prefer binary wheels for faster installation
 cmds = [
   "python -m venv /opt/venv",
   "/opt/venv/bin/pip install --upgrade pip",
-  # Prefer binary wheels to avoid compilation, use cache
-  "/opt/venv/bin/pip install --prefer-binary -r requirements_production.txt"
+  "/opt/venv/bin/pip install -r requirements_production.txt"
 ]
 
 [phases.build]
@@ -17,8 +15,3 @@ cmds = ["echo 'Build phase complete'"]
 
 [start]
 cmd = "/opt/venv/bin/python server/api_server.py"
-
-# Railway build cache configuration
-[variables]
-# Cache the virtual environment between builds
-PIP_CACHE_DIR = "/root/.cache/pip"
