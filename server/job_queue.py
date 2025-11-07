@@ -84,6 +84,8 @@ class JobRequest:
         data['created_at'] = self.created_at.isoformat()
         if self.scheduled_at:
             data['scheduled_at'] = self.scheduled_at.isoformat()
+        # JSON-serialize the payload to ensure it's Redis-compatible
+        data['payload'] = json.dumps(data['payload'])
         return data
     
     @classmethod
@@ -92,6 +94,9 @@ class JobRequest:
         data['created_at'] = datetime.fromisoformat(data['created_at'])
         if data.get('scheduled_at'):
             data['scheduled_at'] = datetime.fromisoformat(data['scheduled_at'])
+        # Deserialize the payload from JSON string
+        if isinstance(data.get('payload'), str):
+            data['payload'] = json.loads(data['payload'])
         return cls(**data)
 
 @dataclass
