@@ -1,15 +1,17 @@
 providers = ["python"]
 
 [phases.setup]
-nixPkgs = ["python311Full", "python311Packages.pip", "postgresql"]
+nixPkgs = ["python311Full", "python311Packages.pip", "python311Packages.virtualenv", "postgresql"]
 
 [phases.install]
 cmds = [
-  "pip3 install --break-system-packages -r requirements_production.txt"
+  "python -m venv /opt/venv",
+  "/opt/venv/bin/pip install --upgrade pip",
+  "/opt/venv/bin/pip install -r requirements_production.txt"
 ]
 
 [phases.build]
 cmds = ["echo 'Build phase complete'"]
 
 [start]
-cmd = "python server/api_server.py"
+cmd = "/opt/venv/bin/python server/api_server.py"
