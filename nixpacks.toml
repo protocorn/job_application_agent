@@ -1,7 +1,7 @@
 providers = ["python"]
 
 [phases.setup]
-nixPkgs = ["python39", "python39Packages.pip", "postgresql"]
+nixPkgs = ["python311", "python311Packages.pip", "postgresql"]
 
 [phases.install]
 cmds = [
