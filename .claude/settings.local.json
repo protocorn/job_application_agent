@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -c:*)"
+      "Bash(python -c:*)",
+      "Bash(python migrate_add_projects.py:*)",
+      "Bash(python:*)",
+      "Bash(python migrate_add_google_oauth.py:*)"
     ],
     "deny": [],
     "ask": []
