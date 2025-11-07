@@ -27,11 +27,14 @@ if REDIS_URL:
     
     # Convert to rediss:// for TLS if using Upstash
     redis_url = REDIS_URL
-    if redis_url.startswith('redis://') and 'upstash.io' in redis_url:
+    is_upstash = 'upstash.io' in redis_url
+    if redis_url.startswith('redis://') and is_upstash:
         redis_url = redis_url.replace('redis://', 'rediss://', 1)
     
     parsed = urllib.parse.urlparse(redis_url)
-    redis_url_with_db = f"{parsed.scheme}://{parsed.netloc}/1"  # DB 1 for job queue
+    # Upstash free tier only supports DB 0, use DB 1 for local Redis
+    db_number = 0 if is_upstash else 1
+    redis_url_with_db = f"{parsed.scheme}://{parsed.netloc}/{db_number}"
     
     redis_client = redis.from_url(
         redis_url_with_db,
