@@ -1,11 +1,11 @@
 [phases.setup]
-nixPkgs = ["python39", "postgresql"]
+nixPkgs = ["python39", "python39Packages.pip", "postgresql"]
 
 [phases.install]
 cmds = [
-  "python -m pip install --upgrade pip",
-  "python -m pip install -r requirements_production.txt",
-  "python -m playwright install --with-deps chromium"
+  "pip install --upgrade pip",
+  "pip install -r requirements_production.txt",
+  "playwright install --with-deps chromium"
 ]
 
 [phases.build]
