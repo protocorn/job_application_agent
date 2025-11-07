@@ -50,7 +50,12 @@ class ProductionRateLimiter:
     Production-grade rate limiter with Redis backend
     Supports per-user, per-endpoint, and global rate limiting
     """
-    
+
+    # Admin users (unlimited rate limits)
+    ADMIN_EMAILS = [
+        'chordiasahil24@gmail.com',
+    ]
+
     # API Quota Limits (per day unless specified)
     LIMITS = {
         # Gemini API limits (conservative estimates)
@@ -74,7 +79,38 @@ class ProductionRateLimiter:
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)
-    
+
+    def is_admin_user(self, user_id: int) -> bool:
+        """
+        Check if a user is an admin (unlimited rate limits)
+
+        Args:
+            user_id: User ID to check
+
+        Returns:
+            True if user is admin, False otherwise
+        """
+        try:
+            # Import here to avoid circular imports
+            from database_config import get_db, get_user_by_id
+
+            # Get database session
+            db = next(get_db())
+            try:
+                # Look up user by ID
+                user = get_user_by_id(db, user_id)
+
+                if user and user.email:
+                    return user.email in self.ADMIN_EMAILS
+
+                return False
+            finally:
+                db.close()
+
+        except Exception as e:
+            self.logger.error(f"Error checking admin status for user {user_id}: {e}")
+            return False
+
     def _get_key(self, limit_type: str, identifier: str) -> str:
         """Generate Redis key for rate limit tracking"""
         return f"rate_limit:{limit_type}:{identifier}"
@@ -86,16 +122,35 @@ class ProductionRateLimiter:
     def check_limit(self, limit_type: str, identifier: str) -> Tuple[bool, Dict[str, Any]]:
         """
         Check if request is within rate limit
-        
+
+        Args:
+            limit_type: Type of rate limit to check
+            identifier: User ID (as string) or IP address
+
         Returns:
             (allowed: bool, info: dict)
         """
         if limit_type not in self.LIMITS:
             return True, {"error": "Unknown limit type"}
-        
+
+        # Check if identifier is a user ID and if that user is admin
+        try:
+            user_id = int(identifier)
+            if self.is_admin_user(user_id):
+                self.logger.info(f"Admin user {user_id} bypassing rate limit for {limit_type}")
+                return True, {
+                    "allowed": True,
+                    "admin": True,
+                    "limit": "unlimited",
+                    "remaining": "unlimited"
+                }
+        except ValueError:
+            # identifier is not a user ID (probably an IP address), proceed with normal rate limiting
+            pass
+
         limit = self.LIMITS[limit_type]
         key = self._get_key(limit_type, identifier)
-        
+
         try:
             # Use sliding window algorithm
             now = int(time.time())

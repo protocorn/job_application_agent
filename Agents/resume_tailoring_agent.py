@@ -768,16 +768,20 @@ def _apply_styles_from_tags(docs_service, document_id, strip_tags: bool):
     for idx, text in enumerate(bold_texts):
         print(f"  {idx+1}. '{text}'")
 
-    # Save debug file showing what text has bold tags
-    debug_bold_file = f"../Resumes/bold_debug_{uuid.uuid4().hex[:8]}.txt"
-    with open(debug_bold_file, 'w', encoding='utf-8') as f:
-        f.write("=== DOCUMENT WITH BOLD MARKERS ===\n\n")
-        f.write("This shows what Gemini returned with <b> tags:\n\n")
-        f.write(doc_text)
-        f.write("\n\n=== LIST OF TEXT TO BE BOLDED ===\n\n")
-        for idx, text in enumerate(bold_texts):
-            f.write(f"{idx+1}. '{text}'\n")
-    print(f"📄 Bold debug file saved to: {debug_bold_file}")
+    # Save debug file showing what text has bold tags (optional)
+    try:
+        import tempfile
+        debug_bold_file = os.path.join(tempfile.gettempdir(), f"bold_debug_{uuid.uuid4().hex[:8]}.txt")
+        with open(debug_bold_file, 'w', encoding='utf-8') as f:
+            f.write("=== DOCUMENT WITH BOLD MARKERS ===\n\n")
+            f.write("This shows what Gemini returned with <b> tags:\n\n")
+            f.write(doc_text)
+            f.write("\n\n=== LIST OF TEXT TO BE BOLDED ===\n\n")
+            for idx, text in enumerate(bold_texts):
+                f.write(f"{idx+1}. '{text}'\n")
+        print(f"📄 Bold debug file saved to: {debug_bold_file}")
+    except Exception as debug_error:
+        print(f"   (Debug file save skipped: {debug_error})")
 
     # First, strip all tags from the document
     cleanup_requests = []
@@ -886,42 +890,46 @@ def _apply_styles_from_tags(docs_service, document_id, strip_tags: bool):
 
     print(f"✓ Bold/italic formatting applied successfully!")
 
-    # Create a visual debug file showing what SHOULD be bold
-    debug_visual_file = f"../Resumes/bold_visual_{uuid.uuid4().hex[:8]}.txt"
-    with open(debug_visual_file, 'w', encoding='utf-8') as f:
-        f.write("=== VISUAL REPRESENTATION OF WHAT SHOULD BE BOLD ===\n\n")
-        f.write("Legend: **text** = should be bold\n\n")
+    # Create a visual debug file showing what SHOULD be bold (optional)
+    try:
+        import tempfile
+        debug_visual_file = os.path.join(tempfile.gettempdir(), f"bold_visual_{uuid.uuid4().hex[:8]}.txt")
+        with open(debug_visual_file, 'w', encoding='utf-8') as f:
+            f.write("=== VISUAL REPRESENTATION OF WHAT SHOULD BE BOLD ===\n\n")
+            f.write("Legend: **text** = should be bold\n\n")
 
-        # Create a marked-up version of the clean text
-        visual_text = clean_doc_text
+            # Create a marked-up version of the clean text
+            visual_text = clean_doc_text
 
-        # Sort bold_texts by position (longest first to avoid substring issues)
-        bold_positions = []
-        for text in bold_texts:
-            pos = clean_doc_text.find(text)
-            if pos != -1:
-                bold_positions.append((pos, len(text), text))
+            # Sort bold_texts by position (longest first to avoid substring issues)
+            bold_positions = []
+            for text in bold_texts:
+                pos = clean_doc_text.find(text)
+                if pos != -1:
+                    bold_positions.append((pos, len(text), text))
 
-        bold_positions.sort(reverse=True)  # Start from end to not mess up positions
+            bold_positions.sort(reverse=True)  # Start from end to not mess up positions
 
-        # Insert markers
-        for pos, length, text in bold_positions:
-            visual_text = visual_text[:pos] + '**' + text + '**' + visual_text[pos+length:]
+            # Insert markers
+            for pos, length, text in bold_positions:
+                visual_text = visual_text[:pos] + '**' + text + '**' + visual_text[pos+length:]
 
-        f.write(visual_text)
+            f.write(visual_text)
 
-        f.write("\n\n=== SUMMARY ===\n")
-        f.write(f"Total bold requests: {len(bold_texts)}\n")
-        f.write(f"Successfully found: {len([t for t in bold_texts if clean_doc_text.find(t) != -1])}\n")
-        f.write(f"Not found: {len([t for t in bold_texts if clean_doc_text.find(t) == -1])}\n")
+            f.write("\n\n=== SUMMARY ===\n")
+            f.write(f"Total bold requests: {len(bold_texts)}\n")
+            f.write(f"Successfully found: {len([t for t in bold_texts if clean_doc_text.find(t) != -1])}\n")
+            f.write(f"Not found: {len([t for t in bold_texts if clean_doc_text.find(t) == -1])}\n")
 
-        not_found = [t for t in bold_texts if clean_doc_text.find(t) == -1]
-        if not_found:
-            f.write("\nText that couldn't be found:\n")
-            for text in not_found:
-                f.write(f"  - '{text}'\n")
+            not_found = [t for t in bold_texts if clean_doc_text.find(t) == -1]
+            if not_found:
+                f.write("\nText that couldn't be found:\n")
+                for text in not_found:
+                    f.write(f"  - '{text}'\n")
 
-    print(f"📄 Visual bold debug saved to: {debug_visual_file}")
+        print(f"📄 Visual bold debug saved to: {debug_visual_file}")
+    except Exception as debug_error:
+        print(f"   (Debug file save skipped: {debug_error})")
 
     # IMPORTANT: Read the actual document after formatting to see what's REALLY bold
     print("\n🔍 Reading actual document to verify bold formatting...")
@@ -930,34 +938,38 @@ def _apply_styles_from_tags(docs_service, document_id, strip_tags: bool):
     final_document = docs_service.documents().get(documentId=document_id).execute()
     final_content = final_document.get('body', {}).get('content', [])
 
-    # Create a debug file showing what's ACTUALLY bold in the document
-    actual_bold_file = f"../Resumes/actual_bold_{uuid.uuid4().hex[:8]}.txt"
-    with open(actual_bold_file, 'w', encoding='utf-8') as f:
-        f.write("=== ACTUAL BOLD TEXT IN GOOGLE DOC ===\n\n")
-        f.write("This shows what's actually bold in the final document:\n\n")
+    # Create a debug file showing what's ACTUALLY bold in the document (optional)
+    try:
+        import tempfile
+        actual_bold_file = os.path.join(tempfile.gettempdir(), f"actual_bold_{uuid.uuid4().hex[:8]}.txt")
+        with open(actual_bold_file, 'w', encoding='utf-8') as f:
+            f.write("=== ACTUAL BOLD TEXT IN GOOGLE DOC ===\n\n")
+            f.write("This shows what's actually bold in the final document:\n\n")
 
-        for element in final_content:
-            if 'paragraph' in element:
-                para = element['paragraph']
-                para_elements = para.get('elements', [])
+            for element in final_content:
+                if 'paragraph' in element:
+                    para = element['paragraph']
+                    para_elements = para.get('elements', [])
 
-                for elem in para_elements:
-                    if 'textRun' in elem:
-                        text_run = elem['textRun']
-                        content = text_run.get('content', '')
-                        text_style = text_run.get('textStyle', {})
-                        is_bold = text_style.get('bold', False)
+                    for elem in para_elements:
+                        if 'textRun' in elem:
+                            text_run = elem['textRun']
+                            content = text_run.get('content', '')
+                            text_style = text_run.get('textStyle', {})
+                            is_bold = text_style.get('bold', False)
 
-                        if is_bold:
-                            f.write(f"**{content}**")
-                        else:
-                            f.write(content)
+                            if is_bold:
+                                f.write(f"**{content}**")
+                            else:
+                                f.write(content)
 
-        f.write("\n\n=== SUMMARY ===\n")
-        f.write("Text marked with **bold** is what's actually bold in the document.\n")
-        f.write("Compare this with bold_visual_*.txt to see discrepancies.\n")
+            f.write("\n\n=== SUMMARY ===\n")
+            f.write("Text marked with **bold** is what's actually bold in the document.\n")
+            f.write("Compare this with bold_visual_*.txt to see discrepancies.\n")
 
-    print(f"📄 Actual bold formatting saved to: {actual_bold_file}")
+        print(f"📄 Actual bold formatting saved to: {actual_bold_file}")
+    except Exception as debug_error:
+        print(f"   (Debug file save skipped: {debug_error})")
 
 
 def _regenerate_invalid_replacements(client, resume_text, job_description, invalid_items):
@@ -1682,16 +1694,20 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
                 line_metadata = extract_document_structure(docs_service, original_doc_id)
                 print(f"Extracted metadata for {len(line_metadata)} lines")
 
-                # Save metadata to file for debugging
-                metadata_debug_file = f"../Resumes/metadata_debug_{uuid.uuid4().hex[:8]}.json"
-                with open(metadata_debug_file, 'w', encoding='utf-8') as f:
-                    json.dump({
-                        'total_lines': len(line_metadata),
-                        'job_title': job_title,
-                        'company': company,
-                        'lines': line_metadata
-                    }, f, indent=2)
-                print(f"📄 Metadata saved to: {metadata_debug_file}")
+                # Save metadata to file for debugging (only if directory exists)
+                try:
+                    import tempfile
+                    metadata_debug_file = os.path.join(tempfile.gettempdir(), f"metadata_debug_{uuid.uuid4().hex[:8]}.json")
+                    with open(metadata_debug_file, 'w', encoding='utf-8') as f:
+                        json.dump({
+                            'total_lines': len(line_metadata),
+                            'job_title': job_title,
+                            'company': company,
+                            'lines': line_metadata
+                        }, f, indent=2)
+                    print(f"📄 Metadata saved to: {metadata_debug_file}")
+                except Exception as debug_error:
+                    print(f"   (Debug file save skipped: {debug_error})")
 
             except Exception as e:
                 print(f"Warning: Structure extraction failed ({e}), using basic tailoring")
@@ -1802,12 +1818,16 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
                 print("\nAnnotating resume with formatting constraints...")
                 annotated_resume_text = annotate_resume_with_metadata(original_resume_text, line_metadata)
 
-                # Save annotated resume for debugging
-                annotated_debug_file = f"../Resumes/annotated_resume_{uuid.uuid4().hex[:8]}.txt"
-                with open(annotated_debug_file, 'w', encoding='utf-8') as f:
-                    f.write("=== ANNOTATED RESUME (What Gemini Receives) ===\n\n")
-                    f.write(annotated_resume_text)
-                print(f"📄 Annotated resume saved to: {annotated_debug_file}")
+                # Save annotated resume for debugging (only if directory exists)
+                try:
+                    import tempfile
+                    annotated_debug_file = os.path.join(tempfile.gettempdir(), f"annotated_resume_{uuid.uuid4().hex[:8]}.txt")
+                    with open(annotated_debug_file, 'w', encoding='utf-8') as f:
+                        f.write("=== ANNOTATED RESUME (What Gemini Receives) ===\n\n")
+                        f.write(annotated_resume_text)
+                    print(f"📄 Annotated resume saved to: {annotated_debug_file}")
+                except Exception as debug_error:
+                    print(f"   (Debug file save skipped: {debug_error})")
             else:
                 line_budget = None
                 keywords = None
@@ -2033,8 +2053,12 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
 
         # Also download the final resume as a PDF (for backup)
         print("Downloading the tailored resume as a PDF...")
-        output_pdf_path = f"../Resumes/{copied_doc_title}.pdf"
-        download_doc_as_pdf(drive_service, copied_doc_id, output_pdf_path)
+        try:
+            import tempfile
+            output_pdf_path = os.path.join(tempfile.gettempdir(), f"{copied_doc_title}.pdf")
+            download_doc_as_pdf(drive_service, copied_doc_id, output_pdf_path)
+        except Exception as pdf_error:
+            print(f"   (PDF download skipped: {pdf_error})")
 
         # Prepare tailoring metrics for frontend
         # Get keyword analysis results

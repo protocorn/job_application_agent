@@ -205,14 +205,15 @@ class KeywordValidatorComplete:
         print("PHASE 1: KEYWORD VALIDATION & SKILL FEASIBILITY")
         print("="*60)
 
-        # Analyze Mimikree responses for each keyword
-        print(f"\n📋 Analyzing {len(job_keywords)} keywords from Mimikree responses...")
+        # Analyze keywords from both Mimikree AND resume text
+        has_mimikree = bool(self.mimikree_responses)
+        print(f"\n📋 Analyzing {len(job_keywords)} keywords from {'Mimikree responses + resume' if has_mimikree else 'resume text'}...")
 
         keyword_evidence = {}
         feasible = []
         missing = []
 
-        # Prepare Mimikree context for Gemini analysis
+        # Prepare Mimikree context for Gemini analysis (if available)
         mimikree_context = "\n\n".join([
             f"Q: {question}\nA: {response}"
             for question, response in self.mimikree_responses.items()
@@ -225,10 +226,22 @@ class KeywordValidatorComplete:
         for i in range(0, len(job_keywords), batch_size):
             batch = job_keywords[i:i+batch_size]
 
+            # Build prompt based on whether Mimikree data is available
+            if has_mimikree:
+                candidate_profile_section = f"""**Candidate's Professional Profile (from Mimikree):**
+{mimikree_context}
+
+**Candidate's Resume:**
+{resume_text}"""
+            else:
+                candidate_profile_section = f"""**Candidate's Resume:**
+{resume_text}
+
+Note: Mimikree profile integration not available. Analyzing resume content only."""
+
             prompt = f"""You are an expert HR analyst evaluating whether a candidate has genuine experience with specific skills/keywords.
 
-**Candidate's Professional Profile:**
-{mimikree_context}
+{candidate_profile_section}
 
 **Keywords to Evaluate:**
 {json.dumps(batch, indent=2)}
