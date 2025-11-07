@@ -1,14 +1,12 @@
 providers = ["python"]
 
 [phases.setup]
-# Include both Python 3.11 and pip from nixpkgs
 nixPkgs = ["python311Full", "python311Packages.pip", "postgresql"]
 
 [phases.install]
-# Explicitly use pip3 instead of python -m pip to avoid module resolution issues
 cmds = [
   "pip3 install --break-system-packages -r requirements_production.txt",
-  "playwright install --with-deps chromium"
+  "python -m playwright install --with-deps chromium"
 ]
 
 [phases.build]
