@@ -1886,7 +1886,10 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
             print(f"   Original: {original_page_count} page(s)")
             print(f"   Current:  {current_page_count} page(s)")
 
-            if current_page_count > original_page_count:
+            # Check for overflow (handle None values from missing PyPDF2)
+            if current_page_count is None or original_page_count is None:
+                print("   ⚠️  Page count unavailable (PyPDF2 not installed) - skipping overflow check")
+            elif current_page_count > original_page_count:
                 print(f"\n⚠️  OVERFLOW DETECTED: {current_page_count} pages > {original_page_count} pages")
                 
                 # Multi-attempt overflow recovery (max 2 attempts)

@@ -54,6 +54,7 @@ lxml>=4.9.0
 pandas>=2.1.0
 numpy>=1.25.0
 Pillow
+PyPDF2>=3.0.0
 
 # Development and Testing (optional)
 pytest>=7.4.0
