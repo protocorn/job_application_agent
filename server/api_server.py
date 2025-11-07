@@ -46,7 +46,9 @@ from mimikree_service import mimikree_service
 app = Flask(__name__)
 
 # Configure CORS for development and production
-allowed_origins = os.getenv('CORS_ORIGINS', 'http://localhost:3000').split(',')
+# Default includes multiple localhost ports for development
+default_origins = 'http://localhost:3000,http://localhost:3001,http://localhost:5173'
+allowed_origins = os.getenv('CORS_ORIGINS', default_origins).split(',')
 CORS(app, origins=allowed_origins, supports_credentials=True)
 
 # Apply security headers to all responses
