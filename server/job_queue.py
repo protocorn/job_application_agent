@@ -85,7 +85,11 @@ class JobRequest:
         if self.scheduled_at:
             data['scheduled_at'] = self.scheduled_at.isoformat()
         # JSON-serialize the payload to ensure it's Redis-compatible
-        data['payload'] = json.dumps(data['payload'])
+        try:
+            data['payload'] = json.dumps(data['payload'])
+        except TypeError as e:
+            # Provide helpful error message if payload contains non-serializable objects
+            raise TypeError(f"Payload contains non-JSON-serializable data: {str(e)}. Ensure all objects (like Credentials) are converted to dicts before submitting.")
         return data
     
     @classmethod

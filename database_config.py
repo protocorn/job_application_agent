@@ -53,8 +53,8 @@ class User(Base):
     mimikree_connected_at = Column(DateTime)
     mimikree_is_connected = Column(Boolean, default=False)
 
-    # Relationships
-    job_applications = relationship("JobApplication", back_populates="user")
+    # Relationships (use lazy='select' to prevent N+1 queries, explicitly load when needed)
+    job_applications = relationship("JobApplication", back_populates="user", lazy='select')
 
 class JobApplication(Base):
     __tablename__ = "job_applications"
@@ -147,8 +147,8 @@ class UserProfile(Base):
     # Relationship
     user = relationship("User", back_populates="profile")
 
-# Update User model to include profile relationship
-User.profile = relationship("UserProfile", back_populates="user", uselist=False)
+# Update User model to include profile relationship (use lazy='select' to prevent N+1 queries)
+User.profile = relationship("UserProfile", back_populates="user", uselist=False, lazy='select')
 
 # Action history for session replay per user/job with TTL
 class ActionHistory(Base):
@@ -172,6 +172,52 @@ def get_db():
         yield db
     finally:
         db.close()
+
+def get_user_by_id(db, user_id: int, load_profile: bool = False, load_applications: bool = False):
+    """
+    Optimized user lookup with explicit relationship loading control
+
+    Args:
+        db: Database session
+        user_id: User ID to fetch
+        load_profile: Whether to eagerly load the profile relationship
+        load_applications: Whether to eagerly load job_applications relationship
+
+    Returns:
+        User object or None
+    """
+    from sqlalchemy.orm import joinedload
+
+    query = db.query(User).filter(User.id == user_id)
+
+    # Explicitly load relationships if needed
+    if load_profile:
+        query = query.options(joinedload(User.profile))
+    if load_applications:
+        query = query.options(joinedload(User.job_applications))
+
+    return query.first()
+
+def get_user_by_email(db, email: str, load_profile: bool = False):
+    """
+    Optimized user lookup by email with explicit relationship loading control
+
+    Args:
+        db: Database session
+        email: User email to fetch
+        load_profile: Whether to eagerly load the profile relationship
+
+    Returns:
+        User object or None
+    """
+    from sqlalchemy.orm import joinedload
+
+    query = db.query(User).filter(User.email == email)
+
+    if load_profile:
+        query = query.options(joinedload(User.profile))
+
+    return query.first()
 
 def create_tables():
     """Create all tables in the database"""
