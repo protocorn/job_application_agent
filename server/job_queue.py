@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Dict, Any, Optional, List, Callable
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 import redis
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -79,17 +79,30 @@ class JobRequest:
     max_retries: int = 3
     
     def to_dict(self) -> Dict[str, Any]:
-        data = asdict(self)
-        data['priority'] = self.priority.value
-        data['created_at'] = self.created_at.isoformat()
-        if self.scheduled_at:
-            data['scheduled_at'] = self.scheduled_at.isoformat()
-        # JSON-serialize the payload to ensure it's Redis-compatible
+        # JSON-serialize the payload first to ensure it's compatible
         try:
-            data['payload'] = json.dumps(data['payload'])
+            payload_json = json.dumps(self.payload)
         except TypeError as e:
             # Provide helpful error message if payload contains non-serializable objects
             raise TypeError(f"Payload contains non-JSON-serializable data: {str(e)}. Ensure all objects (like Credentials) are converted to dicts before submitting.")
+
+        # Build dict manually to avoid any tuple issues from asdict()
+        data = {
+            'job_id': self.job_id,
+            'user_id': self.user_id,
+            'job_type': self.job_type,
+            'priority': self.priority.value,
+            'payload': payload_json,
+            'created_at': self.created_at.isoformat(),
+            'timeout_seconds': self.timeout_seconds,
+            'retry_count': self.retry_count,
+            'max_retries': self.max_retries
+        }
+
+        # Add optional scheduled_at if present
+        if self.scheduled_at:
+            data['scheduled_at'] = self.scheduled_at.isoformat()
+
         return data
     
     @classmethod
@@ -115,13 +128,66 @@ class JobResult:
     execution_time: Optional[float] = None
     
     def to_dict(self) -> Dict[str, Any]:
-        data = asdict(self)
-        data['status'] = self.status.value
+        # Build dict manually to avoid any tuple issues from asdict()
+        data = {
+            'job_id': self.job_id,
+            'status': self.status.value,
+            'result': json.dumps(self.result) if self.result else None,
+            'error': self.error,
+            'execution_time': self.execution_time
+        }
+
+        # Add optional datetime fields if present
         if self.started_at:
             data['started_at'] = self.started_at.isoformat()
         if self.completed_at:
             data['completed_at'] = self.completed_at.isoformat()
+
         return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'JobResult':
+        """Create JobResult from dictionary (from Redis)"""
+        # Deserialize result from JSON string if present
+        result = None
+        if data.get('result'):
+            try:
+                result = json.loads(data['result'])
+            except (json.JSONDecodeError, TypeError):
+                result = data['result']  # Keep as-is if not JSON
+
+        # Parse datetime fields
+        started_at = None
+        if data.get('started_at'):
+            try:
+                started_at = datetime.fromisoformat(data['started_at'])
+            except (ValueError, TypeError):
+                pass
+
+        completed_at = None
+        if data.get('completed_at'):
+            try:
+                completed_at = datetime.fromisoformat(data['completed_at'])
+            except (ValueError, TypeError):
+                pass
+
+        # Parse execution_time
+        execution_time = None
+        if data.get('execution_time'):
+            try:
+                execution_time = float(data['execution_time'])
+            except (ValueError, TypeError):
+                pass
+
+        return cls(
+            job_id=data['job_id'],
+            status=JobStatus(data['status']),
+            result=result,
+            error=data.get('error'),
+            started_at=started_at,
+            completed_at=completed_at,
+            execution_time=execution_time
+        )
 
 class JobQueue:
     """
