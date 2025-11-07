@@ -5,7 +5,8 @@ nixPkgs = ["python311Full", "python311Packages.pip", "postgresql"]
 
 [phases.install]
 cmds = [
-  "pip3 install --break-system-packages -r requirements_production.txt",
+  "pip install --upgrade pip setuptools wheel",
+  "pip install --break-system-packages -r requirements_production.txt",
   "python -m playwright install --with-deps chromium"
 ]
 
