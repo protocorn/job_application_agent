@@ -1849,7 +1849,7 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
                 line_metadata=line_metadata if line_metadata else [],
                 resume_text=original_resume_text_plain,
                 mimikree_responses=mimikree_responses if 'mimikree_responses' in locals() else {},
-                mimikree_formatted_data=mimikree_data if mimikree_data else "",
+                mimikree_formatted_data=mimikree_data if 'mimikree_data' in locals() and mimikree_data else "",
                 conservative_mode=conservative_mode
             )
 
