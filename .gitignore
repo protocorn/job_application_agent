@@ -1,9 +1,98 @@
-# Python
+# ============================================================
+# SECURITY: SENSITIVE DATA - NEVER COMMIT
+# ============================================================
+
+# Environment variables (CRITICAL - Contains API keys, passwords)
+.env
+.env.*
+!.env.example
+!env_production_example.txt
+*.env
+
+# OAuth tokens and credentials (CRITICAL)
+token.json
+credentials.json
+Agents/token.json
+server/token.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Database credentials
+database.ini
+db_config.ini
+
+# SSL/TLS certificates
+*.crt
+*.cert
+*.cer
+*.der
+
+# ============================================================
+# USER DATA & PRIVACY
+# ============================================================
+
+# User resumes (Personal data - GDPR/Privacy concern)
+Resumes/
+Resumes/*.pdf
+Resumes/*.docx
+Resumes/*.doc
+Resumes/*.txt
+!Resumes/README.md
+
+# User profile data
+ProfileBuilder/profile_data.json
+ProfileBuilder/*.json
+!ProfileBuilder/schema.json
+
+# Mimikree cache (May contain personal data)
+Cache/
+Cache/mimikree/
+*.cache
+
+# Session data (May contain form data, personal info)
+server/sessions/
+server/sessions/action_logs/
+server/sessions/browser_states/
+server/sessions/screenshots/
+sessions.json
+
+# Backups (May contain all user data)
+backups/
+*.backup
+*.bak
+*.sql
+*.dump
+
+# ============================================================
+# LOGS (May contain sensitive info in debug logs)
+# ============================================================
+
+# Application logs
+logs/
+*.log
+Agents/logs/
+server/logs/
+deployment.log
+
+# Specific log files
+*.log.*
+*.log.gz
+*.log.zip
+
+# ============================================================
+# PYTHON
+# ============================================================
+
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+
+# Distribution / packaging
 build/
 develop-eggs/
 dist/
@@ -23,91 +112,330 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# Virtual Environment
+# Virtual environments
 venv/
 ENV/
 env/
-.venv
+.venv/
+virtualenv/
+.virtualenv/
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
+# PyInstaller
+*.manifest
+*.spec
 
-# Logs
-*.log
-logs/
-Agents/logs/
-server/logs/
-
-# Sessions and Screenshots
-server/sessions/
-server/sessions/action_logs/
-server/sessions/browser_states/
-server/sessions/screenshots/
-sessions.json
-
-# Environment variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Resumes (if you don't want to track them)
-Resumes/*.pdf
-Resumes/*.docx
-Resumes/*.doc
-
-# Temporary files
-*.tmp
-*.temp
-nul
-
-# Node modules (for Website/job-agent-frontend)
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# Frontend build
-Website/job-agent-frontend/dist/
-Website/job-agent-frontend/build/
-Website/job-agent-frontend/.next/
-Website/job-agent-frontend/out/
-
-# Test coverage
+# Unit test / coverage reports
 htmlcov/
 .tox/
+.nox/
 .coverage
 .coverage.*
 .cache
 nosetests.xml
 coverage.xml
 *.cover
+*.py,cover
 .hypothesis/
 .pytest_cache/
+pytestdebug.log
 
 # Jupyter Notebook
 .ipynb_checkpoints
+*.ipynb
 
 # pyenv
 .python-version
 
-# Secrets and credentials
-credentials.json
-token.json
-*.pem
-*.key
+# Celery
+celerybeat-schedule
+celerybeat.pid
 
-# OS
+# SageMath parsed files
+*.sage.py
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# ============================================================
+# NODE / JAVASCRIPT / FRONTEND
+# ============================================================
+
+# Dependencies
+node_modules/
+jspm_packages/
+
+# Testing
+coverage/
+
+# Production build
+Website/job-agent-frontend/build/
+Website/job-agent-frontend/dist/
+Website/job-agent-frontend/.next/
+Website/job-agent-frontend/out/
+
+# Misc
+.DS_Store
+*.pem
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Directory for instrumented libs
+lib-cov
+
+# nyc test coverage
+.nyc_output
+
+# Grunt intermediate storage
+.grunt
+
+# Bower dependency directory
+bower_components
+
+# node-waf configuration
+.lock-wscript
+
+# Compiled binary addons
+build/Release
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional stylelint cache
+.stylelintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn
+.yarn-integrity
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# ============================================================
+# DATABASE
+# ============================================================
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# PostgreSQL
+*.sql
+*.dump
+*.backup
+
+# Database exports
+db_export/
+database_dumps/
+
+# ============================================================
+# IDE & EDITORS
+# ============================================================
+
+# VSCode
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.example
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+.idea_modules/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+.vim/
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# ============================================================
+# OPERATING SYSTEM
+# ============================================================
+
+# Windows
 Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Linux
+*~
+.directory
+.Trash-*
+.nfs*
+
+# ============================================================
+# TEMPORARY & WORKING FILES
+# ============================================================
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+nul
+temp/
+tmp/
+
+# Test files
+test_output/
+test_results/
+*.test
+
+# Working directories
+scratch/
+playground/
+experiments/
+
+# ============================================================
+# DEPLOYMENT & PRODUCTION
+# ============================================================
+
+# Docker
+*.dockerignore
+docker-compose.override.yml
+
+# Kubernetes
+*.kubeconfig
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraformrc
+terraform.rc
+
+# Ansible
+*.retry
+
+# ============================================================
+# DOCUMENTATION (Optional - keep if you want)
+# ============================================================
+
+# Keep documentation but ignore generated docs
+# docs/_build/
+# docs/.doctrees/
+
+# ============================================================
+# PROJECT SPECIFIC
+# ============================================================
+
+# Playwright browsers
+.playwright/
+
+# Test job descriptions (if they contain real company data)
+# test_job_descriptions/
+
+# Migration rollback files
+*.rollback
+
+# Deployment artifacts
+deployment/
+releases/
+
+# ============================================================
+# NOTES
+# ============================================================
+# Files explicitly kept (not ignored):
+# - README.md
+# - requirements*.txt
+# - *.md documentation files
+# - .gitignore itself
+# - Source code (*.py, *.js, *.css, *.html)
+# - Configuration examples (*example*, *template*)
+# ============================================================

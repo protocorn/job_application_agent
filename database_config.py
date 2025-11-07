@@ -13,7 +13,10 @@ DB_HOST = os.getenv('DB_HOST', 'localhost')
 DB_PORT = os.getenv('DB_PORT', '5432')
 DB_NAME = os.getenv('DB_NAME', 'job_agent_db')
 DB_USER = os.getenv('DB_USER', 'postgres')
-DB_PASSWORD = os.getenv('DB_PASSWORD', 'Saahil@2412')
+DB_PASSWORD = os.getenv('DB_PASSWORD')
+
+if not DB_PASSWORD:
+    raise ValueError("DB_PASSWORD environment variable is required. Please set it in your .env file.")
 
 # Create database URL (URL encode the password to handle special characters)
 from urllib.parse import quote_plus
@@ -43,6 +46,12 @@ class User(Base):
     google_access_token = Column(Text)  # Encrypted access token
     google_token_expiry = Column(DateTime)
     google_account_email = Column(String)
+    
+    # Mimikree credentials (per-user)
+    mimikree_email = Column(String)
+    mimikree_password_encrypted = Column(Text)  # Encrypted password
+    mimikree_connected_at = Column(DateTime)
+    mimikree_is_connected = Column(Boolean, default=False)
 
     # Relationships
     job_applications = relationship("JobApplication", back_populates="user")
