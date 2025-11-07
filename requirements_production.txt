@@ -1,0 +1,60 @@
+# Production Infrastructure Requirements for Job Application Agent
+
+# Core Flask and Web Framework
+Flask>=2.3.0
+Flask-CORS>=4.0.0
+waitress>=2.1.2
+
+# Database and ORM
+SQLAlchemy>=2.0.0
+psycopg2-binary>=2.9.0
+alembic>=1.12.0
+
+# Redis for caching, rate limiting, and job queue
+redis>=4.6.0
+hiredis>=2.2.0
+
+# Security and Authentication
+bcrypt>=4.0.0
+PyJWT>=2.8.0
+cryptography>=41.0.0
+flask-talisman>=1.1.0
+
+# Job Queue and Background Processing
+schedule>=1.2.0
+
+# Backup and Cloud Storage
+boto3>=1.28.0
+botocore>=1.31.0
+
+# Monitoring and Logging
+sentry-sdk[flask]>=1.38.0
+prometheus-client>=0.19.0
+
+# Input Validation and Sanitization
+marshmallow>=3.20.0
+bleach>=6.0.0
+
+# Rate Limiting and Performance
+limits>=3.6.0
+
+# Existing requirements (from your current system)
+google-generativeai>=0.3.0
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.1.1
+google-api-python-client>=2.100.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+python-dateutil>=2.8.2
+playwright>=1.40.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+pandas>=2.1.0
+numpy>=1.25.0
+
+# Development and Testing (optional)
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+black>=23.9.0
+flake8>=6.1.0

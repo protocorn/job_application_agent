@@ -1725,7 +1725,10 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
 
                     try:
                         # Check cache first
-                        cached_data = get_cached_mimikree_data(job_description)
+                        cached_data = None
+                        if SYSTEMATIC_TAILORING_AVAILABLE:
+                            cached_data = get_cached_mimikree_data(job_description)
+
                         if cached_data:
                             print("✅ Using cached Mimikree data")
                             mimikree_data = cached_data.get('formatted_data', '')
@@ -1768,12 +1771,13 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
                                             mimikree_data = "\n\n".join(formatted_parts)
 
                                             # Cache for future use
-                                            cache_data = {
-                                                'responses': mimikree_responses,
-                                                'formatted_data': mimikree_data
-                                            }
-                                            cache_mimikree_data(job_description, cache_data)
-                                            print(f"💾 Cached Mimikree data for future runs")
+                                            if SYSTEMATIC_TAILORING_AVAILABLE:
+                                                cache_data = {
+                                                    'responses': mimikree_responses,
+                                                    'formatted_data': mimikree_data
+                                                }
+                                                cache_mimikree_data(job_description, cache_data)
+                                                print(f"💾 Cached Mimikree data for future runs")
 
                                             print(f"✅ Mimikree integration complete!")
                                         else:
@@ -2029,10 +2033,79 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
         output_pdf_path = f"../Resumes/{copied_doc_title}.pdf"
         download_doc_as_pdf(drive_service, copied_doc_id, output_pdf_path)
 
-        # Return the public URL
-        tailored_doc_url = f"https://docs.google.com/document/d/{copied_doc_id}/edit"
-        print(f"✅ Tailored resume created and made public: {tailored_doc_url}")
-        return tailored_doc_url
+        # Prepare tailoring metrics for frontend
+        # Get keyword analysis results
+        feasible_keywords = systematic_results['phase1_results']['feasible_keywords']
+        missing_keywords = systematic_results['phase1_results']['missing_keywords']
+        all_job_keywords = keywords.get('prioritized_keywords', [])[:15] if keywords else []
+        
+        # Calculate which keywords were already present vs newly added
+        # Check original resume text to see which keywords were already there
+        already_present_keywords = []
+        newly_added_keywords = []
+        
+        original_resume_lower = original_resume_text_plain.lower()
+        for keyword in feasible_keywords:
+            keyword_lower = keyword.lower()
+            # Check for exact match or close variations
+            if (keyword_lower in original_resume_lower or 
+                any(word in original_resume_lower for word in keyword_lower.split()) or
+                # Check for common variations
+                keyword_lower.replace(' ', '') in original_resume_lower.replace(' ', '')):
+                already_present_keywords.append(keyword)
+            else:
+                newly_added_keywords.append(keyword)
+        
+        tailoring_metrics = {
+            'url': f"https://docs.google.com/document/d/{copied_doc_id}/edit",
+            'pdf_path': output_pdf_path,
+            'keywords': {
+                'total_extracted': len(all_job_keywords),
+                'prioritized_list': all_job_keywords,
+                'job_required': all_job_keywords,
+                'already_present': already_present_keywords,
+                'newly_added': newly_added_keywords,
+                'could_not_add': missing_keywords,
+                'feasible': feasible_keywords,  # Keep for backward compatibility
+                'missing': missing_keywords,    # Keep for backward compatibility
+                'evidence_summary': systematic_results['phase1_results'].get('evidence_summary', {})
+            },
+            'match_stats': {
+                'match_percentage': systematic_results['phase1_results']['match_percentage'],
+                'total_required': len(all_job_keywords),
+                'already_had': len(already_present_keywords),
+                'added': len(newly_added_keywords),
+                'missing': len(missing_keywords),
+                'feasible_count': len(feasible_keywords),  # Keep for backward compatibility
+                'missing_count': len(missing_keywords),    # Keep for backward compatibility
+                'max_possible_ats_score': systematic_results['phase1_results']['max_possible_ats_score']
+            },
+            'sections_modified': {
+                'profile': any(r.get('type') == 'profile_rewrite' for r in systematic_results['all_replacements']),
+                'skills': any(r.get('type') in ['skills_reorg', 'skills_intelligent_update'] for r in systematic_results['all_replacements']),
+                'projects': any(r.get('type') in ['project_bullet_enhance'] for r in systematic_results['all_replacements'])
+            },
+            'page_stats': {
+                'original_pages': original_page_count,
+                'final_pages': current_page_count,
+                'overflow_recovered': current_page_count <= original_page_count
+            },
+            'replacements_applied': len(systematic_results['all_replacements'])
+        }
+
+        print(f"✅ Tailored resume created and made public: {tailoring_metrics['url']}")
+        
+        # Debug: Print metrics structure for troubleshooting
+        print("\n📊 TAILORING METRICS GENERATED:")
+        print(f"   Keywords - Job Required: {len(tailoring_metrics['keywords']['job_required'])}")
+        print(f"   Keywords - Already Present: {len(tailoring_metrics['keywords']['already_present'])}")
+        print(f"   Keywords - Newly Added: {len(tailoring_metrics['keywords']['newly_added'])}")
+        print(f"   Keywords - Could Not Add: {len(tailoring_metrics['keywords']['could_not_add'])}")
+        print(f"   Match Percentage: {tailoring_metrics['match_stats']['match_percentage']:.1f}%")
+        print(f"   Sections Modified: Profile={tailoring_metrics['sections_modified']['profile']}, Skills={tailoring_metrics['sections_modified']['skills']}, Projects={tailoring_metrics['sections_modified']['projects']}")
+        print(f"   Replacements Applied: {tailoring_metrics['replacements_applied']}")
+        
+        return tailoring_metrics
 
     except Exception as e:
         print(f"Error in tailor_resume_and_return_url: {e}")

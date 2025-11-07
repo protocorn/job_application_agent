@@ -1,0 +1,105 @@
+# Production Environment Configuration for Job Application Agent
+# Copy this file to .env and update with your actual values
+
+# ============================================================
+# CORE APPLICATION SETTINGS
+# ============================================================
+FLASK_ENV=production
+DEBUG=False
+
+# ============================================================
+# DATABASE CONFIGURATION
+# ============================================================
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=job_agent_prod
+DB_USER=job_agent_user
+DB_PASSWORD=your_secure_database_password_here
+
+# Database Connection Pool Settings
+DB_POOL_SIZE=10
+DB_MAX_OVERFLOW=20
+DB_POOL_TIMEOUT=30
+DB_POOL_RECYCLE=3600
+DB_ECHO=false
+
+# ============================================================
+# REDIS CONFIGURATION
+# ============================================================
+# For Upstash (recommended for free tier):
+REDIS_URL=redis://default:YOUR_PASSWORD@YOUR_HOST.upstash.io:6379
+
+# OR for local Redis (development):
+# REDIS_HOST=localhost
+# REDIS_PORT=6379
+
+# ============================================================
+# SECURITY SETTINGS
+# ============================================================
+# Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+JWT_SECRET_KEY=your_jwt_secret_key_32_characters_minimum
+
+# Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+ENCRYPTION_KEY=your_fernet_encryption_key_here
+
+# ============================================================
+# GOOGLE APIS
+# ============================================================
+GOOGLE_API_KEY=your_google_gemini_api_key
+GOOGLE_CLIENT_ID=your_google_oauth_client_id
+GOOGLE_CLIENT_SECRET=your_google_oauth_client_secret
+GOOGLE_REDIRECT_URI=https://yourdomain.com/api/oauth/callback
+
+# ============================================================
+# MIMIKREE INTEGRATION
+# ============================================================
+# Note: Mimikree credentials are now stored per-user in the database
+# Users connect their individual Mimikree accounts through the UI
+MIMIKREE_BASE_URL=http://localhost:3000
+
+# ============================================================
+# JOB QUEUE SETTINGS
+# ============================================================
+JOB_QUEUE_MAX_WORKERS=5
+JOB_QUEUE_MAX_PER_USER=2
+
+# ============================================================
+# BACKUP CONFIGURATION
+# ============================================================
+BACKUP_DIR=./backups
+BACKUP_ENCRYPTION=true
+
+# AWS S3 Backup (Optional)
+AWS_S3_BACKUP_BUCKET=your-backup-bucket-name
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your_aws_access_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+
+# ============================================================
+# SECURITY SETTINGS
+# ============================================================
+BLOCK_PRIVATE_IPS=false
+SUSPICIOUS_ACTIVITY_THRESHOLD=10
+
+# ============================================================
+# RATE LIMITING
+# ============================================================
+RATE_LIMIT_REQUESTS_PER_MINUTE=60
+MAX_FILE_SIZE_MB=10
+
+# ============================================================
+# TAILORING SETTINGS
+# ============================================================
+USE_SYSTEMATIC_TAILORING=true
+CONSERVATIVE_TAILORING=true
+
+# ============================================================
+# MONITORING (Optional)
+# ============================================================
+SENTRY_DSN=your_sentry_dsn_for_error_tracking
+
+# ============================================================
+# SSL/TLS SETTINGS
+# ============================================================
+SSL_CERT_PATH=/path/to/your/certificate.crt
+SSL_KEY_PATH=/path/to/your/private.key

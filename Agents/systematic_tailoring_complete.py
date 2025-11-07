@@ -11,6 +11,7 @@ from google import genai
 from google.api_core import retry
 import os
 from gemini_rate_limiter import generate_content_with_retry
+from validation.semantic_validator import SemanticValidator
 
 
 # ============================================================
@@ -387,8 +388,13 @@ Return ONLY valid JSON, no markdown formatting, no extra text."""
 class SystematicEditorComplete:
     """Complete implementation of systematic section-wise editing."""
 
-    def __init__(self, genai_client):
+    def __init__(self, genai_client, gemini_api_key: Optional[str] = None):
         self.genai_client = genai_client
+        # Initialize semantic validator if API key provided
+        if gemini_api_key:
+            self.semantic_validator = SemanticValidator(gemini_api_key)
+        else:
+            self.semantic_validator = None
 
     def execute_phase_2(
         self,
@@ -490,7 +496,7 @@ class SystematicEditorComplete:
                 )
             elif section_type == 'skills':
                 replacements = self._edit_skills_section(
-                    section, validation_results, conservative_mode
+                    section, validation_results, mimikree_data, conservative_mode
                 )
             else:
                 replacements = []
@@ -751,6 +757,16 @@ Return ONLY the rewritten profile text. No explanations, no metadata, no comment
                 print(f"         ⏭️  Skipping ({current_visual_lines} lines - NEVER condense to 1 line): {bullet['text'][:40]}...")
                 continue
 
+            # Check information density - don't condense high-density content
+            if self.semantic_validator:
+                should_condense, reason = self.semantic_validator.should_condense(
+                    bullet['text'],
+                    min_density_threshold=50
+                )
+                if not should_condense:
+                    print(f"         ⏭️  Skipping: {reason[:60]}...")
+                    continue
+
             # Target is current - 1, but never less than 2 lines
             target_visual_lines = max(2, current_visual_lines - 1)
             chars_per_line = bullet.get('char_limit', 80)
@@ -790,18 +806,40 @@ If cannot be condensed to {target_visual_lines} line(s) while keeping key info, 
                 )
 
                 condensed = clean_gemini_response(response.text)
-                
+
                 # Verify we actually saved a visual line
                 condensed_visual_lines = int((len(condensed) / chars_per_line) + 0.9)
-                
+
+                is_acceptable = False
+                rejection_reason = ""
+
                 if condensed_visual_lines < current_visual_lines:
-                    replacements.append({
-                        'old_text': bullet['text'],
-                        'new_text': condensed,
-                        'type': 'condense',
-                        'reason': 'space_borrowing_donor'
-                    })
-                    print(f"         ✓ Condensed ({current_visual_lines}→{condensed_visual_lines} lines): {condensed[:40]}...")
+                    # Validate semantic preservation if validator available
+                    if self.semantic_validator:
+                        validation = self.semantic_validator.validate_condensation(
+                            original_text=bullet['text'],
+                            condensed_text=condensed,
+                            min_retention_threshold=0.70
+                        )
+
+                        if validation['is_valid']:
+                            is_acceptable = True
+                        else:
+                            rejection_reason = f"Quality: {validation['reason'][:40]}"
+                    else:
+                        # No validator - accept
+                        is_acceptable = True
+
+                    if is_acceptable:
+                        replacements.append({
+                            'old_text': bullet['text'],
+                            'new_text': condensed,
+                            'type': 'condense',
+                            'reason': 'space_borrowing_donor'
+                        })
+                        print(f"         ✓ Condensed ({current_visual_lines}→{condensed_visual_lines} lines): {condensed[:40]}...")
+                    else:
+                        print(f"         ⏭️  Skipped ({rejection_reason}): {bullet['text'][:40]}...")
                 else:
                     print(f"         ⏭️  No visual line saved: {bullet['text'][:40]}...")
                     
@@ -856,13 +894,38 @@ CRITICAL OUTPUT FORMAT:
 
                 # Validate expansion doesn't exceed char_buffer
                 added_chars = len(expanded) - len(bullet['text'])
+                is_acceptable = False
+                rejection_reason = ""
+
                 if added_chars <= char_available + 10:  # 10 char tolerance
-                    replacements.append({
-                        'old_text': bullet['text'],
-                        'new_text': expanded,
-                        'type': 'expand',
-                        'reason': 'space_borrowing_receiver'
-                    })
+                    # Validate expansion for hallucinations if validator available
+                    if self.semantic_validator:
+                        validation_result = self.semantic_validator.validate_expansion(
+                            original_text=bullet['text'],
+                            expanded_text=expanded,
+                            source_data=mimikree_context if mimikree_context else None
+                        )
+
+                        if validation_result['is_valid']:
+                            is_acceptable = True
+                        else:
+                            rejection_reason = f"Hallucination risk: {len(validation_result['unsupported_claims'])} unsupported claims"
+                    else:
+                        # No validator - accept
+                        is_acceptable = True
+
+                    if is_acceptable:
+                        replacements.append({
+                            'old_text': bullet['text'],
+                            'new_text': expanded,
+                            'type': 'expand',
+                            'reason': 'space_borrowing_receiver'
+                        })
+                        print(f"         ✓ Expanded (+{added_chars} chars): {expanded[:40]}...")
+                    else:
+                        print(f"         ⏭️  Skipped expansion ({rejection_reason}): {bullet['text'][:40]}...")
+                else:
+                    print(f"         ⏭️  Expansion too large (+{added_chars} > {char_available}): {bullet['text'][:40]}...")
             except Exception as e:
                 # Re-raise rate limit errors to allow retry mechanism to work
                 error_str = str(e)
@@ -979,11 +1042,13 @@ CRITICAL OUTPUT FORMAT:
         self,
         section: Dict[str, Any],
         validation: Dict[str, Any],
+        mimikree_data: str,
         conservative_mode: bool = True
     ) -> List[Dict[str, Any]]:
-        """Edit skills section to highlight feasible keywords.
-        
-        In conservative mode: Only reorganizes (no additions), prioritizes job-relevant skills first.
+        """Edit skills section intelligently based on Mimikree evidence.
+
+        Uses Mimikree data to determine which skills can be added (with evidence)
+        and which low-relevance skills can be removed.
         """
         replacements = []
 
@@ -992,50 +1057,44 @@ CRITICAL OUTPUT FORMAT:
 
         # Skills are usually in one or two lines
         skills_text = ' '.join([line['text'] for line in section['lines']])
-        
-        # In conservative mode, check if top keywords are already prioritized
-        if conservative_mode:
-            skills_lower = skills_text.lower()
-            first_100_chars = skills_lower[:100]
-            top_keywords_present = sum(1 for kw in validation['feasible_keywords'][:5] 
-                                       if kw.lower() in first_100_chars)
-            
-            if top_keywords_present >= 3:
-                print(f"      ℹ️  Skills already well-organized ({top_keywords_present}/5 top keywords at front) - skipping")
-                return replacements
-            else:
-                print(f"      📝 Reorganizing skills to prioritize job keywords")
 
-        # Use Gemini to reorganize skills to prioritize feasible keywords
-        prompt = f"""Reorganize this skills section to highlight SPECIFIC skills from the priority list. NEVER add vague terms.
+        print(f"      📝 Intelligently updating skills based on job requirements and Mimikree evidence")
+
+        # Use Gemini to intelligently modify skills
+        prompt = f"""Optimize this skills section for a job application using evidence from the candidate's profile.
 
 ORIGINAL SKILLS:
 {skills_text}
 
-PRIORITY SKILLS (only reorganize to highlight SPECIFIC ones that exist):
-{', '.join(validation['feasible_keywords'][:10])}
+JOB REQUIREMENTS (priority skills needed):
+{', '.join(validation['feasible_keywords'][:15])}
 
-STRICT REQUIREMENTS - NO EXCEPTIONS:
-1. **NEVER ADD NEW SKILLS** - Only reorganize existing skills
-2. **NEVER ADD VAGUE TERMS** - Don't add broad terms like "Machine Learning", "AI", "Data Science" unless they already exist in original
-3. **PRIORITIZE SPECIFIC SKILLS** - Move specific tools/technologies to front (e.g., "TensorFlow", "PyTorch", "LangChain")
-4. **KEEP ALL ORIGINAL SKILLS** - Don't remove anything
-5. **SAME FORMAT** - Maintain exact format (comma-separated or with pipes)
-6. **SAME LENGTH** - Keep approximately the same character count
+CANDIDATE'S EXPERIENCE (Mimikree profile - use this to determine what skills can be added):
+{mimikree_data[:2000]}
 
-VAGUE TERMS TO NEVER ADD (unless already present):
-- "Machine Learning" (specific alternatives: NLP, Computer Vision, Deep Learning)
-- "AI" (specific alternatives: LLMs, Transformers, Neural Networks)
-- "Data Science" (specific alternatives: Statistical Modeling, Time Series Analysis)
-- "Programming" (specific alternatives: Python, JavaScript, TypeScript)
+YOUR TASK:
+1. **ANALYZE**: Which job-required skills are missing from the original skills list but ARE supported by Mimikree evidence?
+2. **ADD**: Add those missing skills if there's clear evidence in Mimikree
+3. **REMOVE**: Remove low-relevance skills (skills not mentioned in job requirements and taking up space)
+4. **REORGANIZE**: Prioritize job-relevant skills first
 
-EXAMPLE:
-❌ BAD: Adding "Machine Learning" when not present
-✅ GOOD: Reorganizing to put "PyTorch, TensorFlow, LangChain" at the front
+RULES:
+- ONLY add skills you find CLEAR EVIDENCE for in Mimikree data
+- Prioritize SPECIFIC skills over vague terms (e.g., "LangChain" > "AI")
+- Keep approximately the same line length (or slightly shorter if removing irrelevant skills)
+- Maintain the same format (comma-separated or pipes)
+- If a job keyword appears in Mimikree but isn't in skills, ADD it
+- If a current skill is unrelated to job and taking space, REMOVE it
+
+EXAMPLE LOGIC:
+- Job needs "LangChain" → Found in Mimikree → NOT in skills → ADD it
+- Job needs "Machine Learning" → Already have "PyTorch, TensorFlow" → DON'T add vague term
+- Current has "PHP" → Job doesn't mention it → Job focuses on Python → REMOVE "PHP" to make space
+- Current has "React" → Job mentions "React" → KEEP and prioritize
 
 CRITICAL OUTPUT FORMAT:
-- Return ONLY the reorganized skills text
-- NO explanations or metadata
+- Return ONLY the optimized skills text
+- NO explanations, NO metadata, NO reasoning
 - Just the skills list that goes directly into the resume"""
 
         try:
@@ -1052,14 +1111,14 @@ CRITICAL OUTPUT FORMAT:
                 replacements.append({
                     'old_text': section['lines'][0]['text'],
                     'new_text': new_skills,
-                    'type': 'skills_reorg'
+                    'type': 'skills_intelligent_update'
                 })
         except Exception as e:
             # Re-raise rate limit errors to allow retry mechanism to work
             error_str = str(e)
             if '429' in error_str or 'RESOURCE_EXHAUSTED' in error_str or 'quota' in error_str.lower():
                 raise
-            print(f"      ⚠️  Error reorganizing skills: {e}")
+            print(f"      ⚠️  Error updating skills: {e}")
 
         return replacements
 
@@ -1257,46 +1316,49 @@ class OverflowRecoveryComplete:
                 # Use visual_lines metadata instead of counting newlines
                 current_visual_lines = bullet.get('visual_lines', 1)
 
-                # OVERFLOW RECOVERY: We CAN condense 2-line bullets to 1 line when needed!
-                # For 2-line bullets: condense to 1 line
-                # For 3+ line bullets: reduce by 1 line (but not below 2)
+                # ENFORCE 2-LINE MINIMUM RULE
+                # Even in overflow recovery, maintain professional appearance
+                # Better to remove bullet entirely than create weak 1-liner
+                target_visual_lines = max(2, current_visual_lines - 1)
+
+                # Skip bullets that are already at minimum (2 lines)
+                # We'll handle these in attempt 2 (removal) if needed
                 if current_visual_lines == 2:
-                    target_visual_lines = 1  # OK to condense to 1 line during overflow
-                else:
-                    target_visual_lines = max(2, current_visual_lines - 1)
+                    print(f"      ⏭️  Skipped (already at 2-line minimum): {bullet['text'][:50]}...")
+                    continue
 
                 # Estimate chars per visual line
                 chars_per_line = bullet.get('char_limit', 80)
                 target_char_count = int(target_visual_lines * chars_per_line)
 
-                prompt = f"""AGGRESSIVELY condense this resume bullet to take up less space:
+                prompt = f"""Condense this resume bullet while preserving ALL key information:
 
 ORIGINAL ({len(bullet['text'])} chars, {current_visual_lines} visual lines):
 {bullet['text']}
 
 GOAL: Reduce to {target_visual_lines} line(s) (~{target_char_count} chars max)
 
-CONTEXT: This is OVERFLOW RECOVERY. The resume is too long and we MUST condense to save space.
-For 2-line bullets, it's OK to condense to 1 line when necessary.
+CONTEXT: This is OVERFLOW RECOVERY. The resume is too long.
 
-REQUIREMENTS:
-- Must save AT LEAST 1 full visual line (not just make it shorter)
-- Remove ALL filler words: "various", "effectively", "successfully", "helped", etc.
-- Keep ONLY core accomplishment and quantified data
-- Use shortest possible phrasing while staying clear
+CRITICAL REQUIREMENTS:
+- Must save AT LEAST 1 full visual line
+- PRESERVE all quantified data (numbers, percentages, metrics)
+- PRESERVE all technical terms and key accomplishments
+- Remove ONLY filler words: "various", "effectively", "successfully", "helped", etc.
+- Use concise phrasing but keep all factual claims
 - Target: ~{target_char_count} characters or less
+- Maintain minimum 2-line professional appearance
 
 Example transformations:
-- "Successfully implemented various improvements to system performance across multiple areas" (3 lines) → "Improved system performance across multiple areas" (2 lines)
-- "Worked collaboratively with cross-functional team to develop and deploy new features" (2 lines) → "Developed and deployed new features with cross-functional team" (1 line)
-- "Built scalable data pipeline" (2 lines) → "Built scalable data pipeline" (1 line)
+- "Successfully implemented various improvements to system performance across multiple areas" (3 lines) → "Implemented improvements to system performance across multiple areas" (2 lines)
+- "Worked collaboratively with cross-functional team to develop and deploy new features" (3 lines) → "Developed and deployed new features with cross-functional team" (2 lines)
 
 CRITICAL OUTPUT FORMAT:
 - Return ONLY the condensed text
 - NO labels, NO character counts, NO metadata
 - Just the raw text for the resume
 
-If the content cannot be meaningfully condensed to {target_visual_lines} line(s), return the original."""
+If the content cannot be meaningfully condensed to {target_visual_lines} line(s) while preserving key facts, return the original."""
 
                 try:
                     response = generate_content_with_retry(
@@ -1314,18 +1376,37 @@ If the content cannot be meaningfully condensed to {target_visual_lines} line(s)
                     condensed_visual_lines = max(1, (condensed_chars + chars_per_line - 1) // chars_per_line)
 
                     # Accept ONLY if we actually save at least 1 full visual line
-                    # For 2-line bullets: must reduce to 1 line (not 2→2)
-                    # For 3+ line bullets: must save at least 1 full line
                     is_acceptable = False
                     lines_saved = current_visual_lines - condensed_visual_lines
-                    
+                    rejection_reason = ""
+
                     if lines_saved >= 1:
-                        # We saved at least 1 full line - accept it
-                        is_acceptable = True
+                        # Enforce 2-line minimum
+                        if condensed_visual_lines < 2:
+                            is_acceptable = False
+                            rejection_reason = f"Below 2-line minimum ({condensed_visual_lines} lines)"
+                        else:
+                            # Validate semantic preservation if validator available
+                            if self.semantic_validator:
+                                validation = self.semantic_validator.validate_condensation(
+                                    original_text=bullet['text'],
+                                    condensed_text=condensed,
+                                    min_retention_threshold=0.70
+                                )
+
+                                if validation['is_valid']:
+                                    is_acceptable = True
+                                else:
+                                    is_acceptable = False
+                                    rejection_reason = f"Quality check failed: {validation['reason']}"
+                            else:
+                                # No validator - accept based on length savings alone
+                                is_acceptable = True
                     else:
-                        # No visual lines saved (e.g., 2→2) - reject it
+                        # No visual lines saved
                         is_acceptable = False
-                    
+                        rejection_reason = f"No visual lines saved ({current_visual_lines}→{condensed_visual_lines})"
+
                     if is_acceptable:
                         replacements.append({
                             'old_text': bullet['text'],
@@ -1340,7 +1421,7 @@ If the content cannot be meaningfully condensed to {target_visual_lines} line(s)
                         reduction = len(bullet['text']) - len(condensed)
                         print(f"      ✓ Reduced by {reduction} chars ({current_visual_lines}→{condensed_visual_lines} lines): {condensed[:50]}...")
                     else:
-                        print(f"      ⏭️  Skipped (no visual lines saved: {current_visual_lines}→{condensed_visual_lines}): {bullet['text'][:50]}...")
+                        print(f"      ⏭️  Skipped ({rejection_reason}): {bullet['text'][:50]}...")
 
                 except Exception as e:
                     # Re-raise rate limit errors to allow retry mechanism to work

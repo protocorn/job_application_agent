@@ -15,11 +15,14 @@ import time
 import base64
 import uuid
 import asyncio
+import redis
 
 
 sys.path.append(os.path.dirname(__file__))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'Agents'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))  # For logging_config
+
+# Original imports
 from resume_tailoring_agent import get_google_services, get_doc_id_from_url, copy_google_doc, read_google_doc_content, apply_json_replacements_to_doc, tailor_resume as tailor_resume_with_agent, tailor_resume_and_return_url
 from job_application_agent import run_links_with_refactored_agent
 from logging_config import setup_file_logging
@@ -29,10 +32,25 @@ from profile_service import ProfileService
 from job_search_service import JobSearchService
 from google_oauth_service import GoogleOAuthService
 
+# Production infrastructure imports
+from rate_limiter import rate_limiter, rate_limit, get_rate_limit_status
+from job_queue import job_queue, JobPriority, submit_resume_tailoring_job, submit_job_application_job, submit_job_search_job
+from security_manager import security_manager, require_secure_headers, validate_input, get_security_status
+from database_optimizer import db_optimizer, setup_database_optimizations, get_database_health
+from backup_manager import backup_manager, run_full_backup, schedule_backups
+from job_handlers import submit_job_with_validation
+from mimikree_service import mimikree_service
+
 
 #Initialize the app
 app = Flask(__name__)
 CORS(app)
+
+# Apply security headers to all responses
+@app.after_request
+@require_secure_headers
+def after_request(response):
+    return response
 
 JOBS: Dict[str, Dict[str, Any]] = {}
 INTERVENTIONS: Dict[str, Dict[str, Any]] = {}  # Store intervention requests from job agents
@@ -41,6 +59,28 @@ INTERVENTIONS: Dict[str, Dict[str, Any]] = {}  # Store intervention requests fro
 import os
 session_storage_path = os.path.join(os.path.dirname(__file__), "sessions")
 session_manager = SessionManager(session_storage_path)
+
+# Initialize production infrastructure
+def initialize_production_infrastructure():
+    """Initialize all production infrastructure components"""
+    try:
+        # Set up database optimizations
+        setup_database_optimizations()
+        logging.info("✅ Database optimizations initialized")
+        
+        # Start job queue worker
+        job_queue.start_worker()
+        logging.info("✅ Job queue worker started")
+        
+        # Schedule automated backups
+        schedule_backups()
+        logging.info("✅ Backup scheduler initialized")
+        
+        logging.info("🚀 Production infrastructure initialized successfully")
+        
+    except Exception as e:
+        logging.error(f"❌ Failed to initialize production infrastructure: {e}")
+        raise
 
 def initialize_gemini():
     api_key = os.getenv('GOOGLE_API_KEY')
@@ -692,8 +732,86 @@ def get_recent_job_listings():
 
 @app.route("/api/tailor-resume", methods=['POST'])
 @require_auth
+@rate_limit('api_requests_per_user_per_minute')
+@validate_input
 def tailor_resume():
-    """Tailor resume for a specific job using the resume tailor agent"""
+    """Submit resume tailoring job to queue"""
+    try:
+        user_id = request.current_user['id']
+        data = request.json
+        
+        # Validate required fields
+        job_description = data.get('job_description')
+        resume_url = data.get('resume_url')
+        
+        if not job_description or not resume_url:
+            return jsonify({"error": "Job description and resume URL are required"}), 400
+
+        # Check if user has connected Google account
+        if not GoogleOAuthService.is_connected(user_id):
+            return jsonify({
+                "error": "Please connect your Google account first to tailor resumes",
+                "needs_google_auth": True
+            }), 403
+
+        # Get user's Google credentials
+        credentials = GoogleOAuthService.get_credentials(user_id)
+        if not credentials:
+            return jsonify({
+                "error": "Failed to retrieve Google credentials. Please reconnect your account.",
+                "needs_google_auth": True
+            }), 403
+
+        # Get user's full name from database
+        from database_config import SessionLocal, User
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            user_full_name = f"{user.first_name} {user.last_name}" if user else "Resume"
+        finally:
+            db.close()
+
+        # Prepare job payload
+        payload = {
+            'original_resume_url': resume_url,
+            'job_description': job_description,
+            'job_title': data.get('job_title', 'Unknown Position'),
+            'company': data.get('company_name', 'Unknown Company'),
+            'credentials': credentials,
+            'user_full_name': user_full_name
+        }
+
+        # Submit job to queue
+        result = submit_job_with_validation(
+            user_id=user_id,
+            job_type='resume_tailoring',
+            payload=payload,
+            priority=JobPriority.NORMAL
+        )
+
+        if result['success']:
+            return jsonify({
+                "success": True,
+                "job_id": result['job_id'],
+                "message": "Resume tailoring job submitted successfully. You will be notified when complete.",
+                "queue_position": job_queue.get_queue_stats()['queue_size']
+            }), 202  # Accepted
+        else:
+            return jsonify({
+                "error": result['error'],
+                "success": False
+            }), 400
+
+    except Exception as e:
+        logging.error(f"Error submitting resume tailoring job: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/tailor-resume-sync", methods=['POST'])
+@require_auth
+@rate_limit('resume_tailoring_per_user_per_hour')
+@validate_input
+def tailor_resume_sync():
+    """Synchronous resume tailoring (for backward compatibility and urgent requests)"""
     try:
         user_id = request.current_user['id']
         data = request.json
@@ -740,7 +858,7 @@ def tailor_resume():
             mimikree_password = os.getenv('MIMIKREE_PASSWORD')
 
             # Use the resume tailor agent to create tailored Google Doc
-            tailored_url = tailor_resume_and_return_url(
+            tailoring_result = tailor_resume_and_return_url(
                 resume_url,
                 job_description,
                 job_id,
@@ -750,6 +868,9 @@ def tailor_resume():
                 mimikree_email=mimikree_email,
                 mimikree_password=mimikree_password
             )
+
+            # Extract URL (now returns dict with metrics)
+            tailored_url = tailoring_result.get('url') if isinstance(tailoring_result, dict) else tailoring_result
 
             # Tailor cover letter if template exists
             tailored_cover_letter_id = None
@@ -793,13 +914,32 @@ def tailor_resume():
                 tailored_cover_letter_id = cover_letter_doc_id
                 logging.info(f"Created cover letter doc: {cover_letter_doc_id}")
 
-            return jsonify({
+            # Prepare response with metrics
+            response_data = {
                 "tailored_document_id": tailored_url,
                 "tailored_cover_letter_id": tailored_cover_letter_id,
                 "success": True,
                 "message": "Resume and cover letter tailored successfully" if tailored_cover_letter_id else "Resume tailored successfully",
                 "error": None
-                }), 200
+            }
+
+            # Add tailoring metrics if available
+            if isinstance(tailoring_result, dict):
+                response_data["metrics"] = tailoring_result
+                
+                # Debug: Log metrics being sent to frontend
+                logging.info(f"📊 Sending metrics to frontend:")
+                if 'keywords' in tailoring_result:
+                    keywords = tailoring_result['keywords']
+                    logging.info(f"   Job Required: {len(keywords.get('job_required', []))}")
+                    logging.info(f"   Already Present: {len(keywords.get('already_present', []))}")
+                    logging.info(f"   Newly Added: {len(keywords.get('newly_added', []))}")
+                    logging.info(f"   Could Not Add: {len(keywords.get('could_not_add', []))}")
+                if 'match_stats' in tailoring_result:
+                    match_stats = tailoring_result['match_stats']
+                    logging.info(f"   Match Percentage: {match_stats.get('match_percentage', 0):.1f}%")
+
+            return jsonify(response_data), 200
         except ValueError as ve:
             # Check if it's an authentication error
             error_msg = str(ve)
@@ -1604,6 +1744,99 @@ def oauth_disconnect():
         logging.error(f"Error disconnecting Google account: {e}")
         return jsonify({"error": str(e)}), 500
 
+# ============================================================
+# MIMIKREE CONNECTION ENDPOINTS
+# ============================================================
+
+@app.route("/api/mimikree/status", methods=['GET'])
+@require_auth
+def get_mimikree_status():
+    """Get user's Mimikree connection status"""
+    try:
+        user_id = request.current_user['id']
+        result = mimikree_service.get_user_mimikree_status(user_id)
+        
+        if result['success']:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+            
+    except Exception as e:
+        logging.error(f"Error getting Mimikree status: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/mimikree/connect", methods=['POST'])
+@require_auth
+@rate_limit('api_requests_per_user_per_minute')
+@validate_input
+def connect_mimikree():
+    """Connect user's Mimikree account"""
+    try:
+        user_id = request.current_user['id']
+        data = request.json
+        
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        email = data.get('email', '').strip()
+        password = data.get('password', '')
+        
+        if not email or not password:
+            return jsonify({"error": "Email and password are required"}), 400
+        
+        # Validate email format
+        import re
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_pattern, email):
+            return jsonify({"error": "Invalid email format"}), 400
+        
+        # Connect Mimikree account
+        result = mimikree_service.connect_user_mimikree(user_id, email, password)
+        
+        if result['success']:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+            
+    except Exception as e:
+        logging.error(f"Error connecting Mimikree: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/mimikree/disconnect", methods=['POST'])
+@require_auth
+def disconnect_mimikree():
+    """Disconnect user's Mimikree account"""
+    try:
+        user_id = request.current_user['id']
+        result = mimikree_service.disconnect_user_mimikree(user_id)
+        
+        if result['success']:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+            
+    except Exception as e:
+        logging.error(f"Error disconnecting Mimikree: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/mimikree/test", methods=['POST'])
+@require_auth
+@rate_limit('api_requests_per_user_per_minute')
+def test_mimikree_connection():
+    """Test user's Mimikree connection"""
+    try:
+        user_id = request.current_user['id']
+        result = mimikree_service.test_user_connection(user_id)
+        
+        if result['success']:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+            
+    except Exception as e:
+        logging.error(f"Error testing Mimikree connection: {e}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/health", methods=['GET'])
 def health():
     return jsonify({"status": "ok"})
@@ -1900,41 +2133,630 @@ def get_session_screenshot(session_id):
 
 @app.route("/api/sessions/batch-apply", methods=['POST'])
 def batch_apply():
-    """Start batch application process"""   
+    """Start batch application process"""
     try:
         data = request.json
         if not data:
             return jsonify({"error": "No data provided"}), 400
-        
+
         job_urls = data.get('jobUrls', [])
         if not job_urls:
             return jsonify({"error": "No job URLs provided"}), 400
-        
+
         # Create sessions for each job
         created_sessions = []
         for job_url in job_urls:
             session = session_manager.create_session(job_url)
             created_sessions.append(session.to_dict())
-        
+
         logging.info(f"Created {len(created_sessions)} sessions for batch application")
-        
+
         # TODO: Trigger the actual batch processing
         # For now, just return the created sessions
-        
+
         return jsonify({
             "success": True,
             "message": f"Created {len(created_sessions)} sessions for batch processing",
             "sessions": created_sessions
         }), 200
-        
+
     except Exception as e:
         logging.error(f"Error in batch apply: {e}")
         return jsonify({"error": f"Failed to start batch application: {str(e)}"}), 500
+
+
+# ============================================================
+# PROJECT MANAGEMENT API ROUTES
+# ============================================================
+
+@app.route("/api/projects", methods=['GET'])
+@require_auth
+def get_projects():
+    """Get all projects for the authenticated user"""
+    try:
+        from database_config import SessionLocal
+        from migrate_add_projects import Project
+
+        user_id = request.current_user['id']
+        db = SessionLocal()
+
+        try:
+            projects = db.query(Project).filter(Project.user_id == user_id).all()
+
+            projects_data = []
+            for project in projects:
+                projects_data.append({
+                    'id': project.id,
+                    'name': project.name,
+                    'description': project.description,
+                    'technologies': project.technologies or [],
+                    'github_url': project.github_url,
+                    'live_url': project.live_url,
+                    'features': project.features or [],
+                    'detailed_bullets': project.detailed_bullets or [],
+                    'tags': project.tags or [],
+                    'start_date': project.start_date,
+                    'end_date': project.end_date,
+                    'team_size': project.team_size,
+                    'role': project.role,
+                    'is_on_resume': project.is_on_resume,
+                    'display_order': project.display_order,
+                    'times_used': project.times_used,
+                    'avg_relevance_score': project.avg_relevance_score,
+                    'last_used_at': project.last_used_at.isoformat() if project.last_used_at else None,
+                    'created_at': project.created_at.isoformat() if project.created_at else None
+                })
+
+            return jsonify({
+                "success": True,
+                "projects": projects_data
+            }), 200
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logging.error(f"Error getting projects: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/projects", methods=['POST'])
+@require_auth
+def create_project():
+    """Create a new project"""
+    try:
+        from database_config import SessionLocal
+        from migrate_add_projects import Project
+
+        user_id = request.current_user['id']
+        data = request.json
+
+        db = SessionLocal()
+
+        try:
+            project = Project(
+                user_id=user_id,
+                name=data.get('name'),
+                description=data.get('description'),
+                technologies=data.get('technologies', []),
+                github_url=data.get('github_url'),
+                live_url=data.get('live_url'),
+                features=data.get('features', []),
+                detailed_bullets=data.get('detailed_bullets', []),
+                tags=data.get('tags', []),
+                start_date=data.get('start_date'),
+                end_date=data.get('end_date'),
+                team_size=data.get('team_size'),
+                role=data.get('role'),
+                is_on_resume=data.get('is_on_resume', False),
+                display_order=data.get('display_order', 0)
+            )
+
+            db.add(project)
+            db.commit()
+            db.refresh(project)
+
+            return jsonify({
+                "success": True,
+                "project": {
+                    'id': project.id,
+                    'name': project.name,
+                    'description': project.description,
+                    'technologies': project.technologies
+                }
+            }), 201
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logging.error(f"Error creating project: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/projects/<int:project_id>", methods=['PUT'])
+@require_auth
+def update_project(project_id):
+    """Update an existing project"""
+    try:
+        from database_config import SessionLocal
+        from migrate_add_projects import Project
+
+        user_id = request.current_user['id']
+        data = request.json
+
+        db = SessionLocal()
+
+        try:
+            project = db.query(Project).filter(
+                Project.id == project_id,
+                Project.user_id == user_id
+            ).first()
+
+            if not project:
+                return jsonify({"error": "Project not found"}), 404
+
+            # Update fields
+            for key, value in data.items():
+                if hasattr(project, key) and key not in ['id', 'user_id', 'created_at']:
+                    setattr(project, key, value)
+
+            db.commit()
+            db.refresh(project)
+
+            return jsonify({
+                "success": True,
+                "message": "Project updated successfully"
+            }), 200
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logging.error(f"Error updating project: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/projects/<int:project_id>", methods=['DELETE'])
+@require_auth
+def delete_project(project_id):
+    """Delete a project"""
+    try:
+        from database_config import SessionLocal
+        from migrate_add_projects import Project
+
+        user_id = request.current_user['id']
+        db = SessionLocal()
+
+        try:
+            project = db.query(Project).filter(
+                Project.id == project_id,
+                Project.user_id == user_id
+            ).first()
+
+            if not project:
+                return jsonify({"error": "Project not found"}), 404
+
+            db.delete(project)
+            db.commit()
+
+            return jsonify({
+                "success": True,
+                "message": "Project deleted successfully"
+            }), 200
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logging.error(f"Error deleting project: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/tailoring/analyze-projects", methods=['POST'])
+@require_auth
+def analyze_projects():
+    """Analyze projects for relevance to a job"""
+    try:
+        from database_config import SessionLocal
+        from migrate_add_projects import Project
+        import sys
+        sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'Agents'))
+        from project_selection.relevance_engine import ProjectRelevanceEngine
+        from project_selection.mimikree_project_discovery import MimikreeProjectDiscovery
+        from mimikree_integration import MimikreeClient
+        import re
+
+        user_id = request.current_user['id']
+        data = request.json
+
+        job_description = data.get('job_description', '')
+        job_keywords = data.get('job_keywords', [])
+        discover_new = data.get('discover_new_projects', False)
+
+        if not job_description:
+            return jsonify({"error": "Job description is required"}), 400
+
+        # Initialize services
+        gemini_api_key = os.getenv('GOOGLE_API_KEY')
+        relevance_engine = ProjectRelevanceEngine(gemini_api_key)
+
+        db = SessionLocal()
+
+        try:
+            # Get all user projects
+            projects = db.query(Project).filter(Project.user_id == user_id).all()
+
+            projects_data = []
+            current_projects = []
+            alternative_projects = []
+
+            for project in projects:
+                proj_dict = {
+                    'id': project.id,
+                    'name': project.name,
+                    'description': project.description,
+                    'technologies': project.technologies or [],
+                    'features': project.features or [],
+                    'detailed_bullets': project.detailed_bullets or [],
+                    'end_date': project.end_date
+                }
+
+                projects_data.append(proj_dict)
+
+                if project.is_on_resume:
+                    current_projects.append(proj_dict)
+                else:
+                    alternative_projects.append(proj_dict)
+
+            # Score all projects
+            ranked_projects = relevance_engine.rank_projects(
+                projects_data,
+                job_keywords,
+                data.get('required_technologies', []),
+                data.get('job_domain')
+            )
+
+            # Categorize results
+            current_scored = []
+            alternative_scored = []
+
+            for project, scores in ranked_projects:
+                proj_result = {
+                    'project': project,
+                    'scores': scores
+                }
+
+                if project['id'] in [p['id'] for p in current_projects]:
+                    current_scored.append(proj_result)
+                else:
+                    alternative_scored.append(proj_result)
+
+            # Get swap recommendations
+            swap_recommendations = relevance_engine.recommend_project_swaps(
+                current_projects,
+                projects_data,
+                job_keywords,
+                data.get('required_technologies', []),
+                data.get('job_domain'),
+                min_improvement_threshold=15.0
+            )
+
+            # Discover new projects if requested
+            discovered_projects = []
+            if discover_new:
+                try:
+                    mimikree_email = os.getenv('MIMIKREE_EMAIL')
+                    mimikree_password = os.getenv('MIMIKREE_PASSWORD')
+
+                    if mimikree_email and mimikree_password:
+                        mimikree_client = MimikreeClient()
+                        mimikree_client.authenticate(mimikree_email, mimikree_password)
+
+                        discovery = MimikreeProjectDiscovery(gemini_api_key)
+                        new_projects, _ = discovery.discover_projects(
+                            mimikree_client,
+                            job_keywords,
+                            job_description,
+                            current_projects,
+                            max_questions=8
+                        )
+
+                        discovered_projects = discovery.enrich_discovered_projects(
+                            new_projects,
+                            job_keywords
+                        )
+
+                except Exception as e:
+                    logging.error(f"Failed to discover new projects: {e}")
+
+            return jsonify({
+                "success": True,
+                "current_projects": current_scored,
+                "alternative_projects": alternative_scored,
+                "swap_recommendations": swap_recommendations,
+                "discovered_projects": discovered_projects
+            }), 200
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logging.error(f"Error analyzing projects: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/tailoring/generate-project-bullets", methods=['POST'])
+@require_auth
+def generate_project_bullets():
+    """Generate tailored bullets for a project"""
+    try:
+        import sys
+        sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'Agents'))
+        from bullet_generation.project_bullet_generator import ProjectBulletGenerator
+
+        data = request.json
+
+        project = data.get('project')
+        job_keywords = data.get('job_keywords', [])
+        job_description = data.get('job_description', '')
+        target_bullet_count = data.get('target_bullet_count', 3)
+        mimikree_context = data.get('mimikree_context')
+
+        if not project:
+            return jsonify({"error": "Project data is required"}), 400
+
+        gemini_api_key = os.getenv('GOOGLE_API_KEY')
+        generator = ProjectBulletGenerator(gemini_api_key)
+
+        bullets = generator.generate_bullets(
+            project,
+            job_keywords,
+            job_description,
+            target_bullet_count,
+            mimikree_context=mimikree_context
+        )
+
+        return jsonify({
+            "success": True,
+            "bullets": bullets
+        }), 200
+
+    except Exception as e:
+        logging.error(f"Error generating bullets: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/projects/save-discovered", methods=['POST'])
+@require_auth
+def save_discovered_projects():
+    """Save discovered projects to database"""
+    try:
+        from database_config import SessionLocal
+        from migrate_add_projects import Project
+
+        user_id = request.current_user['id']
+        data = request.json
+
+        projects_to_save = data.get('projects', [])
+
+        if not projects_to_save:
+            return jsonify({"error": "No projects to save"}), 400
+
+        db = SessionLocal()
+        saved_projects = []
+
+        try:
+            for proj_data in projects_to_save:
+                project = Project(
+                    user_id=user_id,
+                    name=proj_data.get('name'),
+                    description=proj_data.get('description'),
+                    technologies=proj_data.get('technologies', []),
+                    github_url=proj_data.get('github_url'),
+                    live_url=proj_data.get('live_url'),
+                    features=proj_data.get('features', []),
+                    detailed_bullets=proj_data.get('detailed_bullets', []),
+                    tags=proj_data.get('tags', []),
+                    is_on_resume=False,
+                    display_order=0
+                )
+
+                db.add(project)
+                saved_projects.append(project.name)
+
+            db.commit()
+
+            return jsonify({
+                "success": True,
+                "message": f"Saved {len(saved_projects)} projects",
+                "projects": saved_projects
+            }), 201
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logging.error(f"Error saving discovered projects: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# ============================================================
+# PRODUCTION MONITORING & MANAGEMENT ENDPOINTS
+# ============================================================
+
+@app.route("/api/admin/system-status", methods=['GET'])
+@require_auth
+def get_system_status():
+    """Get comprehensive system status for monitoring"""
+    try:
+        # Check if user is admin (you can implement admin role checking)
+        user_id = request.current_user['id']
+        
+        status = {
+            'timestamp': datetime.utcnow().isoformat(),
+            'rate_limits': get_rate_limit_status(),
+            'job_queue': job_queue.get_queue_stats(),
+            'database': get_database_health(),
+            'security': get_security_status(),
+            'backups': backup_manager.get_backup_status()
+        }
+        
+        return jsonify(status), 200
+        
+    except Exception as e:
+        logging.error(f"Error getting system status: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/admin/job-queue/stats", methods=['GET'])
+@require_auth
+def get_job_queue_stats():
+    """Get detailed job queue statistics"""
+    try:
+        return jsonify(job_queue.get_queue_stats()), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/jobs/<job_id>/status", methods=['GET'])
+@require_auth
+def get_job_status_api(job_id):
+    """Get status of a specific job"""
+    try:
+        user_id = request.current_user['id']
+        
+        # Get job status
+        status = job_queue.get_job_status(job_id)
+        if not status:
+            return jsonify({"error": "Job not found"}), 404
+        
+        # Verify job ownership (basic security)
+        user_jobs = job_queue.get_user_jobs(user_id)
+        if not any(job['job_id'] == job_id for job in user_jobs):
+            return jsonify({"error": "Access denied"}), 403
+        
+        return jsonify(status.to_dict()), 200
+        
+    except Exception as e:
+        logging.error(f"Error getting job status: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/jobs/<job_id>/cancel", methods=['POST'])
+@require_auth
+def cancel_job_api(job_id):
+    """Cancel a job"""
+    try:
+        user_id = request.current_user['id']
+        
+        success = job_queue.cancel_job(job_id, user_id)
+        if success:
+            return jsonify({"success": True, "message": "Job cancelled successfully"}), 200
+        else:
+            return jsonify({"error": "Failed to cancel job or job not found"}), 400
+            
+    except Exception as e:
+        logging.error(f"Error cancelling job: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/user/jobs", methods=['GET'])
+@require_auth
+def get_user_jobs_api():
+    """Get all jobs for the current user"""
+    try:
+        user_id = request.current_user['id']
+        jobs = job_queue.get_user_jobs(user_id)
+        return jsonify({"jobs": jobs}), 200
+        
+    except Exception as e:
+        logging.error(f"Error getting user jobs: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/admin/backups", methods=['GET'])
+@require_auth
+def list_backups_api():
+    """List all available backups"""
+    try:
+        backup_type = request.args.get('type')  # database, files, logs
+        backups = backup_manager.list_backups(backup_type)
+        return jsonify({"backups": backups}), 200
+        
+    except Exception as e:
+        logging.error(f"Error listing backups: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/admin/backups/create", methods=['POST'])
+@require_auth
+def create_backup_api():
+    """Create a new backup"""
+    try:
+        data = request.json or {}
+        backup_type = data.get('type', 'full')  # full, database, files, logs
+        
+        if backup_type == 'full':
+            result = run_full_backup()
+        elif backup_type == 'database':
+            result = backup_manager.backup_database()
+        elif backup_type == 'files':
+            result = backup_manager.backup_files()
+        elif backup_type == 'logs':
+            result = backup_manager.backup_logs()
+        else:
+            return jsonify({"error": "Invalid backup type"}), 400
+        
+        return jsonify(result), 200 if result.get('success') else 500
+        
+    except Exception as e:
+        logging.error(f"Error creating backup: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/admin/backups/<backup_id>/restore", methods=['POST'])
+@require_auth
+def restore_backup_api(backup_id):
+    """Restore from a backup"""
+    try:
+        # This is a dangerous operation - add additional security checks
+        result = backup_manager.restore_database(backup_id)
+        return jsonify(result), 200 if result.get('success') else 500
+        
+    except Exception as e:
+        logging.error(f"Error restoring backup: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/admin/security/events", methods=['GET'])
+@require_auth
+def get_security_events_api():
+    """Get recent security events"""
+    try:
+        limit = request.args.get('limit', 50, type=int)
+        events = security_manager.get_security_events(limit)
+        return jsonify({"events": events}), 200
+        
+    except Exception as e:
+        logging.error(f"Error getting security events: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/admin/security/audit", methods=['POST'])
+@require_auth
+def run_security_audit_api():
+    """Run security audit"""
+    try:
+        audit_results = security_manager.run_security_audit()
+        return jsonify(audit_results), 200
+        
+    except Exception as e:
+        logging.error(f"Error running security audit: {e}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     # Set up file logging for API server with DEBUG level to capture everything
     log_file = setup_file_logging(log_level=logging.DEBUG, console_logging=True)
     logging.info(f"API Server starting. Logs will be saved to: {log_file}")
+    
+    # Initialize production infrastructure
+    try:
+        initialize_production_infrastructure()
+    except Exception as e:
+        logging.error(f"Failed to initialize production infrastructure: {e}")
+        sys.exit(1)
     
     # Check if we're in development or production mode
     import os
@@ -1954,4 +2776,11 @@ if __name__ == "__main__":
             logging.warning("Waitress not installed, falling back to Flask dev server")
             app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
 
-    print("API Server started")
+    # Cleanup on shutdown
+    try:
+        job_queue.stop_worker()
+        logging.info("Job queue worker stopped")
+    except:
+        pass
+    
+    print("API Server stopped")
