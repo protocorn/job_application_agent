@@ -59,8 +59,16 @@ def identify_space_borrowing_opportunities(
         Dictionary with borrowing opportunities
     """
     # Calculate relevance scores if not already done
-    if 'relevance_score' not in line_metadata[0]:
+    if line_metadata and 'relevance_score' not in line_metadata[0]:
         line_metadata = calculate_relevance_scores(line_metadata, job_keywords, "")
+
+    # Return empty result if no metadata
+    if not line_metadata:
+        return {
+            'donor_lines': [],
+            'recipient_lines': [],
+            'recommendations': []
+        }
 
     # Identify lines with high char_buffer (underutilized space)
     donor_lines = []
