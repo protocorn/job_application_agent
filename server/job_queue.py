@@ -107,13 +107,30 @@ class JobRequest:
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'JobRequest':
-        data['priority'] = JobPriority(data['priority'])
+        # Convert priority from string to int (Redis returns strings when decode_responses=True)
+        priority_value = data['priority']
+        if isinstance(priority_value, str):
+            priority_value = int(priority_value)
+        data['priority'] = JobPriority(priority_value)
+
+        # Convert numeric fields from strings
+        if isinstance(data.get('user_id'), str):
+            data['user_id'] = int(data['user_id'])
+        if isinstance(data.get('timeout_seconds'), str):
+            data['timeout_seconds'] = int(data['timeout_seconds'])
+        if isinstance(data.get('retry_count'), str):
+            data['retry_count'] = int(data['retry_count'])
+        if isinstance(data.get('max_retries'), str):
+            data['max_retries'] = int(data['max_retries'])
+
         data['created_at'] = datetime.fromisoformat(data['created_at'])
         if data.get('scheduled_at'):
             data['scheduled_at'] = datetime.fromisoformat(data['scheduled_at'])
+
         # Deserialize the payload from JSON string
         if isinstance(data.get('payload'), str):
             data['payload'] = json.loads(data['payload'])
+
         return cls(**data)
 
 @dataclass
@@ -181,7 +198,7 @@ class JobResult:
 
         return cls(
             job_id=data['job_id'],
-            status=JobStatus(data['status']),
+            status=JobStatus(data['status']),  # JobStatus uses string values, no conversion needed
             result=result,
             error=data.get('error'),
             started_at=started_at,
