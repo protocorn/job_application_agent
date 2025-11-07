@@ -3,8 +3,8 @@ nixPkgs = ["python39", "python39Packages.pip", "postgresql"]
 
 [phases.install]
 cmds = [
-  "pip install --upgrade pip",
-  "pip install -r requirements_production.txt",
+  "pip install --break-system-packages --upgrade pip",
+  "pip install --break-system-packages -r requirements_production.txt",
   "playwright install --with-deps chromium"
 ]
 
