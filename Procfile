@@ -1,1 +1,1 @@
-web: python server/api_server.py
+web: /opt/venv/bin/python server/api_server.py
