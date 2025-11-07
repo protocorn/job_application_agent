@@ -632,6 +632,11 @@ class SystematicEditorComplete:
             validation['feasible_keywords'][:7],
             max_length=500
         )
+        
+        # Prepare background section (avoid backslash in f-string)
+        background_section = ""
+        if mimikree_context:
+            background_section = f"CANDIDATE'S BACKGROUND (use for context):\n{mimikree_context}\n"
 
         prompt = f"""You are a professional resume writer. Rewrite this resume profile to sound natural, engaging, and professional while incorporating SPECIFIC skills (not vague terms).
 
@@ -641,7 +646,7 @@ ORIGINAL PROFILE:
 TARGET SKILLS/KEYWORDS (incorporate ONLY if you can be specific):
 {', '.join(validation['feasible_keywords'][:7])}
 
-{f"CANDIDATE'S BACKGROUND (use for context):\\n{mimikree_context}\\n" if mimikree_context else ""}
+{background_section}
 
 CRITICAL RULES - PROFESSIONALISM FIRST:
 1. **BE SPECIFIC, NOT VAGUE**: Use concrete terms. "Natural Language Processing" > "Machine Learning". "TensorFlow" > "AI". "Python data pipelines" > "programming".
@@ -864,13 +869,18 @@ If cannot be condensed to {target_visual_lines} line(s) while keeping key info, 
                 validation['feasible_keywords'][:5],
                 max_length=800
             )
+            
+            # Prepare background section (avoid backslash in f-string)
+            background_info = ""
+            if mimikree_context:
+                background_info = f"BACKGROUND INFO:\n{mimikree_context}\n"
 
             prompt = f"""Expand this resume bullet with more specific details{' from the background info' if mimikree_context else ''}:
 
 ORIGINAL BULLET:
 {bullet['text']}
 
-{f"BACKGROUND INFO:\\n{mimikree_context}\\n" if mimikree_context else ""}
+{background_info}
 REQUIREMENTS:
 - Add specific methodology, tools, or impact details
 - Incorporate these keywords if relevant: {', '.join(validation['feasible_keywords'][:5])}
