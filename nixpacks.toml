@@ -1,3 +1,6 @@
+[providers]
+python = "python3"
+
 [phases.setup]
 nixPkgs = ["python39", "python39Packages.pip", "postgresql"]
 
