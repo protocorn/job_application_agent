@@ -205,36 +205,47 @@ class DatabaseOptimizer:
         ]
         
         created_count = 0
-        with self.get_db_session() as session:
-            for index_config in indexes_to_create:
-                try:
+        
+        # Create indexes individually with autocommit to avoid transaction issues
+        for index_config in indexes_to_create:
+            try:
+                # Use raw connection with autocommit for index creation
+                with self.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
                     # Check if index already exists
                     check_query = text("""
                         SELECT 1 FROM pg_indexes 
                         WHERE indexname = :index_name
                     """)
                     
-                    result = session.execute(check_query, {'index_name': index_config['name']})
+                    result = conn.execute(check_query, {'index_name': index_config['name']})
                     if result.fetchone():
                         self.logger.debug(f"Index {index_config['name']} already exists")
                         continue
                     
-                    # Create index
+                    # Check if table exists
+                    table_check = text("""
+                        SELECT 1 FROM pg_tables 
+                        WHERE tablename = :table_name
+                    """)
+                    result = conn.execute(table_check, {'table_name': index_config['table']})
+                    if not result.fetchone():
+                        self.logger.debug(f"Table {index_config['table']} doesn't exist yet, skipping index")
+                        continue
+                    
+                    # Create index (without CONCURRENTLY to work in all scenarios)
                     columns_str = ', '.join(index_config['columns'])
                     create_query = text(f"""
-                        CREATE INDEX CONCURRENTLY {index_config['name']} 
+                        CREATE INDEX IF NOT EXISTS {index_config['name']} 
                         ON {index_config['table']} ({columns_str})
                     """)
                     
-                    session.execute(create_query)
-                    session.commit()
+                    conn.execute(create_query)
                     
                     created_count += 1
                     self.logger.info(f"Created index {index_config['name']}: {index_config['description']}")
                     
-                except Exception as e:
-                    session.rollback()
-                    self.logger.error(f"Failed to create index {index_config['name']}: {e}")
+            except Exception as e:
+                self.logger.warning(f"Failed to create index {index_config['name']}: {e}")
         
         self.logger.info(f"Database indexing complete. Created {created_count} new indexes.")
     
