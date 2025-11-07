@@ -2764,20 +2764,23 @@ if __name__ == "__main__":
     # Check if we're in development or production mode
     import os
     is_development = os.getenv('FLASK_ENV') == 'development'
-    
+
+    # Get port from environment variable (Railway, Heroku, etc.) or default to 5000
+    port = int(os.getenv('PORT', 5000))
+
     if is_development:
         # Development mode with auto-reload disabled to prevent Windows socket issues
-        logging.info("🔧 Running in DEVELOPMENT mode")
-        app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
+        logging.info(f"🔧 Running in DEVELOPMENT mode on port {port}")
+        app.run(host='0.0.0.0', port=port, debug=True, use_reloader=False)
     else:
         # Production mode - more stable
-        logging.info("🚀 Running in PRODUCTION mode")
+        logging.info(f"🚀 Running in PRODUCTION mode on port {port}")
         from waitress import serve
         try:
-            serve(app, host='0.0.0.0', port=5000, threads=4)
+            serve(app, host='0.0.0.0', port=port, threads=4)
         except ImportError:
             logging.warning("Waitress not installed, falling back to Flask dev server")
-            app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+            app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
     # Cleanup on shutdown
     try:

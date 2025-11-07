@@ -1,0 +1,56 @@
+# Development files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Credentials and secrets
+credentials.json
+token.json
+*.pem
+*.key
+
+# Cache and logs
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+logs/
+Cache/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+test_*.py
+*_test.py
+
+# Documentation
+*.md
+!README.md
+
+# Frontend (if deploying separately)
+Website/
+node_modules/
+
+# Resumes and temporary files
+Resumes/
+test_job_descriptions/
+
+# Other
+ProfileBuilder/
+Agents/job_search/
