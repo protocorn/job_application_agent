@@ -52,13 +52,17 @@ class HallucinationDetector:
                 - recommendation: 'ACCEPT', 'REVIEW', or 'REJECT'
         """
         try:
+            # Prepare original content section (avoid backslash in f-string)
+            original_section = ""
+            if original_content:
+                original_section = f"ORIGINAL CONTENT (before modification):\n{original_content}\n\n"
+            
             prompt = f"""Analyze the generated content for factual accuracy against the source data.
 
 SOURCE DATA (ground truth):
 {source_data}
 
-{f"ORIGINAL CONTENT (before modification):\\n{original_content}\\n" if original_content else ""}
-GENERATED CONTENT (to validate):
+{original_section}GENERATED CONTENT (to validate):
 {generated_content}
 
 TASK: Identify every factual claim in the generated content and categorize each as:

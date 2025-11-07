@@ -1267,9 +1267,10 @@ class OverflowRecoveryComplete:
                 bullet_text = b.get('text', '')
                 actual_lines = sum(1 for line in bullet_text.split('\n') if line.strip())
                 visual_lines_raw = b.get('visual_lines', 'N/A')
+                has_newlines = '\n' in bullet_text
                 print(f"   {i+1}. Lines: {actual_lines} (metadata says: {visual_lines_raw})")
                 print(f"      Text: {bullet_text[:80]}...")
-                print(f"      Has newlines: {'\\n' in bullet_text}")
+                print(f"      Has newlines: {has_newlines}")
 
         # FIX: visual_lines in metadata is off by 1 (counts blank line at end)
         # Correct it for all bullets

@@ -68,6 +68,11 @@ FEATURES:
                 project_context += f"\n\nEXISTING BULLETS (for reference):\n"
                 project_context += "\n".join([f"- {b}" for b in project.get('detailed_bullets', [])])
 
+            # Prepare additional context section (avoid backslash in f-string)
+            additional_context = ""
+            if mimikree_context:
+                additional_context = f"ADDITIONAL CONTEXT:\n{mimikree_context}\n"
+            
             prompt = f"""Generate {target_bullet_count} tailored resume bullet points for this project.
 
 {project_context}
@@ -78,7 +83,7 @@ JOB DESCRIPTION EXCERPT:
 KEY JOB REQUIREMENTS TO EMPHASIZE:
 {', '.join(job_keywords[:10])}
 
-{f"ADDITIONAL CONTEXT:\\n{mimikree_context}\\n" if mimikree_context else ""}
+{additional_context}
 
 REQUIREMENTS FOR BULLETS:
 1. Each bullet MUST be 2-3 lines long (approximately {char_limit_per_line * 2}-{char_limit_per_line * 3} characters)
