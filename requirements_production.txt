@@ -39,6 +39,7 @@ bleach>=6.0.0
 limits>=3.6.0
 
 # Existing requirements (from your current system)
+google-genai
 google-generativeai>=0.3.0
 google-auth>=2.23.0
 google-auth-oauthlib>=1.1.0
