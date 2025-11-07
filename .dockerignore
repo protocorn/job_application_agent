@@ -1,0 +1,60 @@
+# Ignore unnecessary files to speed up builds
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Documentation and markdown
+*.md
+docs/
+
+# Tests
+tests/
+test_*.py
+*_test.py
+
+# Development files
+.env
+.env.local
+.env.development
+
+# Frontend
+Website/
+node_modules/
+
+# Logs
+*.log
+logs/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Screenshots and temp files
+screenshots/
+temp/
+tmp/
+
+# OS files
+.DS_Store
+Thumbs.db
