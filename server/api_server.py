@@ -777,12 +777,22 @@ def tailor_resume():
             db.close()
 
         # Prepare job payload
+        # Serialize credentials to JSON-compatible format
+        credentials_dict = {
+            'token': credentials.token,
+            'refresh_token': credentials.refresh_token,
+            'token_uri': credentials.token_uri,
+            'client_id': credentials.client_id,
+            'client_secret': credentials.client_secret,
+            'scopes': credentials.scopes
+        }
+
         payload = {
             'original_resume_url': resume_url,
             'job_description': job_description,
             'job_title': data.get('job_title', 'Unknown Position'),
             'company': data.get('company_name', 'Unknown Company'),
-            'credentials': credentials,
+            'credentials': credentials_dict,
             'user_full_name': user_full_name
         }
 

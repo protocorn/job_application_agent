@@ -42,8 +42,21 @@ def handle_resume_tailoring(payload: Dict[str, Any]) -> Dict[str, Any]:
         job_description = payload.get('job_description')
         job_title = payload.get('job_title', 'Unknown Position')
         company = payload.get('company', 'Unknown Company')
-        credentials = payload.get('credentials')  # Google OAuth credentials
+        credentials_dict = payload.get('credentials')  # Google OAuth credentials dictionary
         user_full_name = payload.get('user_full_name', 'User')
+
+        # Reconstruct Credentials object from dictionary
+        from google.oauth2.credentials import Credentials
+        credentials = None
+        if credentials_dict:
+            credentials = Credentials(
+                token=credentials_dict.get('token'),
+                refresh_token=credentials_dict.get('refresh_token'),
+                token_uri=credentials_dict.get('token_uri'),
+                client_id=credentials_dict.get('client_id'),
+                client_secret=credentials_dict.get('client_secret'),
+                scopes=credentials_dict.get('scopes')
+            )
         
         # Validate required parameters
         if not original_resume_url or not job_description:
