@@ -149,12 +149,15 @@ class JobResult:
         data = {
             'job_id': self.job_id,
             'status': self.status.value,
-            'result': json.dumps(self.result) if self.result else None,
-            'error': self.error,
-            'execution_time': self.execution_time
         }
 
-        # Add optional datetime fields if present
+        # Only add non-None values (Redis doesn't like None values)
+        if self.result is not None:
+            data['result'] = json.dumps(self.result)
+        if self.error is not None:
+            data['error'] = self.error
+        if self.execution_time is not None:
+            data['execution_time'] = str(self.execution_time)  # Convert to string for Redis
         if self.started_at:
             data['started_at'] = self.started_at.isoformat()
         if self.completed_at:
@@ -509,11 +512,15 @@ class JobQueue:
                 self.logger.error(f"Job {job_id} failed: {e}")
             
             # Store result
-            redis_client.hset(f"{self.results_key}:{job_id}", mapping=result.to_dict())
-            redis_client.expire(f"{self.results_key}:{job_id}", 86400)  # 24 hours
-            
-            self.logger.info(f"Job {job_id} completed with status {result.status.value}")
-            
+            try:
+                result_dict = result.to_dict()
+                redis_client.hset(f"{self.results_key}:{job_id}", mapping=result_dict)
+                redis_client.expire(f"{self.results_key}:{job_id}", 86400)  # 24 hours
+                self.logger.info(f"Job {job_id} completed with status {result.status.value}")
+            except Exception as store_error:
+                self.logger.error(f"Failed to store job result for {job_id}: {store_error}")
+                self.logger.error(f"Result dict: {result_dict if 'result_dict' in locals() else 'N/A'}")
+
         except Exception as e:
             self.logger.error(f"Critical error executing job {job_id}: {e}")
             
