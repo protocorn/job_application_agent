@@ -1852,8 +1852,18 @@ def test_mimikree_connection():
         logging.error(f"Error testing Mimikree connection: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route("/", methods=['GET'])
+def root():
+    """Root endpoint for basic health check"""
+    return jsonify({
+        "status": "ok",
+        "service": "Job Application Agent API",
+        "version": "1.0.0"
+    })
+
 @app.route("/api/health", methods=['GET'])
 def health():
+    """Detailed health check endpoint"""
     return jsonify({"status": "ok"})
 
 # Session Management API Routes

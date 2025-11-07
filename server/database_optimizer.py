@@ -251,23 +251,34 @@ class DatabaseOptimizer:
     
     def analyze_table_statistics(self):
         """Update table statistics for query optimizer"""
-        
+
         tables_to_analyze = [
-            'users', 'user_profiles', 'job_applications', 
-            'job_listings', 'projects', 'project_usage_history', 
+            'users', 'user_profiles', 'job_applications',
+            'job_listings', 'projects', 'project_usage_history',
             'action_history'
         ]
-        
-        with self.get_db_session() as session:
-            for table in tables_to_analyze:
-                try:
+
+        # Analyze each table in its own transaction to avoid cascading failures
+        for table in tables_to_analyze:
+            try:
+                with self.get_db_session() as session:
+                    # First check if table exists
+                    check_query = text("""
+                        SELECT 1 FROM pg_tables
+                        WHERE tablename = :table_name
+                    """)
+                    result = session.execute(check_query, {'table_name': table})
+                    if not result.fetchone():
+                        self.logger.debug(f"Table {table} doesn't exist yet, skipping analysis")
+                        continue
+
+                    # Analyze the table
                     session.execute(text(f"ANALYZE {table}"))
                     self.logger.debug(f"Analyzed table statistics for {table}")
-                except Exception as e:
-                    self.logger.error(f"Failed to analyze table {table}: {e}")
-            
-            session.commit()
-        
+            except Exception as e:
+                self.logger.warning(f"Failed to analyze table {table}: {e}")
+                # Continue with next table instead of failing completely
+
         self.logger.info("Table statistics analysis complete")
     
     def get_connection_pool_stats(self) -> Dict[str, Any]:
