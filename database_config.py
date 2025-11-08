@@ -23,14 +23,20 @@ from urllib.parse import quote_plus
 encoded_password = quote_plus(DB_PASSWORD)
 DATABASE_URL = f"postgresql://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-# Create engine and session
-engine = create_engine(DATABASE_URL)
+# Create engine and session with connection options for Supabase
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={
+        "options": "-csearch_path=public"
+    }
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 # Database Models
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = {'schema': 'public'}
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
@@ -58,9 +64,10 @@ class User(Base):
 
 class JobApplication(Base):
     __tablename__ = "job_applications"
+    __table_args__ = {'schema': 'public'}
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("public.users.id"), nullable=False)
     job_id = Column(String, nullable=False)  # External job ID from job boards
     company_name = Column(String, nullable=False)
     job_title = Column(String, nullable=False)
@@ -78,6 +85,7 @@ class JobApplication(Base):
 
 class JobListing(Base):
     __tablename__ = "job_listings"
+    __table_args__ = {'schema': 'public'}
 
     id = Column(Integer, primary_key=True, index=True)
     external_id = Column(String, unique=True, index=True, nullable=False)  # ID from job board
@@ -96,9 +104,10 @@ class JobListing(Base):
 
 class UserProfile(Base):
     __tablename__ = "user_profiles"
+    __table_args__ = {'schema': 'public'}
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("public.users.id"), unique=True, nullable=False)
 
     # Basic Information
     resume_url = Column(String)
@@ -153,9 +162,10 @@ User.profile = relationship("UserProfile", back_populates="user", uselist=False,
 # Action history for session replay per user/job with TTL
 class ActionHistory(Base):
     __tablename__ = "action_history"
+    __table_args__ = {'schema': 'public'}
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("public.users.id"), nullable=False, index=True)
     job_id = Column(String, nullable=False, index=True)
     action_log = Column(JSON)  # store structured actions
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
