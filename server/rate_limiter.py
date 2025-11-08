@@ -54,6 +54,7 @@ class ProductionRateLimiter:
     # Admin users (unlimited rate limits)
     ADMIN_EMAILS = [
         'chordiasahil24@gmail.com',
+        "chordiasahil2412@gmail.com"
     ]
 
     # API Quota Limits (per day unless specified)

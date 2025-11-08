@@ -97,7 +97,7 @@ class BackupManager:
             self.redis_client = redis.Redis(
                 host=os.getenv('REDIS_HOST', 'localhost'),
                 port=int(os.getenv('REDIS_PORT', 6379)),
-                db=3,  # Use different DB for backups
+                db=0,  # Only database 0 is supported in some Redis configurations
                 decode_responses=True
             )
     
@@ -152,6 +152,8 @@ class BackupManager:
             backup_path = Path(self.storage_config['local_backup_dir']) / 'database' / backup_filename
             
             # Build pg_dump command
+            # Note: Using pg_dumpall or finding correct pg_dump version for PostgreSQL 17.6
+            # Using --no-sync to avoid version-specific issues
             pg_dump_cmd = [
                 'pg_dump',
                 f"--host={self.db_config['host']}",
@@ -161,6 +163,7 @@ class BackupManager:
                 '--clean',
                 '--no-owner',
                 '--no-privileges',
+                '--no-sync',  # Avoid fsync to reduce version compatibility issues
                 '--format=custom' if not self.backup_config['database']['compress'] else '--format=plain',
                 self.db_config['name']
             ]
@@ -191,19 +194,36 @@ class BackupManager:
                     
                     pg_dump.stdout.close()
                     gzip_proc.communicate()
-                    
+
                     if pg_dump.wait() != 0:
-                        raise Exception(f"pg_dump failed: {pg_dump.stderr.read().decode()}")
+                        error_msg = pg_dump.stderr.read().decode()
+                        if "server version mismatch" in error_msg:
+                            raise Exception(
+                                f"pg_dump version mismatch: {error_msg}\n"
+                                "Please upgrade pg_dump to match PostgreSQL server version 17.6. "
+                                "You can install it with: apt-get install postgresql-client-17 or brew install postgresql@17"
+                            )
+                        raise Exception(f"pg_dump failed: {error_msg}")
             else:
                 # Direct backup
                 with open(backup_path, 'wb') as f:
-                    result = subprocess.run(
-                        pg_dump_cmd,
-                        stdout=f,
-                        stderr=subprocess.PIPE,
-                        env=env,
-                        check=True
-                    )
+                    try:
+                        result = subprocess.run(
+                            pg_dump_cmd,
+                            stdout=f,
+                            stderr=subprocess.PIPE,
+                            env=env,
+                            check=True
+                        )
+                    except subprocess.CalledProcessError as e:
+                        error_msg = e.stderr.decode() if e.stderr else str(e)
+                        if "server version mismatch" in error_msg:
+                            raise Exception(
+                                f"pg_dump version mismatch: {error_msg}\n"
+                                "Please upgrade pg_dump to match PostgreSQL server version 17.6. "
+                                "You can install it with: apt-get install postgresql-client-17 or brew install postgresql@17"
+                            )
+                        raise Exception(f"pg_dump failed: {error_msg}")
             
             backup_time = time.time() - start_time
             backup_size = backup_path.stat().st_size

@@ -1523,15 +1523,15 @@ def signup():
             return jsonify({"error": "No data provided"}), 400
 
         # Validate required fields
-        required_fields = ['email', 'password', 'firstName', 'lastName']
+        required_fields = ['email', 'password', 'first_name', 'last_name']
         for field in required_fields:
             if not data.get(field):
                 return jsonify({"error": f"{field} is required"}), 400
 
         email = data['email'].strip().lower()
         password = data['password']
-        first_name = data['firstName'].strip()
-        last_name = data['lastName'].strip()
+        first_name = data['first_name'].strip()
+        last_name = data['last_name'].strip()
 
         # Basic validation
         if len(password) < 6:
