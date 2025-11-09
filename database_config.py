@@ -28,10 +28,14 @@ engine = create_engine(
     DATABASE_URL,
     connect_args={
         "options": "-csearch_path=public"
-    }
+    },
+    # Add execution options to ensure schema is always used
+    execution_options={"schema_translate_map": {None: "public"}}
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+# Set default schema for all tables
+from sqlalchemy import MetaData
+Base = declarative_base(metadata=MetaData(schema="public"))
 
 # Database Models
 class User(Base):
