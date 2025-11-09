@@ -69,6 +69,17 @@ session_manager = SessionManager(session_storage_path)
 def initialize_production_infrastructure():
     """Initialize all production infrastructure components"""
     try:
+        # Initialize database tables if they don't exist
+        from database_config import Base, engine, test_connection
+        logging.info("Checking database connection...")
+        if test_connection():
+            logging.info("✅ Database connection successful")
+            logging.info("Initializing database tables...")
+            Base.metadata.create_all(bind=engine)
+            logging.info("✅ Database tables initialized")
+        else:
+            raise Exception("Database connection failed")
+        
         # Set up database optimizations
         setup_database_optimizations()
         logging.info("✅ Database optimizations initialized")
