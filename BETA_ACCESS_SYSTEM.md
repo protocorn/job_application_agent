@@ -39,6 +39,18 @@ This adds the following fields to the `users` table:
 - `beta_approved_date` (timestamp)
 - `beta_request_reason` (text)
 
+### 3. Approve Existing Users (Important!)
+
+If you have existing users, run this script to auto-approve them so they're not blocked:
+
+```bash
+python approve_existing_users.py
+```
+
+This ensures all current users can continue using the platform while new users must request beta access.
+
+**Note**: The system also has automatic backward compatibility - when existing users log in, they're automatically approved if they don't have beta access fields set.
+
 ### 3. Configure Email Service (Optional but Recommended)
 
 Set up email notifications for beta approvals:

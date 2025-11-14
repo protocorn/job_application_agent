@@ -171,6 +171,14 @@ class AuthService:
                     'error': 'User account is deactivated'
                 }
 
+            # Auto-approve beta access for existing users (backward compatibility)
+            # If beta fields are None, this is a legacy user - grant them access automatically
+            if user.beta_access_requested is None and user.beta_access_approved is None:
+                user.beta_access_approved = True
+                user.beta_approved_date = datetime.utcnow()
+                db.commit()
+                db.refresh(user)
+
             # Create JWT token
             token = AuthService.create_jwt_token(user.id, user.email)
 
