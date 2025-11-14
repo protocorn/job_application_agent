@@ -746,6 +746,103 @@ def get_recent_job_listings():
         logging.error(f"Error getting recent job listings: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/credits", methods=['GET'])
+@require_auth
+def get_user_credits():
+    """Get user's credit information including usage and limits"""
+    try:
+        user_id = request.current_user['id']
+        user_email = request.current_user.get('email', '')
+
+        # Check if user is admin
+        is_admin = user_email in rate_limiter.ADMIN_EMAILS
+
+        # Cache key for this user's credits
+        cache_key = f"credits_cache:{user_id}"
+        cached_credits = None
+
+        # Try to get cached credits (cache for 10 seconds to reduce Redis calls)
+        try:
+            import redis
+            from rate_limiter import redis_client
+            cached_data = redis_client.get(cache_key)
+            if cached_data:
+                import json
+                cached_credits = json.loads(cached_data)
+        except Exception as cache_error:
+            # If cache fails, continue without it
+            logging.debug(f"Cache fetch failed: {cache_error}")
+
+        # If we have valid cached data, return it
+        if cached_credits:
+            return jsonify({
+                "success": True,
+                "credits": cached_credits,
+                "cached": True
+            }), 200
+
+        # Get usage stats for different limit types (only if not cached)
+        daily_tailoring = rate_limiter.get_usage_stats('resume_tailoring_per_user_per_day', str(user_id))
+        hourly_tailoring = rate_limiter.get_usage_stats('resume_tailoring_per_user_per_hour', str(user_id))
+        daily_applications = rate_limiter.get_usage_stats('job_applications_per_user_per_day', str(user_id))
+        daily_search = rate_limiter.get_usage_stats('job_search_per_user_per_day', str(user_id))
+        
+        credits_info = {
+            "is_admin": is_admin,
+            "resume_tailoring": {
+                "daily": {
+                    "limit": "unlimited" if is_admin else daily_tailoring.get('limit', 5),
+                    "used": 0 if is_admin else daily_tailoring.get('used', 0),
+                    "remaining": "unlimited" if is_admin else daily_tailoring.get('remaining', 5),
+                    "reset_time": daily_tailoring.get('reset_time'),
+                    "window_hours": 24
+                },
+                "hourly": {
+                    "limit": "unlimited" if is_admin else hourly_tailoring.get('limit', 2),
+                    "used": 0 if is_admin else hourly_tailoring.get('used', 0),
+                    "remaining": "unlimited" if is_admin else hourly_tailoring.get('remaining', 2),
+                    "reset_time": hourly_tailoring.get('reset_time'),
+                    "window_hours": 1
+                }
+            },
+            "job_applications": {
+                "daily": {
+                    "limit": "unlimited" if is_admin else daily_applications.get('limit', 20),
+                    "used": 0 if is_admin else daily_applications.get('used', 0),
+                    "remaining": "unlimited" if is_admin else daily_applications.get('remaining', 20),
+                    "reset_time": daily_applications.get('reset_time'),
+                    "window_hours": 24
+                }
+            },
+            "job_search": {
+                "daily": {
+                    "limit": "unlimited" if is_admin else daily_search.get('limit', 5),
+                    "used": 0 if is_admin else daily_search.get('used', 0),
+                    "remaining": "unlimited" if is_admin else daily_search.get('remaining', 5),
+                    "reset_time": daily_search.get('reset_time'),
+                    "window_hours": 24
+                }
+            }
+        }
+
+        # Cache the credits info for 10 seconds to reduce Redis load
+        try:
+            import json
+            from rate_limiter import redis_client
+            redis_client.setex(cache_key, 10, json.dumps(credits_info))
+        except Exception as cache_error:
+            # If caching fails, continue without it
+            logging.debug(f"Cache set failed: {cache_error}")
+
+        return jsonify({
+            "success": True,
+            "credits": credits_info
+        }), 200
+        
+    except Exception as e:
+        logging.error(f"Error getting user credits: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/tailor-resume", methods=['POST'])
 @require_auth
 @rate_limit('api_requests_per_user_per_minute')
@@ -1639,6 +1736,32 @@ def verify_email():
     except Exception as e:
         logging.error(f"Error in verify email endpoint: {e}")
         return jsonify({"error": "Email verification failed"}), 500
+
+@app.route("/api/auth/resend-verification", methods=['POST'])
+def resend_verification():
+    """Resend verification email to user"""
+    try:
+        data = request.json
+        if not data or not data.get('email'):
+            return jsonify({"error": "Email address is required"}), 400
+
+        email = data['email'].strip().lower()
+
+        # Basic validation
+        if '@' not in email:
+            return jsonify({"error": "Please provide a valid email address"}), 400
+
+        # Resend verification email
+        result = AuthService.resend_verification_email(email)
+
+        if result['success']:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+
+    except Exception as e:
+        logging.error(f"Error in resend verification endpoint: {e}")
+        return jsonify({"error": "Failed to resend verification email"}), 500
 
 # Google OAuth Routes
 @app.route("/api/oauth/authorize", methods=['GET'])

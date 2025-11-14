@@ -95,13 +95,27 @@ class AuthService:
             )
 
             if not email_sent:
-                logging.warning(f"Failed to send verification email to {email}")
+                logging.error(f"Failed to send verification email to {email}")
+                # Still return success but inform user about email issue
+                return {
+                    'success': True,
+                    'message': 'User registered successfully, but we could not send the verification email. Please try resending from the login page.',
+                    'email_sent': False,
+                    'user': {
+                        'id': new_user.id,
+                        'email': new_user.email,
+                        'first_name': new_user.first_name,
+                        'last_name': new_user.last_name,
+                        'email_verified': new_user.email_verified,
+                        'created_at': new_user.created_at.isoformat()
+                    }
+                }
 
             # Do NOT create JWT token yet - user must verify email first
             return {
                 'success': True,
                 'message': 'User registered successfully. Please check your email to verify your account.',
-                'email_sent': email_sent,
+                'email_sent': True,
                 'user': {
                     'id': new_user.id,
                     'email': new_user.email,
@@ -239,6 +253,65 @@ class AuthService:
             return {
                 'success': False,
                 'error': 'Email verification failed'
+            }
+        finally:
+            db.close()
+
+    @staticmethod
+    def resend_verification_email(email: str) -> Dict[str, Any]:
+        """Resend verification email to user"""
+        db = SessionLocal()
+        try:
+            # Find user by email
+            user = db.query(User).filter(User.email == email.strip().lower()).first()
+
+            if not user:
+                return {
+                    'success': False,
+                    'error': 'No account found with this email address'
+                }
+
+            # Check if already verified
+            if user.email_verified:
+                return {
+                    'success': False,
+                    'error': 'Email is already verified. You can log in now.'
+                }
+
+            # Generate new verification token
+            verification_token = secrets.token_urlsafe(32)
+            verification_expires = datetime.utcnow() + timedelta(hours=24)
+
+            # Update user with new token
+            user.verification_token = verification_token
+            user.verification_token_expires = verification_expires
+            db.commit()
+
+            # Send verification email
+            email_sent = email_service.send_verification_email(
+                to_email=user.email,
+                verification_token=verification_token,
+                first_name=user.first_name
+            )
+
+            if not email_sent:
+                logging.error(f"Failed to resend verification email to {email}")
+                return {
+                    'success': False,
+                    'error': 'Failed to send verification email. Please try again later or contact support.'
+                }
+
+            return {
+                'success': True,
+                'message': 'Verification email sent successfully. Please check your inbox.'
+            }
+
+        except Exception as e:
+            db.rollback()
+            logging.error(f"Error resending verification email: {e}")
+            return {
+                'success': False,
+                'error': 'Failed to resend verification email'
             }
         finally:
             db.close()

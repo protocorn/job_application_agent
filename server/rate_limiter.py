@@ -56,6 +56,11 @@ class ProductionRateLimiter:
         'chordiasahil24@gmail.com',
         "chordiasahil2412@gmail.com"
     ]
+    
+    # Track Redis availability
+    redis_available = True
+    last_redis_error_time = 0
+    redis_error_backoff = 60  # seconds to wait before retrying Redis after quota error
 
     # API Quota Limits (per day unless specified)
     LIMITS = {
@@ -134,6 +139,16 @@ class ProductionRateLimiter:
         if limit_type not in self.LIMITS:
             return True, {"error": "Unknown limit type"}
 
+        # If Redis quota exceeded recently, fail open (allow all requests)
+        if not ProductionRateLimiter.redis_available:
+            current_time = time.time()
+            if current_time - ProductionRateLimiter.last_redis_error_time < ProductionRateLimiter.redis_error_backoff:
+                # Still in backoff period
+                return True, {"error": "Redis quota exceeded", "allowed": True, "graceful_degradation": True}
+            else:
+                # Try to reconnect
+                ProductionRateLimiter.redis_available = True
+
         # Check if identifier is a user ID and if that user is admin
         try:
             user_id = int(identifier)
@@ -190,12 +205,35 @@ class ProductionRateLimiter:
             }
             
         except redis.RedisError as e:
-            self.logger.error(f"Redis error in rate limiter: {e}")
+            error_msg = str(e).lower()
+            
+            # Check if this is a quota exceeded error
+            if 'max requests limit exceeded' in error_msg or 'quota exceeded' in error_msg:
+                current_time = time.time()
+                
+                # Throttle error logging for quota errors
+                if current_time - ProductionRateLimiter.last_redis_error_time > 3600:
+                    self.logger.error(
+                        f"⚠️ REDIS QUOTA EXCEEDED IN RATE LIMITER ⚠️\n"
+                        f"Rate limiting is temporarily disabled to preserve remaining quota.\n"
+                        f"Please check Upstash dashboard and consider upgrading.\n"
+                        f"Error: {e}"
+                    )
+                    ProductionRateLimiter.last_redis_error_time = current_time
+                
+                ProductionRateLimiter.redis_available = False
+            else:
+                self.logger.error(f"Redis error in rate limiter: {e}")
+            
             # Fail open - allow request if Redis is down
-            return True, {"error": "Rate limiter unavailable"}
+            return True, {"error": "Rate limiter unavailable", "allowed": True}
     
     def increment_usage(self, limit_type: str, identifier: str, amount: int = 1):
         """Increment usage counter"""
+        # Skip if Redis quota exceeded
+        if not ProductionRateLimiter.redis_available:
+            return
+        
         key = self._get_key(limit_type, identifier)
         now = int(time.time())
         
@@ -207,12 +245,29 @@ class ProductionRateLimiter:
                 redis_client.expire(key, self.LIMITS[limit_type].window)
                 
         except redis.RedisError as e:
-            self.logger.error(f"Redis error incrementing usage: {e}")
+            error_msg = str(e).lower()
+            if 'max requests limit exceeded' in error_msg or 'quota exceeded' in error_msg:
+                ProductionRateLimiter.redis_available = False
+                ProductionRateLimiter.last_redis_error_time = time.time()
+            else:
+                self.logger.error(f"Redis error incrementing usage: {e}")
     
     def get_usage_stats(self, limit_type: str, identifier: str) -> Dict[str, Any]:
         """Get current usage statistics"""
         if limit_type not in self.LIMITS:
             return {"error": "Unknown limit type"}
+        
+        # Return default stats if Redis quota exceeded
+        if not ProductionRateLimiter.redis_available:
+            limit = self.LIMITS[limit_type]
+            return {
+                "limit": limit.requests,
+                "used": 0,
+                "remaining": limit.requests,
+                "window_seconds": limit.window,
+                "reset_time": int(time.time()) + limit.window,
+                "error": "Redis quota exceeded - showing default values"
+            }
         
         limit = self.LIMITS[limit_type]
         key = self._get_key(limit_type, identifier)
@@ -236,7 +291,12 @@ class ProductionRateLimiter:
             }
             
         except redis.RedisError as e:
-            self.logger.error(f"Redis error getting usage stats: {e}")
+            error_msg = str(e).lower()
+            if 'max requests limit exceeded' in error_msg or 'quota exceeded' in error_msg:
+                ProductionRateLimiter.redis_available = False
+                ProductionRateLimiter.last_redis_error_time = time.time()
+            else:
+                self.logger.error(f"Redis error getting usage stats: {e}")
             return {"error": "Stats unavailable"}
 
 # Global rate limiter instance

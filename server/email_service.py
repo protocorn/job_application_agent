@@ -91,8 +91,9 @@ class EmailService:
                             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                             color: white;
                             text-decoration: none;
-                            border-radius: 5px;
+                            border-radius: 8px;
                             font-weight: bold;
+                            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
                         }}
                         .footer {{
                             margin-top: 20px;

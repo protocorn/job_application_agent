@@ -408,6 +408,8 @@ class JobQueue:
             return
         
         self.running = True
+        self.redis_error_count = 0  # Track consecutive Redis errors
+        self.last_quota_warning = 0  # Track last quota warning time
         self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
         self.worker_thread.start()
         self.logger.info("Job queue worker started")
@@ -420,8 +422,22 @@ class JobQueue:
         self.executor.shutdown(wait=True)
         self.logger.info("Job queue worker stopped")
     
+    def _is_quota_exceeded_error(self, error_msg: str) -> bool:
+        """Check if error is due to Redis quota being exceeded"""
+        quota_keywords = [
+            'max requests limit exceeded',
+            'quota exceeded',
+            'rate limit exceeded',
+            'usage limit'
+        ]
+        error_lower = str(error_msg).lower()
+        return any(keyword in error_lower for keyword in quota_keywords)
+    
     def _worker_loop(self):
-        """Main worker loop"""
+        """Main worker loop with exponential backoff for Redis errors"""
+        consecutive_errors = 0
+        max_backoff = 300  # Maximum 5 minutes backoff
+        
         while self.running:
             try:
                 # Check if we can process more jobs
@@ -460,9 +476,41 @@ class JobQueue:
                 
                 # Don't wait for completion here - let it run async
                 
+                # Reset error counter on successful iteration
+                consecutive_errors = 0
+                
             except Exception as e:
-                self.logger.error(f"Error in worker loop: {e}")
-                time.sleep(5)
+                error_msg = str(e)
+                consecutive_errors += 1
+                
+                # Check if this is a quota exceeded error
+                if self._is_quota_exceeded_error(error_msg):
+                    # Log quota warning (throttled to once per hour)
+                    current_time = time.time()
+                    if current_time - self.last_quota_warning > 3600:
+                        self.logger.error(
+                            f"⚠️ REDIS QUOTA EXCEEDED ⚠️\n"
+                            f"Upstash Redis has hit its monthly request limit.\n"
+                            f"Job queue worker will retry with exponential backoff.\n"
+                            f"Solutions:\n"
+                            f"  1. Upgrade Upstash plan at https://upstash.com/\n"
+                            f"  2. Wait for quota to reset (check Upstash dashboard)\n"
+                            f"  3. Switch to local Redis for development\n"
+                            f"Error: {error_msg}"
+                        )
+                        self.last_quota_warning = current_time
+                    
+                    # Use longer backoff for quota errors (exponential up to max)
+                    backoff_time = min(max_backoff, 30 * (2 ** min(consecutive_errors - 1, 4)))
+                    self.logger.warning(f"Quota exceeded. Backing off for {backoff_time} seconds...")
+                    time.sleep(backoff_time)
+                else:
+                    # Regular error - log it
+                    self.logger.error(f"Error in worker loop: {e}")
+                    
+                    # Exponential backoff for other errors (shorter)
+                    backoff_time = min(60, 5 * (2 ** min(consecutive_errors - 1, 3)))
+                    time.sleep(backoff_time)
     
     def _execute_job(self, job_request: JobRequest):
         """Execute a single job"""
