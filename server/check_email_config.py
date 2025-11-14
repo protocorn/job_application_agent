@@ -12,15 +12,12 @@ load_dotenv()
 def check_email_configuration():
     """Check if email is properly configured"""
     print("\n" + "=" * 60)
-    print("🔍 EMAIL CONFIGURATION CHECKER")
+    print("🔍 EMAIL CONFIGURATION CHECKER (Resend API)")
     print("=" * 60 + "\n")
     
     # Check required environment variables
     required_vars = {
-        'SMTP_SERVER': os.getenv('SMTP_SERVER'),
-        'SMTP_PORT': os.getenv('SMTP_PORT'),
-        'SMTP_USERNAME': os.getenv('SMTP_USERNAME'),
-        'SMTP_PASSWORD': os.getenv('SMTP_PASSWORD'),
+        'RESEND_API_KEY': os.getenv('RESEND_API_KEY'),
         'FROM_EMAIL': os.getenv('FROM_EMAIL'),
         'FRONTEND_URL': os.getenv('FRONTEND_URL')
     }
@@ -31,9 +28,9 @@ def check_email_configuration():
     print("-" * 60)
     for var_name, var_value in required_vars.items():
         if var_value:
-            # Mask password for security
-            if 'PASSWORD' in var_name:
-                display_value = '*' * 16 + f' (length: {len(var_value)})'
+            # Mask API key for security
+            if 'API_KEY' in var_name or 'PASSWORD' in var_name:
+                display_value = var_value[:7] + '***' + f' (length: {len(var_value)})'
             else:
                 display_value = var_value
             print(f"✅ {var_name}: {display_value}")
@@ -46,20 +43,18 @@ def check_email_configuration():
     if not all_configured:
         print("\n⚠️  CONFIGURATION INCOMPLETE")
         print("\nPlease set the missing environment variables in your .env file:")
-        print("\nExample .env configuration for Gmail:")
+        print("\nExample .env configuration for Resend:")
         print("""
-SMTP_SERVER=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USERNAME=your-email@gmail.com
-SMTP_PASSWORD=your-app-password
-FROM_EMAIL=your-email@gmail.com
+RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxxxx
+FROM_EMAIL=onboarding@resend.dev
 FRONTEND_URL=http://localhost:3000
         """)
-        print("\n📝 For Gmail:")
-        print("   1. Enable 2-Factor Authentication")
-        print("   2. Go to Google Account → Security → App passwords")
-        print("   3. Generate an app password for 'Mail'")
-        print("   4. Use that 16-character password as SMTP_PASSWORD")
+        print("\n📝 To get your Resend API key:")
+        print("   1. Go to https://resend.com/")
+        print("   2. Sign up for free account")
+        print("   3. Go to API Keys section")
+        print("   4. Create new API key")
+        print("   5. Copy and use as RESEND_API_KEY")
         print("\n" + "=" * 60)
         return False
     
@@ -67,7 +62,7 @@ FRONTEND_URL=http://localhost:3000
     
     # Test email sending
     print("\n" + "=" * 60)
-    print("📧 TESTING EMAIL SEND")
+    print("📧 TESTING EMAIL SEND (Resend API)")
     print("=" * 60 + "\n")
     
     try:
@@ -75,34 +70,45 @@ FRONTEND_URL=http://localhost:3000
         
         if not email_service.is_configured:
             print("❌ Email service reports it's NOT configured")
-            print("   This usually means SMTP_USERNAME or SMTP_PASSWORD is missing")
+            print("   This usually means RESEND_API_KEY is missing")
             return False
         
-        print("✅ Email service is configured")
-        print(f"\n📤 Attempting to send test email to: {email_service.from_email}")
-        print("   (Sending to yourself for testing)\n")
+        print("✅ Email service is configured with Resend API")
+        
+        # For Resend, ask user for test email
+        test_email = input("\n📧 Enter email address to send test to (or press Enter to skip): ").strip()
+        
+        if not test_email:
+            print("\n⏭️  Skipping test email send")
+            print("✅ Configuration looks good!")
+            print("\n" + "=" * 60)
+            return True
+        
+        print(f"\n📤 Attempting to send test email to: {test_email}\n")
         
         test_token = "TEST_TOKEN_12345"
         result = email_service.send_verification_email(
-            to_email=email_service.from_email,
+            to_email=test_email,
             verification_token=test_token,
             first_name="Test User"
         )
         
         if result:
-            print("✅ TEST EMAIL SENT SUCCESSFULLY!")
-            print(f"\n📬 Check your inbox at: {email_service.from_email}")
+            print("\n✅ TEST EMAIL SENT SUCCESSFULLY!")
+            print(f"\n📬 Check your inbox at: {test_email}")
             print("   (Don't forget to check spam/junk folder)")
+            print("\n💡 Tip: Check Resend dashboard for email status:")
+            print("   https://resend.com/emails")
             print("\n" + "=" * 60)
             return True
         else:
-            print("❌ Failed to send test email")
+            print("\n❌ Failed to send test email")
             print("\nPossible issues:")
-            print("   • SMTP credentials are incorrect")
-            print("   • Gmail App Password not generated correctly")
-            print("   • SMTP server/port incorrect")
-            print("   • Network/firewall blocking SMTP")
+            print("   • RESEND_API_KEY is incorrect")
+            print("   • FROM_EMAIL is not verified in Resend")
+            print("   • Network connectivity issues")
             print("\nCheck the server logs above for detailed error messages")
+            print("\n💡 Check Resend dashboard: https://resend.com/")
             print("\n" + "=" * 60)
             return False
             

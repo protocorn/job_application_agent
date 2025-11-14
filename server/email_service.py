@@ -1,12 +1,10 @@
 """
 Email service for sending verification emails
-Supports SMTP (Gmail, etc.) and can be extended to use SendGrid, Resend, etc.
+Uses Resend API for reliable email delivery
 """
 import os
 import logging
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,23 +14,23 @@ logger = logging.getLogger(__name__)
 
 class EmailService:
     def __init__(self):
-        # Email configuration from environment variables
-        self.smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
-        self.smtp_port = int(os.getenv('SMTP_PORT', '587'))
-        self.smtp_username = os.getenv('SMTP_USERNAME')
-        self.smtp_password = os.getenv('SMTP_PASSWORD')
-        self.from_email = os.getenv('FROM_EMAIL', self.smtp_username)
+        # Resend API configuration
+        self.resend_api_key = os.getenv('RESEND_API_KEY')
+        self.from_email = os.getenv('FROM_EMAIL', 'onboarding@resend.dev')
         self.frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+        self.resend_api_url = 'https://api.resend.com/emails'
 
         # Check if email is configured
-        self.is_configured = bool(self.smtp_username and self.smtp_password)
+        self.is_configured = bool(self.resend_api_key)
 
         if not self.is_configured:
-            logger.warning("Email service not configured. Set SMTP_USERNAME and SMTP_PASSWORD in .env")
+            logger.warning("⚠️  Email service not configured. Set RESEND_API_KEY in .env")
+        else:
+            logger.info("✅ Email service configured with Resend API")
 
     def send_verification_email(self, to_email: str, verification_token: str, first_name: str) -> bool:
         """
-        Send email verification link to user
+        Send email verification link to user using Resend API
 
         Args:
             to_email: Recipient email address
@@ -43,20 +41,15 @@ class EmailService:
             bool: True if email sent successfully, False otherwise
         """
         if not self.is_configured:
-            logger.error("Cannot send email: SMTP not configured")
+            logger.error("❌ Cannot send email: RESEND_API_KEY not configured")
+            logger.error("   Set RESEND_API_KEY in your .env file or Railway environment variables")
             return False
 
         try:
             # Create verification link
             verification_link = f"{self.frontend_url}/verify-email?token={verification_token}"
 
-            # Create email message
-            message = MIMEMultipart('alternative')
-            message['Subject'] = 'Verify Your Email - Job Application Agent'
-            message['From'] = self.from_email
-            message['To'] = to_email
-
-            # Email body (HTML version)
+            # Email HTML body
             html_body = f"""
             <html>
                 <head>
@@ -130,40 +123,57 @@ class EmailService:
             """
 
             # Plain text version (fallback)
-            text_body = f"""
-            Hi {first_name},
+            text_body = f"""Hi {first_name},
 
-            Thank you for signing up for Job Application Agent!
+Thank you for signing up for Job Application Agent!
 
-            To complete your registration, please verify your email address by clicking the link below:
+To complete your registration, please verify your email address by clicking the link below:
 
-            {verification_link}
+{verification_link}
 
-            This link will expire in 24 hours.
+This link will expire in 24 hours.
 
-            If you didn't create an account, you can safely ignore this email.
+If you didn't create an account, you can safely ignore this email.
 
-            Best regards,
-            The Job Application Agent Team
+Best regards,
+The Job Application Agent Team
             """
 
-            # Attach both versions
-            part1 = MIMEText(text_body, 'plain')
-            part2 = MIMEText(html_body, 'html')
-            message.attach(part1)
-            message.attach(part2)
+            # Prepare Resend API request
+            payload = {
+                "from": self.from_email,
+                "to": [to_email],
+                "subject": "Verify Your Email - Job Application Agent",
+                "html": html_body,
+                "text": text_body
+            }
 
-            # Send email
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                server.starttls()
-                server.login(self.smtp_username, self.smtp_password)
-                server.send_message(message)
+            headers = {
+                "Authorization": f"Bearer {self.resend_api_key}",
+                "Content-Type": "application/json"
+            }
 
-            logger.info(f"Verification email sent successfully to {to_email}")
-            return True
+            # Send email via Resend API
+            response = requests.post(
+                self.resend_api_url,
+                json=payload,
+                headers=headers,
+                timeout=10
+            )
 
+            # Check response
+            if response.status_code == 200:
+                logger.info(f"✅ Verification email sent successfully to {to_email}")
+                return True
+            else:
+                logger.error(f"❌ Resend API error: {response.status_code} - {response.text}")
+                return False
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"❌ Network error sending email to {to_email}: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Failed to send verification email to {to_email}: {e}")
+            logger.error(f"❌ Failed to send verification email to {to_email}: {e}")
             return False
 
     def send_password_reset_email(self, to_email: str, reset_token: str, first_name: str) -> bool:
