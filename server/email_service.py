@@ -281,16 +281,21 @@ The Job Application Agent Team
                             <center>
                                 <div class="badge">BETA ACCESS APPROVED</div>
                             </center>
-                            <p>You now have full access to Job Application Agent. Here's what you can do:</p>
+                            <p>You now have access to our Resume Tailoring beta! Here's what's included:</p>
                             <ul>
-                                <li>Automatically apply to jobs on multiple platforms</li>
-                                <li>Tailor your resume for each position</li>
-                                <li>Track all your applications in one place</li>
-                                <li>Save time with AI-powered automation</li>
+                                <li><strong>✅ Tailor Resume</strong> - AI-powered resume customization for each job</li>
+                                <li><strong>✅ Manage Profile</strong> - Store your professional information</li>
+                                <li><strong>✅ Manage Credits</strong> - Track your usage and credits</li>
                             </ul>
-                            <p>Ready to get started? Log in to your dashboard and begin your job search journey!</p>
+                            <p><strong>Coming Soon:</strong></p>
+                            <ul>
+                                <li><strong>🔜 Search Jobs</strong> - Find opportunities across platforms</li>
+                                <li><strong>🔜 Batch Apply</strong> - Apply to multiple jobs at once</li>
+                                <li><strong>🔜 Dashboard</strong> - Track all your applications</li>
+                            </ul>
+                            <p>Ready to get started? Log in and create your first tailored resume!</p>
                             <center>
-                                <a href="{self.frontend_url}/login" class="button">Go to Dashboard</a>
+                                <a href="{self.frontend_url}/login" class="button">Get Started</a>
                             </center>
                             <p>We'd love to hear your feedback as you explore the platform. Feel free to reach out with any questions or suggestions!</p>
                             <p>Best regards,<br>The Job Application Agent Team</p>
@@ -308,7 +313,18 @@ The Job Application Agent Team
 
 Great news! Your beta access request has been approved!
 
-You now have full access to Job Application Agent. Log in to your dashboard and start applying to jobs automatically.
+You now have access to our Resume Tailoring beta! Here's what's included:
+
+✅ Tailor Resume - AI-powered resume customization for each job
+✅ Manage Profile - Store your professional information
+✅ Manage Credits - Track your usage and credits
+
+Coming Soon:
+🔜 Search Jobs - Find opportunities across platforms
+🔜 Batch Apply - Apply to multiple jobs at once
+🔜 Dashboard - Track all your applications
+
+Ready to get started? Log in and create your first tailored resume!
 
 Visit: {self.frontend_url}/login
 
@@ -350,6 +366,160 @@ The Job Application Agent Team
 
         except Exception as e:
             logger.error(f"Failed to send beta approval email to {to_email}: {e}")
+            return False
+
+    def send_beta_rejection_email(self, to_email: str, first_name: str, rejection_reason: str) -> bool:
+        """
+        Send beta access rejection notification to user with reason
+
+        Args:
+            to_email: Recipient email address
+            first_name: User's first name for personalization
+            rejection_reason: Admin-provided reason for rejection
+
+        Returns:
+            bool: True if email sent successfully, False otherwise
+        """
+        if not self.is_configured:
+            logger.error("Cannot send email: RESEND_API_KEY not configured")
+            return False
+
+        try:
+            # Email HTML body
+            html_body = f"""
+            <html>
+                <head>
+                    <style>
+                        body {{
+                            font-family: Arial, sans-serif;
+                            line-height: 1.6;
+                            color: #333;
+                        }}
+                        .container {{
+                            max-width: 600px;
+                            margin: 0 auto;
+                            padding: 20px;
+                            background-color: #f9f9f9;
+                        }}
+                        .header {{
+                            background: linear-gradient(135deg, #757575 0%, #616161 100%);
+                            color: white;
+                            padding: 30px;
+                            text-align: center;
+                            border-radius: 10px 10px 0 0;
+                            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+                        }}
+                        .content {{
+                            background-color: white;
+                            padding: 30px;
+                            border-radius: 0 0 10px 10px;
+                        }}
+                        .reason-box {{
+                            background-color: #f5f5f5;
+                            border-left: 4px solid #757575;
+                            padding: 15px;
+                            margin: 20px 0;
+                            border-radius: 4px;
+                        }}
+                        .button {{
+                            display: inline-block;
+                            padding: 15px 30px;
+                            margin: 20px 0;
+                            background: linear-gradient(135deg, #FF8C42 0%, #FF6B35 100%);
+                            color: white;
+                            text-decoration: none;
+                            border-radius: 8px;
+                            font-weight: bold;
+                            box-shadow: 0 4px 15px rgba(255, 140, 66, 0.4);
+                        }}
+                        .footer {{
+                            margin-top: 20px;
+                            text-align: center;
+                            color: #666;
+                            font-size: 12px;
+                        }}
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h1>Beta Access Update</h1>
+                        </div>
+                        <div class="content">
+                            <h2>Hi {first_name},</h2>
+                            <p>Thank you for your interest in Job Application Agent's Resume Tailoring beta!</p>
+                            <p>After reviewing your request, we're unable to approve your beta access at this time.</p>
+                            <div class="reason-box">
+                                <strong>Reason:</strong><br>
+                                {rejection_reason}
+                            </div>
+                            <p>We appreciate your understanding and encourage you to apply again in the future as we expand our beta program.</p>
+                            <p>If you have any questions or would like to discuss this further, please feel free to reach out.</p>
+                            <center>
+                                <a href="{self.frontend_url}/beta-request" class="button">Request Access Again</a>
+                            </center>
+                            <p>Best regards,<br>The Job Application Agent Team</p>
+                        </div>
+                        <div class="footer">
+                            <p>This is an automated email. Please do not reply to this message.</p>
+                        </div>
+                    </div>
+                </body>
+            </html>
+            """
+
+            # Plain text version (fallback)
+            text_body = f"""Hi {first_name},
+
+Thank you for your interest in Job Application Agent's Resume Tailoring beta!
+
+After reviewing your request, we're unable to approve your beta access at this time.
+
+Reason:
+{rejection_reason}
+
+We appreciate your understanding and encourage you to apply again in the future as we expand our beta program.
+
+If you have any questions or would like to discuss this further, please feel free to reach out.
+
+You can request access again at: {self.frontend_url}/beta-request
+
+Best regards,
+The Job Application Agent Team
+            """
+
+            # Prepare Resend API request
+            payload = {
+                "from": self.from_email,
+                "to": [to_email],
+                "subject": "Beta Access Request Update - Job Application Agent",
+                "html": html_body,
+                "text": text_body
+            }
+
+            headers = {
+                "Authorization": f"Bearer {self.resend_api_key}",
+                "Content-Type": "application/json"
+            }
+
+            # Send email via Resend API
+            response = requests.post(
+                self.resend_api_url,
+                json=payload,
+                headers=headers,
+                timeout=10
+            )
+
+            # Check response
+            if response.status_code == 200:
+                logger.info(f"Beta rejection email sent successfully to {to_email}")
+                return True
+            else:
+                logger.error(f"Resend API error: {response.status_code} - {response.text}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Failed to send beta rejection email to {to_email}: {e}")
             return False
 
 # Global instance

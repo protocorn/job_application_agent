@@ -1992,12 +1992,20 @@ def reject_beta_access(user_id):
         if user_email not in admin_emails:
             return jsonify({"error": "Unauthorized - Admin access required"}), 403
 
+        # Get rejection reason from request body
+        data = request.get_json()
+        rejection_reason = data.get('reason', 'Your request does not meet our current beta criteria.')
+
         db = SessionLocal()
         try:
             user = db.query(User).filter(User.id == user_id).first()
 
             if not user:
                 return jsonify({"error": "User not found"}), 404
+
+            # Store user info before resetting
+            user_email_addr = user.email
+            user_first_name = user.first_name
 
             # Reset beta access request
             user.beta_access_requested = False
@@ -2006,11 +2014,25 @@ def reject_beta_access(user_id):
 
             db.commit()
 
-            logging.info(f"Beta access rejected for user {user_id}: {user.email}")
+            logging.info(f"Beta access rejected for user {user_id}: {user_email_addr}")
+
+            # Send rejection email
+            from server.email_service import email_service
+            email_sent = email_service.send_beta_rejection_email(
+                to_email=user_email_addr,
+                first_name=user_first_name,
+                rejection_reason=rejection_reason
+            )
+
+            if email_sent:
+                logging.info(f"Rejection email sent to {user_email_addr}")
+            else:
+                logging.warning(f"Failed to send rejection email to {user_email_addr}")
 
             return jsonify({
                 "success": True,
-                "message": f"Beta access request rejected for {user.email}"
+                "message": f"Beta access request rejected for {user_email_addr}",
+                "email_sent": email_sent
             }), 200
 
         finally:
@@ -2019,6 +2041,172 @@ def reject_beta_access(user_id):
     except Exception as e:
         logging.error(f"Error in reject beta access endpoint: {e}")
         return jsonify({"error": "Failed to reject beta access"}), 500
+
+# ============================================================
+# GDPR ACCOUNT MANAGEMENT ENDPOINTS
+# ============================================================
+
+@app.route("/api/account/change-password", methods=['POST'])
+@require_auth
+def change_password():
+    """Change user password (GDPR compliance)"""
+    try:
+        from database_config import SessionLocal, User
+
+        data = request.get_json()
+        current_password = data.get('current_password')
+        new_password = data.get('new_password')
+
+        if not current_password or not new_password:
+            return jsonify({"error": "Current password and new password are required"}), 400
+
+        if len(new_password) < 8:
+            return jsonify({"error": "New password must be at least 8 characters long"}), 400
+
+        user_id = request.current_user['id']
+        db = SessionLocal()
+
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+
+            # Verify current password
+            if not AuthService.verify_password(current_password, user.password_hash):
+                return jsonify({"error": "Current password is incorrect"}), 401
+
+            # Hash and update new password
+            user.password_hash = AuthService.hash_password(new_password)
+            db.commit()
+
+            logging.info(f"Password changed successfully for user {user.email}")
+
+            return jsonify({
+                "success": True,
+                "message": "Password changed successfully"
+            }), 200
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logging.error(f"Error changing password: {e}")
+        return jsonify({"error": "Failed to change password"}), 500
+
+@app.route("/api/account/export-data", methods=['GET'])
+@require_auth
+def export_user_data():
+    """Export all user data in JSON format (GDPR Right to Data Portability)"""
+    try:
+        from database_config import SessionLocal, User
+
+        user_id = request.current_user['id']
+        user_email = request.current_user['email']
+
+        db = SessionLocal()
+
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+
+            # Get profile data
+            profile_data = ProfileService.get_profile(user_id)
+
+            # Compile all user data
+            user_data = {
+                "account_information": {
+                    "user_id": user.id,
+                    "email": user.email,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "created_at": user.created_at.isoformat() if user.created_at else None,
+                    "email_verified": user.email_verified,
+                    "beta_access_requested": user.beta_access_requested,
+                    "beta_access_approved": user.beta_access_approved,
+                    "beta_request_date": user.beta_request_date.isoformat() if user.beta_request_date else None,
+                    "beta_approved_date": user.beta_approved_date.isoformat() if user.beta_approved_date else None,
+                    "beta_request_reason": user.beta_request_reason,
+                    "google_oauth_connected": bool(user.google_refresh_token),
+                    "google_email": user.google_email
+                },
+                "profile_data": profile_data.get('profile') if profile_data.get('success') else {},
+                "export_metadata": {
+                    "export_date": datetime.utcnow().isoformat(),
+                    "export_format": "JSON",
+                    "gdpr_compliance": "This data export complies with GDPR Article 20 (Right to Data Portability)"
+                }
+            }
+
+            logging.info(f"Data export completed for user {user_email}")
+
+            return jsonify({
+                "success": True,
+                "data": user_data
+            }), 200
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logging.error(f"Error exporting user data: {e}")
+        return jsonify({"error": "Failed to export user data"}), 500
+
+@app.route("/api/account/delete", methods=['DELETE'])
+@require_auth
+def delete_account():
+    """Delete user account and all associated data (GDPR Right to Erasure)"""
+    try:
+        from database_config import SessionLocal, User
+
+        data = request.get_json()
+        password = data.get('password')
+        confirmation = data.get('confirmation')
+
+        if not password:
+            return jsonify({"error": "Password is required to delete account"}), 400
+
+        if confirmation != "DELETE":
+            return jsonify({"error": "Please type DELETE to confirm account deletion"}), 400
+
+        user_id = request.current_user['id']
+        user_email = request.current_user['email']
+
+        db = SessionLocal()
+
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+
+            # Verify password
+            if not AuthService.verify_password(password, user.password_hash):
+                return jsonify({"error": "Incorrect password"}), 401
+
+            # Delete all user data (CASCADE should handle related tables)
+            # But explicitly delete profile data first
+            try:
+                ProfileService.delete_profile(user_id)
+            except Exception as profile_err:
+                logging.warning(f"Error deleting profile for user {user_id}: {profile_err}")
+
+            # Delete user account
+            db.delete(user)
+            db.commit()
+
+            logging.info(f"Account deleted successfully for user {user_email}")
+
+            return jsonify({
+                "success": True,
+                "message": "Account and all associated data have been permanently deleted"
+            }), 200
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logging.error(f"Error deleting account: {e}")
+        return jsonify({"error": "Failed to delete account"}), 500
 
 # Google OAuth Routes
 @app.route("/api/oauth/authorize", methods=['GET'])
