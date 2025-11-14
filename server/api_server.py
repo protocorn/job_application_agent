@@ -2128,7 +2128,9 @@ def export_user_data():
                     "beta_approved_date": user.beta_approved_date.isoformat() if user.beta_approved_date else None,
                     "beta_request_reason": user.beta_request_reason,
                     "google_oauth_connected": bool(user.google_refresh_token),
-                    "google_email": user.google_email
+                    "google_account_email": user.google_account_email,
+                    "mimikree_connected": user.mimikree_is_connected,
+                    "mimikree_email": user.mimikree_email if user.mimikree_is_connected else None
                 },
                 "profile_data": profile_data.get('profile') if profile_data.get('success') else {},
                 "export_metadata": {
