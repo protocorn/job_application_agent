@@ -51,6 +51,11 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_active = Column(Boolean, default=True)
 
+    # Email verification fields
+    email_verified = Column(Boolean, default=False)
+    verification_token = Column(String, unique=True, nullable=True)
+    verification_token_expires = Column(DateTime, nullable=True)
+
     # Google OAuth fields
     google_refresh_token = Column(Text)  # Encrypted refresh token
     google_access_token = Column(Text)  # Encrypted access token

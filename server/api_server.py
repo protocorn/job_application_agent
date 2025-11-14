@@ -1620,6 +1620,26 @@ def logout():
         logging.error(f"Error in logout endpoint: {e}")
         return jsonify({"error": "Logout failed"}), 500
 
+@app.route("/api/auth/verify-email", methods=['GET'])
+def verify_email():
+    """Verify user email with verification token"""
+    try:
+        token = request.args.get('token')
+        if not token:
+            return jsonify({"error": "Verification token is required"}), 400
+
+        # Verify email
+        result = AuthService.verify_email(token)
+
+        if result['success']:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+
+    except Exception as e:
+        logging.error(f"Error in verify email endpoint: {e}")
+        return jsonify({"error": "Email verification failed"}), 500
+
 # Google OAuth Routes
 @app.route("/api/oauth/authorize", methods=['GET'])
 @require_auth
@@ -1651,22 +1671,21 @@ def oauth_callback():
                         <style>
                             body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
                             .error {{ color: #d32f2f; }}
-                            .button {{
-                                background: #1976d2;
-                                color: white;
-                                padding: 10px 20px;
-                                text-decoration: none;
-                                border-radius: 5px;
-                                display: inline-block;
-                                margin-top: 20px;
-                            }}
                         </style>
                     </head>
                     <body>
-                        <h2 class="error">Authorization Failed</h2>
+                        <h2 class="error">✗ Authorization Failed</h2>
                         <p>{error_description}</p>
-                        <p>Please try connecting your Google account again.</p>
-                        <a href="http://localhost:3000/tailor-resume" class="button">Return to App</a>
+                        <p>Please close this window and try connecting your Google account again.</p>
+                        <script>
+                            // Send error message to parent window
+                            if (window.opener) {{
+                                window.opener.postMessage({{
+                                    type: 'GOOGLE_AUTH_ERROR',
+                                    error: '{error_description}'
+                                }}, '*');
+                            }}
+                        </script>
                     </body>
                 </html>
             """
@@ -1681,29 +1700,49 @@ def oauth_callback():
         result = GoogleOAuthService.handle_oauth_callback(code, user_id)
 
         if result['success']:
-            # Redirect to frontend with success message
+            # Send success message to parent window and auto-close
             return f"""
                 <html>
                     <head>
                         <style>
                             body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
                             .success {{ color: #2e7d32; }}
-                            .button {{
-                                background: #1976d2;
-                                color: white;
-                                padding: 10px 20px;
-                                text-decoration: none;
-                                border-radius: 5px;
-                                display: inline-block;
-                                margin-top: 20px;
+                            .countdown {{
+                                font-size: 14px;
+                                color: #666;
+                                margin-top: 10px;
                             }}
                         </style>
                     </head>
                     <body>
                         <h2 class="success">✓ Authorization Successful!</h2>
-                        <p>Your Google account has been connected.</p>
+                        <p>Your Google account has been connected successfully.</p>
                         <p>Email: {result.get('google_email', '')}</p>
-                        <a href="http://localhost:3000/tailor-resume" class="button">Return to Resume Tailoring</a>
+                        <p class="countdown">This window will close automatically in <span id="countdown">3</span> seconds...</p>
+                        <p style="font-size: 12px; color: #999;">You can close this window manually if it doesn't close automatically.</p>
+                        <script>
+                            // Send success message to parent window
+                            if (window.opener) {{
+                                window.opener.postMessage({{
+                                    type: 'GOOGLE_AUTH_SUCCESS',
+                                    email: '{result.get('google_email', '')}'
+                                }}, '*');
+                            }}
+
+                            // Countdown and auto-close
+                            let countdown = 3;
+                            const countdownElement = document.getElementById('countdown');
+                            const interval = setInterval(() => {{
+                                countdown--;
+                                if (countdownElement) {{
+                                    countdownElement.textContent = countdown;
+                                }}
+                                if (countdown <= 0) {{
+                                    clearInterval(interval);
+                                    window.close();
+                                }}
+                            }}, 1000);
+                        </script>
                     </body>
                 </html>
             """
@@ -1714,21 +1753,21 @@ def oauth_callback():
                         <style>
                             body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
                             .error {{ color: #d32f2f; }}
-                            .button {{
-                                background: #1976d2;
-                                color: white;
-                                padding: 10px 20px;
-                                text-decoration: none;
-                                border-radius: 5px;
-                                display: inline-block;
-                                margin-top: 20px;
-                            }}
                         </style>
                     </head>
                     <body>
-                        <h2 class="error">Authorization Failed</h2>
+                        <h2 class="error">✗ Authorization Failed</h2>
                         <p>{result.get('error', 'Unknown error occurred')}</p>
-                        <a href="http://localhost:3000/tailor-resume" class="button">Try Again</a>
+                        <p>Please close this window and try connecting your Google account again.</p>
+                        <script>
+                            // Send error message to parent window
+                            if (window.opener) {{
+                                window.opener.postMessage({{
+                                    type: 'GOOGLE_AUTH_ERROR',
+                                    error: '{result.get('error', 'Unknown error occurred')}'
+                                }}, '*');
+                            }}
+                        </script>
                     </body>
                 </html>
             """

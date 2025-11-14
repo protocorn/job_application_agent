@@ -1,11 +1,13 @@
 import bcrypt
 import jwt
 import os
+import secrets
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from database_config import User, SessionLocal, get_db
 from typing import Optional, Dict, Any
 import logging
+from email_service import email_service
 
 # JWT Configuration
 JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'your-secret-key-change-this-in-production')
@@ -52,7 +54,7 @@ class AuthService:
 
     @staticmethod
     def register_user(email: str, password: str, first_name: str, last_name: str) -> Dict[str, Any]:
-        """Register a new user"""
+        """Register a new user and send verification email"""
         db = SessionLocal()
         try:
             # Check if user already exists
@@ -66,32 +68,48 @@ class AuthService:
             # Hash password
             hashed_password = AuthService.hash_password(password)
 
+            # Generate verification token
+            verification_token = secrets.token_urlsafe(32)
+            verification_expires = datetime.utcnow() + timedelta(hours=24)
+
             # Create new user
             new_user = User(
                 email=email,
                 password_hash=hashed_password,
                 first_name=first_name,
-                last_name=last_name
+                last_name=last_name,
+                email_verified=False,
+                verification_token=verification_token,
+                verification_token_expires=verification_expires
             )
 
             db.add(new_user)
             db.commit()
             db.refresh(new_user)
 
-            # Create JWT token
-            token = AuthService.create_jwt_token(new_user.id, new_user.email)
+            # Send verification email
+            email_sent = email_service.send_verification_email(
+                to_email=email,
+                verification_token=verification_token,
+                first_name=first_name
+            )
 
+            if not email_sent:
+                logging.warning(f"Failed to send verification email to {email}")
+
+            # Do NOT create JWT token yet - user must verify email first
             return {
                 'success': True,
-                'message': 'User registered successfully',
+                'message': 'User registered successfully. Please check your email to verify your account.',
+                'email_sent': email_sent,
                 'user': {
                     'id': new_user.id,
                     'email': new_user.email,
                     'first_name': new_user.first_name,
                     'last_name': new_user.last_name,
+                    'email_verified': new_user.email_verified,
                     'created_at': new_user.created_at.isoformat()
-                },
-                'token': token
+                }
             }
 
         except Exception as e:
@@ -124,6 +142,14 @@ class AuthService:
                     'error': 'Invalid email or password'
                 }
 
+            # Check if email is verified
+            if not user.email_verified:
+                return {
+                    'success': False,
+                    'error': 'Please verify your email address before logging in. Check your inbox for the verification link.',
+                    'email_not_verified': True
+                }
+
             # Check if user is active
             if not user.is_active:
                 return {
@@ -152,6 +178,67 @@ class AuthService:
             return {
                 'success': False,
                 'error': 'Authentication failed'
+            }
+        finally:
+            db.close()
+
+    @staticmethod
+    def verify_email(verification_token: str) -> Dict[str, Any]:
+        """Verify user email with verification token"""
+        db = SessionLocal()
+        try:
+            # Find user by verification token
+            user = db.query(User).filter(User.verification_token == verification_token).first()
+
+            if not user:
+                return {
+                    'success': False,
+                    'error': 'Invalid verification token'
+                }
+
+            # Check if token has expired
+            if user.verification_token_expires and user.verification_token_expires < datetime.utcnow():
+                return {
+                    'success': False,
+                    'error': 'Verification token has expired. Please request a new verification email.'
+                }
+
+            # Check if already verified
+            if user.email_verified:
+                return {
+                    'success': True,
+                    'message': 'Email already verified. You can log in now.',
+                    'already_verified': True
+                }
+
+            # Verify the email
+            user.email_verified = True
+            user.verification_token = None
+            user.verification_token_expires = None
+            db.commit()
+
+            # Create JWT token for automatic login
+            token = AuthService.create_jwt_token(user.id, user.email)
+
+            return {
+                'success': True,
+                'message': 'Email verified successfully! You can now log in.',
+                'user': {
+                    'id': user.id,
+                    'email': user.email,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'email_verified': user.email_verified
+                },
+                'token': token
+            }
+
+        except Exception as e:
+            db.rollback()
+            logging.error(f"Error verifying email: {e}")
+            return {
+                'success': False,
+                'error': 'Email verification failed'
             }
         finally:
             db.close()
