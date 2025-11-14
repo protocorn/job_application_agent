@@ -438,7 +438,40 @@ def _validate_profile_data(profile_data: Dict[str, Any], schema: Dict[str, Any])
     
     return validated_data
 
+def extract_google_doc_with_oauth(resume_url: str, user_id: int) -> str:
+    """
+    Extract text from Google Doc using OAuth credentials (works with private docs)
+    Falls back to public access if OAuth not connected
+    """
+    try:
+        # Check if user has Google OAuth connected
+        if GoogleOAuthService.is_connected(user_id):
+            try:
+                logging.info(f"User {user_id} has OAuth connected, using authenticated access")
+                credentials = GoogleOAuthService.get_credentials(user_id)
+
+                # Use the same functions from resume_tailoring_agent
+                from resume_tailoring_agent import get_doc_id_from_url, get_google_services, read_google_doc_content
+
+                doc_id = get_doc_id_from_url(resume_url)
+                docs_service, _ = get_google_services(credentials)
+                resume_text = read_google_doc_content(docs_service, doc_id)
+
+                logging.info(f"Successfully read private Google Doc via OAuth for user {user_id}")
+                return resume_text
+            except Exception as oauth_err:
+                logging.warning(f"OAuth access failed, falling back to public access: {oauth_err}")
+                # Fall through to public access method below
+
+        # Fallback to public access method
+        return extract_resume_text(resume_url)
+
+    except Exception as e:
+        logging.error(f"Error extracting Google Doc: {e}")
+        raise
+
 def extract_resume_text(resume_url: str) -> str:
+    """Extract text from publicly accessible Google Doc (legacy method)"""
     try:
         print(f"Starting to extract text from: {resume_url}")
         from urllib.parse import urlparse, parse_qs
@@ -457,20 +490,20 @@ def extract_resume_text(resume_url: str) -> str:
         if 'document' not in path_parts or 'd' not in path_parts:
             print(f"Invalid Google Docs URL format: {resume_url}")
             raise ValueError("Invalid Google Docs URL format")
-        
+
         doc_id = None
         for i, part in enumerate(path_parts):
             if part == 'd' and i + 1 < len(path_parts):
                 doc_id = path_parts[i + 1]
                 break
-        
+
         print(f"Document ID: {doc_id}")
-        
+
 
         if not doc_id:
             print(f"Could not extract document ID from URL: {resume_url}")
             raise ValueError("Could not extract document ID from URL")
-        
+
         # Convert to export URL for plain text
         export_url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
         print(f"Export URL: {export_url}")
@@ -478,29 +511,60 @@ def extract_resume_text(resume_url: str) -> str:
         # Make request to get the document content
         response = requests.get(export_url, timeout=30)
         print(f"Response: {response}")
-        
+
         # Handle specific error cases
         if response.status_code == 401:
-            raise ValueError("Google Doc is not publicly accessible. Please set sharing to 'Anyone with the link can view' in Google Docs.")
+            raise ValueError("Google Doc is not publicly accessible. If you have connected your Google account, we can access your private docs. Otherwise, please set sharing to 'Anyone with the link can view' in Google Docs.")
         elif response.status_code == 403:
-            raise ValueError("Access denied to Google Doc. Please check sharing permissions.")
+            raise ValueError("Access denied to Google Doc. Please connect your Google account or make the document public.")
         elif response.status_code == 404:
             raise ValueError("Google Doc not found. Please check the URL.")
-        
+
         response.raise_for_status()
-        
+
         # Return the text content
         return response.text.strip()
     except Exception as e:
         logging.error(f"Error fetching Google Doc: {e}")
         if "401" in str(e):
-            raise ValueError("Google Doc is not publicly accessible. Please set sharing to 'Anyone with the link can view' in Google Docs.")
+            raise ValueError("Google Doc is not publicly accessible. Connect your Google account to access private docs, or make the document public.")
         elif "403" in str(e):
-            raise ValueError("Access denied to Google Doc. Please check sharing permissions.")
+            raise ValueError("Access denied to Google Doc. Please connect your Google account or check sharing permissions.")
         elif "404" in str(e):
             raise ValueError("Google Doc not found. Please check the URL.")
         else:
             raise ValueError(f"Could not access Google Doc: {str(e)}")
+
+def extract_pdf_text(file_obj) -> str:
+    """Extract text from PDF file using PyPDF2"""
+    try:
+        import PyPDF2
+        import io
+
+        # Create a PDF reader object
+        pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_obj.read()))
+
+        text = ""
+        for page_num, page in enumerate(pdf_reader.pages):
+            try:
+                extracted = page.extract_text()
+                if extracted:
+                    text += extracted + "\n"
+            except Exception as page_err:
+                logging.warning(f"Could not extract text from page {page_num}: {page_err}")
+                continue
+
+        text = text.strip()
+
+        if not text:
+            raise ValueError("No text could be extracted from the PDF. Please ensure the PDF contains selectable text (not scanned images).")
+
+        logging.info(f"Successfully extracted {len(text)} characters from PDF")
+        return text
+
+    except Exception as e:
+        logging.error(f"Error extracting PDF text: {e}")
+        raise ValueError(f"Failed to extract text from PDF: {str(e)}")
 
 
 @app.route("/api/profile", methods=["GET"])
@@ -559,53 +623,171 @@ def save_profile():
         return jsonify({"error": f"Failed to save profile: {str(e)}"}), 500
 
 @app.route("/api/process-resume", methods=['POST'])
+@require_auth
 def process_resume():
     try:
         # Add debugging
         print(f"Request JSON: {request.json}")
         print(f"Request headers: {request.headers}")
 
+        user_id = request.current_user['id']
         resume_url = request.json['resume_url']
-        resume_text = extract_resume_text(resume_url)
+
+        # Use OAuth-based extraction if user has connected Google account
+        resume_text = extract_google_doc_with_oauth(resume_url, user_id)
 
         if not resume_text:
             return jsonify({"error": "Failed to extract resume text"}), 400
-        
-        logging.info(f"Processing resume with LLM: {resume_text}")
+
+        logging.info(f"Processing resume with LLM (length: {len(resume_text)} chars)")
         profile_data = process_resume_with_llm(resume_text)
-        
+
         if profile_data is None:
             return jsonify({
                 "error": "Failed to process resume with Gemini",
                 "success": False
             }), 500
-        
+
         print(f"Returning profile_data: {profile_data}")
 
-        # If user is authenticated, persist resume_url on their profile
+        # Persist resume_url on user's profile
         try:
-            token = request.headers.get('Authorization')
-            if token and token.startswith('Bearer '):
-                token = token[7:]
-            from auth import AuthService
-            user = AuthService.get_user_from_token(token) if token else None
-            if user:
-                from profile_service import ProfileService
-                # Save only resume_url without touching user fields
-                ProfileService.create_or_update_profile(user['id'], { 'resume_url': resume_url })
+            from profile_service import ProfileService
+            ProfileService.create_or_update_profile(user_id, { 'resume_url': resume_url })
         except Exception as persist_err:
             logging.warning(f"Could not persist resume_url: {persist_err}")
 
         return jsonify({
             "profile_data": profile_data,
             "success": True,
-            "message": "Resume processed successfully",
+            "message": "Resume processed successfully" + (" (using private Google Doc access)" if GoogleOAuthService.is_connected(user_id) else ""),
             'error': None
             }), 200
 
     except Exception as e:
         logging.error(f"Error processing resume: {e}")
         return jsonify({"error": str(e)}), 500
+
+@app.route("/api/upload-resume", methods=['POST'])
+@require_auth
+def upload_resume():
+    """Handle PDF/DOCX resume file upload and processing"""
+    try:
+        user_id = request.current_user['id']
+
+        # Check if file was provided
+        if 'resume' not in request.files:
+            return jsonify({"error": "No file provided"}), 400
+
+        file = request.files['resume']
+
+        if file.filename == '':
+            return jsonify({"error": "No file selected"}), 400
+
+        # Get file extension
+        filename = file.filename.lower()
+
+        # Validate file type
+        if not (filename.endswith('.pdf') or filename.endswith('.docx')):
+            return jsonify({"error": "Only PDF and DOCX files are supported"}), 400
+
+        # Validate file size (max 10MB)
+        file.seek(0, 2)  # Seek to end
+        file_size = file.tell()
+        file.seek(0)  # Seek back to beginning
+
+        if file_size > 10 * 1024 * 1024:  # 10MB
+            return jsonify({"error": "File too large (maximum 10MB)"}), 400
+
+        if file_size == 0:
+            return jsonify({"error": "File is empty"}), 400
+
+        # Extract text based on file type
+        try:
+            if filename.endswith('.pdf'):
+                logging.info(f"Extracting text from PDF: {filename}")
+                resume_text = extract_pdf_text(file)
+            elif filename.endswith('.docx'):
+                logging.info(f"Extracting text from DOCX: {filename}")
+                resume_text = extract_docx_text(file)
+            else:
+                return jsonify({"error": "Unsupported file type"}), 400
+
+        except ValueError as ve:
+            # User-friendly error from extraction functions
+            return jsonify({"error": str(ve)}), 400
+
+        if not resume_text or len(resume_text.strip()) < 50:
+            return jsonify({
+                "error": "Could not extract enough text from the file. Please ensure the file contains selectable text (not scanned images)."
+            }), 400
+
+        # Process with LLM
+        logging.info(f"Processing uploaded resume with LLM (length: {len(resume_text)} chars)")
+        profile_data = process_resume_with_llm(resume_text)
+
+        if profile_data is None:
+            return jsonify({
+                "error": "Failed to process resume with Gemini",
+                "success": False
+            }), 500
+
+        # Save to profile with special marker for uploaded files
+        try:
+            from werkzeug.utils import secure_filename
+            from profile_service import ProfileService
+            safe_filename = secure_filename(file.filename)
+            ProfileService.create_or_update_profile(user_id, {
+                'resume_url': f"uploaded:{safe_filename}"
+            })
+        except Exception as persist_err:
+            logging.warning(f"Could not persist upload info: {persist_err}")
+
+        return jsonify({
+            "profile_data": profile_data,
+            "success": True,
+            "message": f"Resume uploaded and processed successfully from {file.filename}",
+            "file_type": "PDF" if filename.endswith('.pdf') else "DOCX"
+        }), 200
+
+    except Exception as e:
+        logging.error(f"Error uploading resume: {e}")
+        return jsonify({"error": f"Failed to upload resume: {str(e)}"}), 500
+
+def extract_docx_text(file_obj) -> str:
+    """Extract text from DOCX file using python-docx"""
+    try:
+        from docx import Document
+        import io
+
+        # Create a Document object from the file
+        doc = Document(io.BytesIO(file_obj.read()))
+
+        text = ""
+        for paragraph in doc.paragraphs:
+            if paragraph.text.strip():
+                text += paragraph.text + "\n"
+
+        # Also extract text from tables
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    if cell.text.strip():
+                        text += cell.text + "\n"
+
+        text = text.strip()
+
+        if not text:
+            raise ValueError("No text could be extracted from the DOCX file. Please ensure the file is not empty.")
+
+        logging.info(f"Successfully extracted {len(text)} characters from DOCX")
+        return text
+
+    except ImportError:
+        raise ValueError("DOCX file support not available. Please upload a PDF or Google Docs link instead.")
+    except Exception as e:
+        logging.error(f"Error extracting DOCX text: {e}")
+        raise ValueError(f"Failed to extract text from DOCX: {str(e)}")
 
 # ---------------- Action History Endpoints ----------------
 @app.route("/api/action-history", methods=["POST"])
