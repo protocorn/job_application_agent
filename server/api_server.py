@@ -48,8 +48,32 @@ app = Flask(__name__)
 # Configure CORS for development and production
 # Default includes multiple localhost ports for development and Vercel production
 default_origins = 'http://localhost:3000,http://localhost:3001,http://localhost:5173,https://job-agent-frontend-two.vercel.app'
-allowed_origins = os.getenv('CORS_ORIGINS', default_origins).split(',')
-CORS(app, origins=allowed_origins, supports_credentials=True)
+allowed_origins_str = os.getenv('CORS_ORIGINS', default_origins)
+
+# Parse allowed origins and handle wildcards for Vercel deployments
+allowed_origins = [origin.strip() for origin in allowed_origins_str.split(',')]
+
+# Configure CORS with origin validation
+def validate_origin(origin):
+    """Validate if an origin is allowed, supporting wildcards for Vercel deployments"""
+    if not origin:
+        return False
+
+    # Check exact matches first
+    if origin in allowed_origins:
+        return True
+
+    # Check for Vercel deployment patterns (all *.vercel.app domains)
+    if origin.endswith('.vercel.app'):
+        # Allow all Vercel preview deployments if main domain is allowed
+        for allowed in allowed_origins:
+            if '.vercel.app' in allowed:
+                return True
+
+    return False
+
+# Apply CORS with custom origin validation
+CORS(app, origins=validate_origin, supports_credentials=True)
 
 # Apply security headers to all responses
 @app.after_request
