@@ -66,11 +66,12 @@ class EmailService:
                             background-color: #f9f9f9;
                         }}
                         .header {{
-                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            background: linear-gradient(135deg, #FF8C42 0%, #FF6B35 100%);
                             color: white;
                             padding: 30px;
                             text-align: center;
                             border-radius: 10px 10px 0 0;
+                            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
                         }}
                         .content {{
                             background-color: white;
@@ -81,12 +82,17 @@ class EmailService:
                             display: inline-block;
                             padding: 15px 30px;
                             margin: 20px 0;
-                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            background: linear-gradient(135deg, #FF8C42 0%, #FF6B35 100%);
                             color: white;
                             text-decoration: none;
                             border-radius: 8px;
                             font-weight: bold;
-                            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+                            box-shadow: 0 4px 15px rgba(255, 140, 66, 0.4);
+                            transition: all 0.3s ease;
+                        }}
+                        .button:hover {{
+                            box-shadow: 0 6px 20px rgba(255, 140, 66, 0.6);
+                            transform: translateY(-2px);
                         }}
                         .footer {{
                             margin-top: 20px;
@@ -109,7 +115,7 @@ class EmailService:
                                 <a href="{verification_link}" class="button">Verify Email Address</a>
                             </center>
                             <p>Or copy and paste this link into your browser:</p>
-                            <p style="word-break: break-all; color: #667eea;">{verification_link}</p>
+                            <p style="word-break: break-all; color: #FF8C42; font-weight: 500;">{verification_link}</p>
                             <p><strong>This link will expire in 24 hours.</strong></p>
                             <p>If you didn't create an account, you can safely ignore this email.</p>
                             <p>Best regards,<br>The Job Application Agent Team</p>
