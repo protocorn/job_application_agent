@@ -182,7 +182,9 @@ class AuthService:
                     'email': user.email,
                     'first_name': user.first_name,
                     'last_name': user.last_name,
-                    'created_at': user.created_at.isoformat()
+                    'created_at': user.created_at.isoformat(),
+                    'beta_access_requested': user.beta_access_requested or False,
+                    'beta_access_approved': user.beta_access_approved or False
                 },
                 'token': token
             }
@@ -334,7 +336,9 @@ class AuthService:
                 'email': user.email,
                 'first_name': user.first_name,
                 'last_name': user.last_name,
-                'created_at': user.created_at.isoformat()
+                'created_at': user.created_at.isoformat(),
+                'beta_access_requested': user.beta_access_requested or False,
+                'beta_access_approved': user.beta_access_approved or False
             }
         except Exception as e:
             logging.error(f"Error getting user from token: {e}")

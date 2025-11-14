@@ -68,6 +68,13 @@ class User(Base):
     mimikree_connected_at = Column(DateTime)
     mimikree_is_connected = Column(Boolean, default=False)
 
+    # Beta access fields
+    beta_access_requested = Column(Boolean, default=False)
+    beta_access_approved = Column(Boolean, default=False)
+    beta_request_date = Column(DateTime, nullable=True)
+    beta_approved_date = Column(DateTime, nullable=True)
+    beta_request_reason = Column(Text, nullable=True)  # Why they want access
+
     # Relationships (use lazy='select' to prevent N+1 queries, explicitly load when needed)
     job_applications = relationship("JobApplication", back_populates="user", lazy='select')
 

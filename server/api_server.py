@@ -1773,6 +1773,253 @@ def resend_verification():
         logging.error(f"Error in resend verification endpoint: {e}")
         return jsonify({"error": "Failed to resend verification email"}), 500
 
+# Beta Access Routes
+@app.route("/api/beta/request", methods=['POST'])
+@require_auth
+def request_beta_access():
+    """Request beta access for a user"""
+    try:
+        from database_config import SessionLocal, User
+        from datetime import datetime
+
+        data = request.json
+        user_id = request.current_user['id']
+        reason = data.get('reason', '').strip()
+
+        if not reason:
+            return jsonify({"error": "Please provide a reason for requesting beta access"}), 400
+
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+
+            if user.beta_access_approved:
+                return jsonify({
+                    "success": False,
+                    "error": "You already have beta access"
+                }), 400
+
+            if user.beta_access_requested:
+                return jsonify({
+                    "success": False,
+                    "error": "You have already submitted a beta access request. Please wait for approval."
+                }), 400
+
+            # Update user with beta request
+            user.beta_access_requested = True
+            user.beta_request_date = datetime.utcnow()
+            user.beta_request_reason = reason
+
+            db.commit()
+
+            logging.info(f"Beta access requested by user {user_id}: {user.email}")
+
+            return jsonify({
+                "success": True,
+                "message": "Beta access request submitted successfully. We'll review your request and get back to you soon!"
+            }), 200
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logging.error(f"Error in request beta access endpoint: {e}")
+        return jsonify({"error": "Failed to submit beta access request"}), 500
+
+@app.route("/api/beta/status", methods=['GET'])
+@require_auth
+def get_beta_status():
+    """Get beta access status for current user"""
+    try:
+        from database_config import SessionLocal, User
+
+        user_id = request.current_user['id']
+
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+
+            return jsonify({
+                "success": True,
+                "beta_access_requested": user.beta_access_requested or False,
+                "beta_access_approved": user.beta_access_approved or False,
+                "beta_request_date": user.beta_request_date.isoformat() if user.beta_request_date else None,
+                "beta_approved_date": user.beta_approved_date.isoformat() if user.beta_approved_date else None
+            }), 200
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logging.error(f"Error in get beta status endpoint: {e}")
+        return jsonify({"error": "Failed to get beta access status"}), 500
+
+@app.route("/api/admin/beta/requests", methods=['GET'])
+@require_auth
+def get_beta_requests():
+    """Get all pending beta access requests (admin only)"""
+    try:
+        from database_config import SessionLocal, User
+
+        # Check if user is admin (you can add an is_admin field or check specific emails)
+        user_email = request.current_user['email']
+
+        # TODO: Update this with your admin email(s)
+        admin_emails = os.getenv('ADMIN_EMAILS', '').split(',')
+        if user_email not in admin_emails:
+            return jsonify({"error": "Unauthorized - Admin access required"}), 403
+
+        db = SessionLocal()
+        try:
+            # Get all users who requested beta access
+            pending_requests = db.query(User).filter(
+                User.beta_access_requested == True,
+                User.beta_access_approved == False
+            ).order_by(User.beta_request_date.desc()).all()
+
+            approved_users = db.query(User).filter(
+                User.beta_access_approved == True
+            ).order_by(User.beta_approved_date.desc()).all()
+
+            pending_list = [{
+                "id": user.id,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "reason": user.beta_request_reason,
+                "request_date": user.beta_request_date.isoformat() if user.beta_request_date else None,
+                "created_at": user.created_at.isoformat()
+            } for user in pending_requests]
+
+            approved_list = [{
+                "id": user.id,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "approved_date": user.beta_approved_date.isoformat() if user.beta_approved_date else None
+            } for user in approved_users]
+
+            return jsonify({
+                "success": True,
+                "pending_requests": pending_list,
+                "approved_users": approved_list,
+                "stats": {
+                    "pending_count": len(pending_list),
+                    "approved_count": len(approved_list)
+                }
+            }), 200
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logging.error(f"Error in get beta requests endpoint: {e}")
+        return jsonify({"error": "Failed to get beta requests"}), 500
+
+@app.route("/api/admin/beta/approve/<int:user_id>", methods=['POST'])
+@require_auth
+def approve_beta_access(user_id):
+    """Approve beta access for a user (admin only)"""
+    try:
+        from database_config import SessionLocal, User
+        from datetime import datetime
+        from email_service import email_service
+
+        # Check if user is admin
+        user_email = request.current_user['email']
+        admin_emails = os.getenv('ADMIN_EMAILS', '').split(',')
+        if user_email not in admin_emails:
+            return jsonify({"error": "Unauthorized - Admin access required"}), 403
+
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+
+            if user.beta_access_approved:
+                return jsonify({
+                    "success": False,
+                    "error": "User already has beta access"
+                }), 400
+
+            # Approve beta access
+            user.beta_access_approved = True
+            user.beta_approved_date = datetime.utcnow()
+
+            db.commit()
+
+            # Send approval email
+            try:
+                email_service.send_beta_approval_email(
+                    to_email=user.email,
+                    first_name=user.first_name
+                )
+            except Exception as e:
+                logging.error(f"Failed to send beta approval email: {e}")
+
+            logging.info(f"Beta access approved for user {user_id}: {user.email}")
+
+            return jsonify({
+                "success": True,
+                "message": f"Beta access approved for {user.email}"
+            }), 200
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logging.error(f"Error in approve beta access endpoint: {e}")
+        return jsonify({"error": "Failed to approve beta access"}), 500
+
+@app.route("/api/admin/beta/reject/<int:user_id>", methods=['POST'])
+@require_auth
+def reject_beta_access(user_id):
+    """Reject beta access for a user (admin only)"""
+    try:
+        from database_config import SessionLocal, User
+
+        # Check if user is admin
+        user_email = request.current_user['email']
+        admin_emails = os.getenv('ADMIN_EMAILS', '').split(',')
+        if user_email not in admin_emails:
+            return jsonify({"error": "Unauthorized - Admin access required"}), 403
+
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+
+            # Reset beta access request
+            user.beta_access_requested = False
+            user.beta_request_date = None
+            user.beta_request_reason = None
+
+            db.commit()
+
+            logging.info(f"Beta access rejected for user {user_id}: {user.email}")
+
+            return jsonify({
+                "success": True,
+                "message": f"Beta access request rejected for {user.email}"
+            }), 200
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logging.error(f"Error in reject beta access endpoint: {e}")
+        return jsonify({"error": "Failed to reject beta access"}), 500
+
 # Google OAuth Routes
 @app.route("/api/oauth/authorize", methods=['GET'])
 @require_auth
