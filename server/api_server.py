@@ -46,8 +46,8 @@ from mimikree_service import mimikree_service
 app = Flask(__name__)
 
 # Configure CORS for development and production
-# Default includes multiple localhost ports for development
-default_origins = 'http://localhost:3000,http://localhost:3001,http://localhost:5173'
+# Default includes multiple localhost ports for development and Vercel production
+default_origins = 'http://localhost:3000,http://localhost:3001,http://localhost:5173,https://job-agent-frontend-two.vercel.app'
 allowed_origins = os.getenv('CORS_ORIGINS', default_origins).split(',')
 CORS(app, origins=allowed_origins, supports_credentials=True)
 

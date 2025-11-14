@@ -6,7 +6,10 @@
       "Bash(python:*)",
       "Bash(python migrate_add_google_oauth.py:*)",
       "Bash(cat:*)",
-      "Bash(nul)"
+      "Bash(nul)",
+      "Bash(git add:*)",
+      "Bash(git config:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
