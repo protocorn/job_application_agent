@@ -671,9 +671,16 @@ def process_resume():
 @app.route("/api/upload-resume", methods=['POST'])
 @require_auth
 def upload_resume():
-    """Handle PDF/DOCX resume file upload and processing"""
+    """Handle PDF/DOCX resume file upload, convert to Google Doc, and process"""
     try:
         user_id = request.current_user['id']
+
+        # Check if user has connected Google account
+        if not GoogleOAuthService.is_connected(user_id):
+            return jsonify({
+                "error": "Please connect your Google account first to upload resumes. The resume will be converted to Google Docs for easy editing and tailoring.",
+                "needs_google_auth": True
+            }), 403
 
         # Check if file was provided
         if 'resume' not in request.files:
@@ -686,6 +693,7 @@ def upload_resume():
 
         # Get file extension
         filename = file.filename.lower()
+        original_filename = file.filename
 
         # Validate file type
         if not (filename.endswith('.pdf') or filename.endswith('.docx')):
@@ -702,25 +710,85 @@ def upload_resume():
         if file_size == 0:
             return jsonify({"error": "File is empty"}), 400
 
-        # Extract text based on file type
-        try:
-            if filename.endswith('.pdf'):
-                logging.info(f"Extracting text from PDF: {filename}")
-                resume_text = extract_pdf_text(file)
-            elif filename.endswith('.docx'):
-                logging.info(f"Extracting text from DOCX: {filename}")
-                resume_text = extract_docx_text(file)
-            else:
-                return jsonify({"error": "Unsupported file type"}), 400
-
-        except ValueError as ve:
-            # User-friendly error from extraction functions
-            return jsonify({"error": str(ve)}), 400
-
-        if not resume_text or len(resume_text.strip()) < 50:
+        # Get user's Google credentials
+        credentials = GoogleOAuthService.get_credentials(user_id)
+        if not credentials:
             return jsonify({
-                "error": "Could not extract enough text from the file. Please ensure the file contains selectable text (not scanned images)."
-            }), 400
+                "error": "Failed to retrieve Google credentials. Please reconnect your account.",
+                "needs_google_auth": True
+            }), 403
+
+        # Upload file to Google Drive and convert to Google Docs
+        try:
+            from googleapiclient.discovery import build
+            from googleapiclient.http import MediaIoBaseUpload
+            from werkzeug.utils import secure_filename
+            import io
+
+            drive_service = build('drive', 'v3', credentials=credentials)
+            
+            # Prepare file metadata
+            safe_filename = secure_filename(original_filename)
+            file_name_without_ext = safe_filename.rsplit('.', 1)[0]
+            
+            file_metadata = {
+                'name': file_name_without_ext,
+                'mimeType': 'application/vnd.google-apps.document'  # Convert to Google Docs format
+            }
+
+            # Determine MIME type for upload
+            if filename.endswith('.pdf'):
+                mime_type = 'application/pdf'
+            elif filename.endswith('.docx'):
+                mime_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            
+            # Read file content
+            file.seek(0)
+            file_content = file.read()
+            media = MediaIoBaseUpload(
+                io.BytesIO(file_content),
+                mimetype=mime_type,
+                resumable=True
+            )
+
+            # Upload and convert to Google Docs
+            logging.info(f"Uploading {original_filename} to Google Drive and converting to Google Docs...")
+            uploaded_file = drive_service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id, name, webViewLink'
+            ).execute()
+
+            google_doc_id = uploaded_file['id']
+            google_doc_url = f"https://docs.google.com/document/d/{google_doc_id}/edit"
+            
+            logging.info(f"Successfully uploaded and converted to Google Doc: {google_doc_url}")
+
+        except Exception as upload_err:
+            logging.error(f"Error uploading to Google Drive: {upload_err}")
+            return jsonify({
+                "error": f"Failed to upload to Google Drive: {str(upload_err)}",
+                "success": False
+            }), 500
+
+        # Extract text from the Google Doc
+        try:
+            from resume_tailoring_agent import get_google_services, read_google_doc_content
+            
+            docs_service, _ = get_google_services(credentials)
+            resume_text = read_google_doc_content(docs_service, google_doc_id)
+            
+            if not resume_text or len(resume_text.strip()) < 50:
+                return jsonify({
+                    "error": "Could not extract enough text from the converted Google Doc. Please ensure the file contains selectable text (not scanned images)."
+                }), 400
+
+        except Exception as extract_err:
+            logging.error(f"Error extracting text from Google Doc: {extract_err}")
+            return jsonify({
+                "error": f"Failed to extract text from Google Doc: {str(extract_err)}",
+                "success": False
+            }), 500
 
         # Process with LLM
         logging.info(f"Processing uploaded resume with LLM (length: {len(resume_text)} chars)")
@@ -732,21 +800,21 @@ def upload_resume():
                 "success": False
             }), 500
 
-        # Save to profile with special marker for uploaded files
+        # Save Google Doc URL to profile
         try:
-            from werkzeug.utils import secure_filename
             from profile_service import ProfileService
-            safe_filename = secure_filename(file.filename)
             ProfileService.create_or_update_profile(user_id, {
-                'resume_url': f"uploaded:{safe_filename}"
+                'resume_url': google_doc_url
             })
         except Exception as persist_err:
-            logging.warning(f"Could not persist upload info: {persist_err}")
+            logging.warning(f"Could not persist resume URL: {persist_err}")
 
         return jsonify({
             "profile_data": profile_data,
+            "resume_url": google_doc_url,
+            "google_doc_id": google_doc_id,
             "success": True,
-            "message": f"Resume uploaded and processed successfully from {file.filename}",
+            "message": f"Resume uploaded and converted to Google Doc successfully! You can now edit and tailor it.",
             "file_type": "PDF" if filename.endswith('.pdf') else "DOCX"
         }), 200
 
