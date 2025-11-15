@@ -105,7 +105,7 @@ class EmailService:
                 <body>
                     <div class="container">
                         <div class="header">
-                            <h1>Welcome to Job Application Agent!</h1>
+                            <h1>Welcome to Launchway!</h1>
                         </div>
                         <div class="content">
                             <h2>Hi {first_name},</h2>
@@ -118,7 +118,7 @@ class EmailService:
                             <p style="word-break: break-all; color: #FF8C42; font-weight: 500;">{verification_link}</p>
                             <p><strong>This link will expire in 24 hours.</strong></p>
                             <p>If you didn't create an account, you can safely ignore this email.</p>
-                            <p>Best regards,<br>The Job Application Agent Team</p>
+                            <p>Best regards,<br>The Launchway Team</p>
                         </div>
                         <div class="footer">
                             <p>This is an automated email. Please do not reply to this message.</p>
@@ -131,7 +131,7 @@ class EmailService:
             # Plain text version (fallback)
             text_body = f"""Hi {first_name},
 
-Thank you for signing up for Job Application Agent!
+Thank you for signing up for Launchway!
 
 To complete your registration, please verify your email address by clicking the link below:
 
@@ -142,14 +142,14 @@ This link will expire in 24 hours.
 If you didn't create an account, you can safely ignore this email.
 
 Best regards,
-The Job Application Agent Team
+The Launchway Team
             """
 
             # Prepare Resend API request
             payload = {
                 "from": self.from_email,
                 "to": [to_email],
-                "subject": "Verify Your Email - Job Application Agent",
+                "subject": "Verify Your Email - Launchway",
                 "html": html_body,
                 "text": text_body
             }
@@ -298,7 +298,7 @@ The Job Application Agent Team
                                 <a href="{self.frontend_url}/login" class="button">Get Started</a>
                             </center>
                             <p>We'd love to hear your feedback as you explore the platform. Feel free to reach out with any questions or suggestions!</p>
-                            <p>Best regards,<br>The Job Application Agent Team</p>
+                            <p>Best regards,<br>The Launchway Team</p>
                         </div>
                         <div class="footer">
                             <p>This is an automated email. Please do not reply to this message.</p>
@@ -331,7 +331,7 @@ Visit: {self.frontend_url}/login
 We'd love to hear your feedback as you explore the platform!
 
 Best regards,
-The Job Application Agent Team
+The Launchway Team
             """
 
             # Prepare Resend API request
@@ -447,7 +447,7 @@ The Job Application Agent Team
                         </div>
                         <div class="content">
                             <h2>Hi {first_name},</h2>
-                            <p>Thank you for your interest in Job Application Agent's Resume Tailoring beta!</p>
+                            <p>Thank you for your interest in Launchway's Resume Tailoring beta!</p>
                             <p>After reviewing your request, we're unable to approve your beta access at this time.</p>
                             <div class="reason-box">
                                 <strong>Reason:</strong><br>
@@ -458,7 +458,7 @@ The Job Application Agent Team
                             <center>
                                 <a href="{self.frontend_url}/beta-request" class="button">Request Access Again</a>
                             </center>
-                            <p>Best regards,<br>The Job Application Agent Team</p>
+                            <p>Best regards,<br>The Launchway Team</p>
                         </div>
                         <div class="footer">
                             <p>This is an automated email. Please do not reply to this message.</p>
@@ -471,7 +471,7 @@ The Job Application Agent Team
             # Plain text version (fallback)
             text_body = f"""Hi {first_name},
 
-Thank you for your interest in Job Application Agent's Resume Tailoring beta!
+Thank you for your interest in Launchway's Resume Tailoring beta!
 
 After reviewing your request, we're unable to approve your beta access at this time.
 
@@ -485,14 +485,14 @@ If you have any questions or would like to discuss this further, please feel fre
 You can request access again at: {self.frontend_url}/beta-request
 
 Best regards,
-The Job Application Agent Team
+The Launchway Team
             """
 
             # Prepare Resend API request
             payload = {
                 "from": self.from_email,
                 "to": [to_email],
-                "subject": "Beta Access Request Update - Job Application Agent",
+                "subject": "Beta Access Request Update - Launchway",
                 "html": html_body,
                 "text": text_body
             }
