@@ -2331,7 +2331,6 @@ def submit_beta_feedback():
     """Submit beta feedback and receive credit reward"""
     try:
         from database_config import SessionLocal, User, BetaFeedback
-        from credit_system import credit_manager
 
         user_id = request.current_user['id']
         data = request.get_json()
@@ -2414,23 +2413,33 @@ def submit_beta_feedback():
             # Mark user as having submitted feedback
             user.has_submitted_beta_feedback = True
 
-            # Award credits
-            credits_added = credit_manager.add_credits(
-                user_id=user_id,
-                amount=10,
-                reason="Beta feedback reward",
-                db=db
-            )
+            # Award 10 resume tailoring credits by decreasing the usage count
+            # This effectively gives them 10 more uses
+            try:
+                # Decrease the daily usage counter by 10 (giving them 10 credits)
+                # Use negative increment to reduce usage
+                for _ in range(10):
+                    rate_limiter.redis_client.decr(
+                        f"resume_tailoring_per_user_per_day:{user_id}:count"
+                    )
+
+                logging.info(f"Awarded 10 resume tailoring credits to user {user_id}")
+            except Exception as credit_error:
+                logging.warning(f"Could not award credits in Redis: {credit_error}")
+                # Continue anyway - feedback is more important than credit tracking
 
             db.commit()
 
-            logging.info(f"Beta feedback submitted by user {user_id} ({user.email}), awarded {credits_added} credits")
+            # Get updated credits info
+            daily_tailoring = rate_limiter.get_usage_stats('resume_tailoring_per_user_per_day', str(user_id))
+
+            logging.info(f"Beta feedback submitted by user {user_id} ({user.email}), awarded 10 credits")
 
             return jsonify({
                 "success": True,
-                "message": "Thank you for your feedback! You've been awarded 10 credits.",
+                "message": "Thank you for your feedback! You've been awarded 10 resume tailoring credits.",
                 "credits_awarded": 10,
-                "total_credits": credit_manager.get_user_credits(user_id, db)
+                "remaining_credits": daily_tailoring.get('remaining', 0)
             }), 200
 
         finally:
