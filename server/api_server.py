@@ -2293,6 +2293,226 @@ def reject_beta_access(user_id):
         return jsonify({"error": "Failed to reject beta access"}), 500
 
 # ============================================================
+# BETA FEEDBACK ENDPOINTS
+# ============================================================
+
+@app.route("/api/beta/feedback/status", methods=['GET'])
+@require_auth
+def get_feedback_status():
+    """Check if user has already submitted beta feedback"""
+    try:
+        from database_config import SessionLocal, User
+
+        user_id = request.current_user['id']
+        db = SessionLocal()
+
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+
+            return jsonify({
+                "success": True,
+                "has_submitted_feedback": user.has_submitted_beta_feedback or False
+            }), 200
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logging.error(f"Error checking feedback status: {e}")
+        return jsonify({"error": "Failed to check feedback status"}), 500
+
+@app.route("/api/beta/feedback/submit", methods=['POST'])
+@require_auth
+@rate_limit('api_requests_per_user_per_minute')
+@validate_input
+def submit_beta_feedback():
+    """Submit beta feedback and receive credit reward"""
+    try:
+        from database_config import SessionLocal, User, BetaFeedback
+        from credit_system import credit_manager
+
+        user_id = request.current_user['id']
+        data = request.get_json()
+
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+
+        db = SessionLocal()
+
+        try:
+            # Check if user has already submitted feedback
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+
+            if user.has_submitted_beta_feedback:
+                return jsonify({"error": "You have already submitted feedback"}), 400
+
+            # Check if feedback already exists (double-check)
+            existing_feedback = db.query(BetaFeedback).filter(
+                BetaFeedback.user_id == user_id
+            ).first()
+
+            if existing_feedback:
+                return jsonify({"error": "Feedback already submitted"}), 400
+
+            # Validate required fields
+            required_fields = ['overall_rating', 'ease_of_use', 'tailoring_quality', 'recommend_score']
+            for field in required_fields:
+                if field not in data:
+                    return jsonify({"error": f"Missing required field: {field}"}), 400
+
+            # Validate rating ranges
+            if not (1 <= data['overall_rating'] <= 5):
+                return jsonify({"error": "overall_rating must be between 1 and 5"}), 400
+            if not (1 <= data['ease_of_use'] <= 5):
+                return jsonify({"error": "ease_of_use must be between 1 and 5"}), 400
+            if not (1 <= data['tailoring_quality'] <= 5):
+                return jsonify({"error": "tailoring_quality must be between 1 and 5"}), 400
+            if not (0 <= data['recommend_score'] <= 10):
+                return jsonify({"error": "recommend_score must be between 0 and 10"}), 400
+
+            # Create feedback record
+            feedback = BetaFeedback(
+                user_id=user_id,
+                user_email=user.email,
+
+                # Ratings
+                overall_rating=data['overall_rating'],
+                ease_of_use=data['ease_of_use'],
+                tailoring_quality=data['tailoring_quality'],
+                recommend_score=data['recommend_score'],
+
+                # Feature feedback
+                most_useful_feature=data.get('most_useful_feature', '').strip() or None,
+                least_useful_feature=data.get('least_useful_feature', '').strip() or None,
+                missing_features=data.get('missing_features', '').strip() or None,
+
+                # Tailoring comments
+                tailoring_comments=data.get('tailoring_comments', '').strip() or None,
+
+                # Future features interest
+                interested_cover_letter=data.get('interested_cover_letter', False),
+                interested_job_tracking=data.get('interested_job_tracking', False),
+                interested_interview_prep=data.get('interested_interview_prep', False),
+                interested_salary_insights=data.get('interested_salary_insights', False),
+                other_feature_requests=data.get('other_feature_requests', '').strip() or None,
+
+                # Open feedback
+                what_worked_well=data.get('what_worked_well', '').strip() or None,
+                what_needs_improvement=data.get('what_needs_improvement', '').strip() or None,
+                additional_comments=data.get('additional_comments', '').strip() or None,
+
+                # Credits
+                credits_awarded=10
+            )
+
+            db.add(feedback)
+
+            # Mark user as having submitted feedback
+            user.has_submitted_beta_feedback = True
+
+            # Award credits
+            credits_added = credit_manager.add_credits(
+                user_id=user_id,
+                amount=10,
+                reason="Beta feedback reward",
+                db=db
+            )
+
+            db.commit()
+
+            logging.info(f"Beta feedback submitted by user {user_id} ({user.email}), awarded {credits_added} credits")
+
+            return jsonify({
+                "success": True,
+                "message": "Thank you for your feedback! You've been awarded 10 credits.",
+                "credits_awarded": 10,
+                "total_credits": credit_manager.get_user_credits(user_id, db)
+            }), 200
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logging.error(f"Error submitting beta feedback: {e}")
+        return jsonify({"error": f"Failed to submit feedback: {str(e)}"}), 500
+
+@app.route("/api/admin/feedback/all", methods=['GET'])
+@require_auth
+def get_all_feedback():
+    """Get all beta feedback (admin only)"""
+    try:
+        from database_config import SessionLocal, User, BetaFeedback
+
+        # Check if user is admin
+        user_email = request.current_user['email']
+        admin_emails = os.getenv('ADMIN_EMAILS', '').split(',')
+        if user_email not in admin_emails:
+            return jsonify({"error": "Unauthorized - Admin access required"}), 403
+
+        db = SessionLocal()
+
+        try:
+            # Get all feedback, ordered by most recent first
+            feedbacks = db.query(BetaFeedback).order_by(
+                BetaFeedback.submitted_at.desc()
+            ).all()
+
+            feedback_list = []
+            for feedback in feedbacks:
+                feedback_list.append({
+                    "id": feedback.id,
+                    "user_id": feedback.user_id,
+                    "user_email": feedback.user_email,
+
+                    # Ratings
+                    "overall_rating": feedback.overall_rating,
+                    "ease_of_use": feedback.ease_of_use,
+                    "tailoring_quality": feedback.tailoring_quality,
+                    "recommend_score": feedback.recommend_score,
+
+                    # Feature feedback
+                    "most_useful_feature": feedback.most_useful_feature,
+                    "least_useful_feature": feedback.least_useful_feature,
+                    "missing_features": feedback.missing_features,
+
+                    # Tailoring comments
+                    "tailoring_comments": feedback.tailoring_comments,
+
+                    # Future features
+                    "interested_cover_letter": feedback.interested_cover_letter,
+                    "interested_job_tracking": feedback.interested_job_tracking,
+                    "interested_interview_prep": feedback.interested_interview_prep,
+                    "interested_salary_insights": feedback.interested_salary_insights,
+                    "other_feature_requests": feedback.other_feature_requests,
+
+                    # Open feedback
+                    "what_worked_well": feedback.what_worked_well,
+                    "what_needs_improvement": feedback.what_needs_improvement,
+                    "additional_comments": feedback.additional_comments,
+
+                    # Metadata
+                    "credits_awarded": feedback.credits_awarded,
+                    "submitted_at": feedback.submitted_at.isoformat() if feedback.submitted_at else None
+                })
+
+            return jsonify({
+                "success": True,
+                "count": len(feedback_list),
+                "feedback": feedback_list
+            }), 200
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logging.error(f"Error fetching feedback: {e}")
+        return jsonify({"error": "Failed to fetch feedback"}), 500
+
+# ============================================================
 # GDPR ACCOUNT MANAGEMENT ENDPOINTS
 # ============================================================
 

@@ -55,7 +55,8 @@ GOOGLE_REDIRECT_URI=https://yourdomain.com/api/oauth/callback
 # ============================================================
 # Note: Mimikree credentials are now stored per-user in the database
 # Users connect their individual Mimikree accounts through the UI
-MIMIKREE_BASE_URL=http://localhost:3000
+# Production URL:
+MIMIKREE_BASE_URL=https://www.mimikree.com
 
 # ============================================================
 # JOB QUEUE SETTINGS

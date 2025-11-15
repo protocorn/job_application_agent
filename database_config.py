@@ -75,6 +75,9 @@ class User(Base):
     beta_approved_date = Column(DateTime, nullable=True)
     beta_request_reason = Column(Text, nullable=True)  # Why they want access
 
+    # Beta feedback
+    has_submitted_beta_feedback = Column(Boolean, default=False)
+
     # Relationships (use lazy='select' to prevent N+1 queries, explicitly load when needed)
     job_applications = relationship("JobApplication", back_populates="user", lazy='select')
 
@@ -189,6 +192,51 @@ class ActionHistory(Base):
     completed = Column(Boolean, default=False)
     completed_at = Column(DateTime)
 
+    user = relationship("User")
+
+class BetaFeedback(Base):
+    __tablename__ = "beta_feedback"
+    __table_args__ = {'schema': 'public'}
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("public.users.id"), unique=True, nullable=False, index=True)
+
+    # Overall Experience
+    overall_rating = Column(Integer, nullable=False)  # 1-5
+    ease_of_use = Column(Integer, nullable=False)  # 1-5
+
+    # Feature Feedback
+    most_useful_feature = Column(Text)
+    least_useful_feature = Column(Text)
+    missing_features = Column(Text)
+
+    # Resume Tailoring Specific
+    tailoring_quality = Column(Integer, nullable=False)  # 1-5
+    tailoring_comments = Column(Text)
+
+    # Future Features Interest
+    interested_cover_letter = Column(Boolean, default=False)
+    interested_job_tracking = Column(Boolean, default=False)
+    interested_interview_prep = Column(Boolean, default=False)
+    interested_salary_insights = Column(Boolean, default=False)
+    other_feature_requests = Column(Text)
+
+    # Open Feedback
+    what_worked_well = Column(Text)
+    what_needs_improvement = Column(Text)
+    additional_comments = Column(Text)
+
+    # Likelihood to Recommend (NPS)
+    recommend_score = Column(Integer, nullable=False)  # 0-10
+
+    # Credit Reward
+    credits_awarded = Column(Integer, default=10)
+
+    # Metadata
+    submitted_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    user_email = Column(String)
+
+    # Relationship
     user = relationship("User")
 
 # Database utility functions
