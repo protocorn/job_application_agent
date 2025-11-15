@@ -1043,10 +1043,9 @@ def get_user_credits():
 
         # Get usage stats for different limit types (only if not cached)
         daily_tailoring = rate_limiter.get_usage_stats('resume_tailoring_per_user_per_day', str(user_id))
-        hourly_tailoring = rate_limiter.get_usage_stats('resume_tailoring_per_user_per_hour', str(user_id))
         daily_applications = rate_limiter.get_usage_stats('job_applications_per_user_per_day', str(user_id))
         daily_search = rate_limiter.get_usage_stats('job_search_per_user_per_day', str(user_id))
-        
+
         credits_info = {
             "is_admin": is_admin,
             "resume_tailoring": {
@@ -1056,13 +1055,6 @@ def get_user_credits():
                     "remaining": "unlimited" if is_admin else daily_tailoring.get('remaining', 5),
                     "reset_time": daily_tailoring.get('reset_time'),
                     "window_hours": 24
-                },
-                "hourly": {
-                    "limit": "unlimited" if is_admin else hourly_tailoring.get('limit', 2),
-                    "used": 0 if is_admin else hourly_tailoring.get('used', 0),
-                    "remaining": "unlimited" if is_admin else hourly_tailoring.get('remaining', 2),
-                    "reset_time": hourly_tailoring.get('reset_time'),
-                    "window_hours": 1
                 }
             },
             "job_applications": {
@@ -1191,7 +1183,7 @@ def tailor_resume():
 
 @app.route("/api/tailor-resume-sync", methods=['POST'])
 @require_auth
-@rate_limit('resume_tailoring_per_user_per_hour')
+@rate_limit('resume_tailoring_per_user_per_day')
 @validate_input
 def tailor_resume_sync():
     """Synchronous resume tailoring (for backward compatibility and urgent requests)"""
@@ -2413,17 +2405,22 @@ def submit_beta_feedback():
             # Mark user as having submitted feedback
             user.has_submitted_beta_feedback = True
 
-            # Award 10 resume tailoring credits by decreasing the usage count
-            # This effectively gives them 10 more uses
+            # Award 10 resume tailoring credits by removing old usage entries
+            # The rate limiter uses a sorted set with timestamps
             try:
-                # Decrease the daily usage counter by 10 (giving them 10 credits)
-                # Use negative increment to reduce usage
-                for _ in range(10):
-                    rate_limiter.redis_client.decr(
-                        f"resume_tailoring_per_user_per_day:{user_id}:count"
-                    )
+                # Get the correct Redis key format used by the rate limiter
+                key = f"rate_limit:resume_tailoring_per_user_per_day:{user_id}"
 
-                logging.info(f"Awarded 10 resume tailoring credits to user {user_id}")
+                # Remove the oldest 10 entries from the sorted set to free up credits
+                # This effectively gives them 10 more uses
+                removed_count = 0
+                for _ in range(10):
+                    # Remove the oldest entry (smallest score/timestamp)
+                    removed = rate_limiter.redis_client.zpopmin(key, 1)
+                    if removed:
+                        removed_count += 1
+
+                logging.info(f"Awarded {removed_count} resume tailoring credits to user {user_id} by removing old usage entries")
             except Exception as credit_error:
                 logging.warning(f"Could not award credits in Redis: {credit_error}")
                 # Continue anyway - feedback is more important than credit tracking

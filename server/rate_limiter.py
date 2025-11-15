@@ -70,7 +70,6 @@ class ProductionRateLimiter:
         
         # User-specific limits
         'resume_tailoring_per_user_per_day': RateLimit(5, 86400),
-        'resume_tailoring_per_user_per_hour': RateLimit(2, 3600),
         'job_applications_per_user_per_day': RateLimit(20, 86400),
         'job_search_per_user_per_day': RateLimit(5, 86400),
         
