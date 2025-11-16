@@ -1914,7 +1914,7 @@ def signup():
 
 @app.route("/api/auth/login", methods=['POST'])
 def login():
-    """User login endpoint"""
+    """User login endpoint with IP-based rate limiting"""
     try:
         data = request.json
         if not data:
@@ -1927,13 +1927,47 @@ def login():
         if not email or not password:
             return jsonify({"error": "Email and password are required"}), 400
 
+        # Get client IP address
+        client_ip = request.remote_addr
+
+        # Check IP-based rate limiting FIRST (prevents enumeration across accounts)
+        ip_allowed, ip_remaining, ip_reason = security_manager.check_ip_login_attempts(client_ip)
+        if not ip_allowed:
+            logging.warning(f"Login attempt blocked for IP {client_ip}: {ip_reason}")
+            return jsonify({
+                "success": False,
+                "error": ip_reason
+            }), 429
+
+        # Check account-specific rate limiting
+        account_allowed, account_remaining = security_manager.check_login_attempts(email)
+        if not account_allowed:
+            return jsonify({
+                "success": False,
+                "error": f"Account temporarily locked due to too many failed login attempts. Please try again in 15 minutes.",
+                "remaining_attempts": 0
+            }), 429
+
         # Authenticate user
         result = AuthService.authenticate_user(email, password)
+
+        # Record login attempt with IP address
+        security_manager.record_login_attempt(
+            identifier=email,
+            success=result['success'],
+            user_id=result.get('user', {}).get('id') if result['success'] else None,
+            ip_address=client_ip
+        )
 
         if result['success']:
             return jsonify(result), 200
         else:
-            return jsonify(result), 401
+            # Add remaining attempts info to error response
+            return jsonify({
+                **result,
+                "remaining_attempts": account_remaining - 1,
+                "ip_remaining_attempts": ip_remaining - 1
+            }), 401
 
     except Exception as e:
         logging.error(f"Error in login endpoint: {e}")

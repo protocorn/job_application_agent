@@ -30,6 +30,10 @@ SECURITY_CONFIG = {
     'password_require_special': True,
     'max_login_attempts': 5,
     'lockout_duration': 900,  # 15 minutes
+    'max_login_attempts_per_ip': 15,  # Maximum login attempts from same IP across all accounts
+    'ip_lockout_duration': 3600,  # 1 hour IP lockout
+    'max_login_attempts_per_ip_short': 10,  # Maximum login attempts from IP in short window
+    'ip_short_window': 300,  # 5 minutes
     'jwt_expiration_hours': 24,
     'session_timeout_minutes': 60,
     'max_file_size_mb': 10,
@@ -220,11 +224,78 @@ class SecurityManager:
             self.logger.error(f"Error checking login attempts: {e}")
             return True, SECURITY_CONFIG['max_login_attempts']
     
-    def record_login_attempt(self, identifier: str, success: bool, user_id: Optional[int] = None):
+    def check_ip_login_attempts(self, ip_address: str) -> Tuple[bool, int, str]:
+        """
+        Check if IP address is allowed to attempt login
+
+        Returns:
+            (is_allowed, remaining_attempts, reason)
+        """
+        if not ip_address:
+            return True, SECURITY_CONFIG['max_login_attempts_per_ip'], ""
+
+        # Check long-term IP lockout (1 hour window)
+        long_key = f"ip_login_attempts:long:{ip_address}"
+        # Check short-term IP rate limit (5 minute window)
+        short_key = f"ip_login_attempts:short:{ip_address}"
+
+        try:
+            # Check long-term lockout
+            long_attempts_data = redis_client.get(long_key)
+            if long_attempts_data:
+                long_info = json.loads(long_attempts_data)
+                long_attempts = long_info.get('count', 0)
+                locked_until = long_info.get('locked_until')
+
+                # Check if lockout period has expired
+                if locked_until and datetime.utcnow().timestamp() < locked_until:
+                    remaining_time = int(locked_until - datetime.utcnow().timestamp())
+                    return False, 0, f"IP temporarily blocked for {remaining_time // 60} more minutes due to excessive failed login attempts"
+
+                # If lockout expired, check if we should still block
+                if locked_until and datetime.utcnow().timestamp() >= locked_until:
+                    redis_client.delete(long_key)
+                    redis_client.delete(short_key)
+                    return True, SECURITY_CONFIG['max_login_attempts_per_ip'], ""
+
+                # Check if max attempts reached
+                if long_attempts >= SECURITY_CONFIG['max_login_attempts_per_ip']:
+                    # Lock the IP
+                    locked_until = (datetime.utcnow() + timedelta(seconds=SECURITY_CONFIG['ip_lockout_duration'])).timestamp()
+                    long_info['locked_until'] = locked_until
+                    redis_client.setex(long_key, SECURITY_CONFIG['ip_lockout_duration'], json.dumps(long_info))
+
+                    remaining_time = SECURITY_CONFIG['ip_lockout_duration'] // 60
+                    return False, 0, f"IP temporarily blocked for {remaining_time} minutes due to excessive failed login attempts"
+
+            # Check short-term rate limit
+            short_attempts_data = redis_client.get(short_key)
+            if short_attempts_data:
+                short_info = json.loads(short_attempts_data)
+                short_attempts = short_info.get('count', 0)
+
+                if short_attempts >= SECURITY_CONFIG['max_login_attempts_per_ip_short']:
+                    return False, 0, "Too many login attempts. Please wait a few minutes before trying again"
+
+            # Calculate remaining attempts
+            long_count = json.loads(long_attempts_data).get('count', 0) if long_attempts_data else 0
+            remaining = SECURITY_CONFIG['max_login_attempts_per_ip'] - long_count
+
+            return True, remaining, ""
+
+        except Exception as e:
+            self.logger.error(f"Error checking IP login attempts: {e}")
+            # Fail open on error
+            return True, SECURITY_CONFIG['max_login_attempts_per_ip'], ""
+
+    def record_login_attempt(self, identifier: str, success: bool, user_id: Optional[int] = None, ip_address: Optional[str] = None):
         """Record login attempt for rate limiting and security monitoring"""
         key = f"login_attempts:{identifier}"
-        
+
         try:
+            # Record IP-based attempt if IP provided
+            if ip_address:
+                self._record_ip_login_attempt(ip_address, success)
             if success:
                 # Clear failed attempts on successful login
                 redis_client.delete(key)
@@ -289,7 +360,72 @@ class SecurityManager:
                 
         except Exception as e:
             self.logger.error(f"Error recording login attempt: {e}")
-    
+
+    def _record_ip_login_attempt(self, ip_address: str, success: bool):
+        """Internal method to record IP-based login attempts"""
+        if not ip_address:
+            return
+
+        long_key = f"ip_login_attempts:long:{ip_address}"
+        short_key = f"ip_login_attempts:short:{ip_address}"
+
+        try:
+            if success:
+                # Clear IP-based attempt counters on successful login
+                redis_client.delete(long_key)
+                redis_client.delete(short_key)
+
+                self.log_security_event(
+                    event_type=self.SECURITY_EVENTS['LOGIN_SUCCESS'],
+                    details={
+                        'ip_address': ip_address,
+                        'ip_attempts_cleared': True
+                    }
+                )
+            else:
+                # Increment long-term counter (1 hour window)
+                long_data = redis_client.get(long_key)
+                if long_data:
+                    long_info = json.loads(long_data)
+                    long_info['count'] = long_info.get('count', 0) + 1
+                    long_info['last_attempt'] = datetime.utcnow().isoformat()
+                else:
+                    long_info = {
+                        'count': 1,
+                        'first_attempt': datetime.utcnow().isoformat(),
+                        'last_attempt': datetime.utcnow().isoformat()
+                    }
+
+                redis_client.setex(long_key, SECURITY_CONFIG['ip_lockout_duration'], json.dumps(long_info))
+
+                # Increment short-term counter (5 minute window)
+                short_data = redis_client.get(short_key)
+                if short_data:
+                    short_info = json.loads(short_data)
+                    short_info['count'] = short_info.get('count', 0) + 1
+                else:
+                    short_info = {
+                        'count': 1,
+                        'first_attempt': datetime.utcnow().isoformat()
+                    }
+
+                redis_client.setex(short_key, SECURITY_CONFIG['ip_short_window'], json.dumps(short_info))
+
+                # Log if threshold reached
+                if long_info['count'] >= SECURITY_CONFIG['max_login_attempts_per_ip']:
+                    self.log_security_event(
+                        event_type=self.SECURITY_EVENTS['ACCOUNT_LOCKED'],
+                        details={
+                            'type': 'ip_lockout',
+                            'ip_address': ip_address,
+                            'attempts': long_info['count'],
+                            'duration_seconds': SECURITY_CONFIG['ip_lockout_duration']
+                        }
+                    )
+
+        except Exception as e:
+            self.logger.error(f"Error recording IP login attempt: {e}")
+
     def validate_file_upload(self, filename: str, file_size: int, file_content: bytes) -> Tuple[bool, str]:
         """
         Validate file upload for security
