@@ -37,7 +37,9 @@ class ProfileService:
                     # Map frontend field names to database field names
                     db_field = ProfileService._map_field_name(key)
                     if hasattr(existing_profile, db_field):
-                        setattr(existing_profile, db_field, value)
+                        # Convert empty strings to None for boolean fields
+                        converted_value = ProfileService._convert_field_value(db_field, value)
+                        setattr(existing_profile, db_field, converted_value)
 
                 db.commit()
                 db.refresh(existing_profile)
@@ -49,7 +51,9 @@ class ProfileService:
                     db_field = ProfileService._map_field_name(key)
                     # Only include fields that exist in UserProfile model
                     if hasattr(UserProfile, db_field):
-                        mapped_data[db_field] = value
+                        # Convert empty strings to None for boolean fields
+                        converted_value = ProfileService._convert_field_value(db_field, value)
+                        mapped_data[db_field] = converted_value
 
                 profile = UserProfile(
                     user_id=user_uuid,
@@ -107,6 +111,23 @@ class ProfileService:
             }
         finally:
             db.close()
+
+    @staticmethod
+    def _convert_field_value(field_name: str, value: Any) -> Any:
+        """Convert field values to proper types for database"""
+        # Boolean fields that need conversion
+        boolean_fields = {'willing_to_relocate'}
+
+        if field_name in boolean_fields:
+            # Convert empty string to None, string 'true'/'false' to boolean
+            if value == '' or value is None:
+                return None
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                return value.lower() in ('true', 'yes', '1')
+
+        return value
 
     @staticmethod
     def _map_field_name(frontend_field: str) -> str:
@@ -178,7 +199,7 @@ class ProfileService:
             'visa status': profile.visa_status or '',
             'visa sponsorship': profile.visa_sponsorship or '',
             'preferred location': profile.preferred_location or [''],
-            'willing to relocate': profile.willing_to_relocate or '',
+            'willing to relocate': profile.willing_to_relocate if profile.willing_to_relocate is not None else '',
             'cover_letter_template': profile.cover_letter_template or ''
         }
 

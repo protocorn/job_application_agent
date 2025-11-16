@@ -5,17 +5,27 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from database_config import SessionLocal, User, UserProfile
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 import logging
+from uuid import UUID
 
 class AgentProfileService:
     """Service for agents to access user profile data from PostgreSQL"""
 
     @staticmethod
-    def get_profile_by_user_id(user_id: int) -> Optional[Dict[str, Any]]:
-        """Get complete profile data for a specific user"""
+    def get_profile_by_user_id(user_id: Union[str, UUID]) -> Optional[Dict[str, Any]]:
+        """
+        Get complete profile data for a specific user
+
+        Args:
+            user_id: User UUID (can be string or UUID object)
+        """
         db = SessionLocal()
         try:
+            # Convert string to UUID if needed
+            if isinstance(user_id, str):
+                user_id = UUID(user_id)
+
             # Get user data
             user = db.query(User).filter(User.id == user_id).first()
             if not user:
@@ -89,7 +99,7 @@ class AgentProfileService:
                 "visa status": profile.visa_status if profile and profile.visa_status else "",
                 "visa sponsorship": profile.visa_sponsorship if profile and profile.visa_sponsorship else "",
                 "preferred location": profile.preferred_location if profile and profile.preferred_location else [""],
-                "willing to relocate": profile.willing_to_relocate if profile and profile.willing_to_relocate else ""
+                "willing to relocate": profile.willing_to_relocate if profile and profile.willing_to_relocate is not None else ""
             }
 
             return profile_data
