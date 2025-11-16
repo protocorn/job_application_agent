@@ -2198,7 +2198,7 @@ def get_beta_requests():
         logging.error(f"Error in get beta requests endpoint: {e}")
         return jsonify({"error": "Failed to get beta requests"}), 500
 
-@app.route("/api/admin/beta/approve/<int:user_id>", methods=['POST'])
+@app.route("/api/admin/beta/approve/<string:user_id>", methods=['POST'])
 @require_auth
 def approve_beta_access(user_id):
     """Approve beta access for a user (admin only)"""
@@ -2206,6 +2206,7 @@ def approve_beta_access(user_id):
         from database_config import SessionLocal, User
         from datetime import datetime
         from email_service import email_service
+        from uuid import UUID
 
         # Check if user is admin
         user_email = request.current_user['email']
@@ -2213,9 +2214,15 @@ def approve_beta_access(user_id):
         if user_email not in admin_emails:
             return jsonify({"error": "Unauthorized - Admin access required"}), 403
 
+        # Convert string UUID to UUID object
+        try:
+            user_uuid = UUID(user_id)
+        except ValueError:
+            return jsonify({"error": "Invalid user ID format"}), 400
+
         db = SessionLocal()
         try:
-            user = db.query(User).filter(User.id == user_id).first()
+            user = db.query(User).filter(User.id == user_uuid).first()
 
             if not user:
                 return jsonify({"error": "User not found"}), 404
@@ -2255,12 +2262,13 @@ def approve_beta_access(user_id):
         logging.error(f"Error in approve beta access endpoint: {e}")
         return jsonify({"error": "Failed to approve beta access"}), 500
 
-@app.route("/api/admin/beta/reject/<int:user_id>", methods=['POST'])
+@app.route("/api/admin/beta/reject/<string:user_id>", methods=['POST'])
 @require_auth
 def reject_beta_access(user_id):
     """Reject beta access for a user (admin only)"""
     try:
         from database_config import SessionLocal, User
+        from uuid import UUID
 
         # Check if user is admin
         user_email = request.current_user['email']
@@ -2268,13 +2276,19 @@ def reject_beta_access(user_id):
         if user_email not in admin_emails:
             return jsonify({"error": "Unauthorized - Admin access required"}), 403
 
+        # Convert string UUID to UUID object
+        try:
+            user_uuid = UUID(user_id)
+        except ValueError:
+            return jsonify({"error": "Invalid user ID format"}), 400
+
         # Get rejection reason from request body
         data = request.get_json()
         rejection_reason = data.get('reason', 'Your request does not meet our current beta criteria.')
 
         db = SessionLocal()
         try:
-            user = db.query(User).filter(User.id == user_id).first()
+            user = db.query(User).filter(User.id == user_uuid).first()
 
             if not user:
                 return jsonify({"error": "User not found"}), 404
