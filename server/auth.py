@@ -2,10 +2,11 @@ import bcrypt
 import jwt
 import os
 import secrets
+import uuid
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from database_config import User, SessionLocal, get_db
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 import logging
 from email_service import email_service
 
@@ -29,10 +30,12 @@ class AuthService:
         return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
 
     @staticmethod
-    def create_jwt_token(user_id: int, email: str) -> str:
+    def create_jwt_token(user_id: Union[int, uuid.UUID], email: str) -> str:
         """Create a JWT token for user authentication"""
+        # Convert UUID to string for JWT payload
+        user_id_str = str(user_id) if isinstance(user_id, uuid.UUID) else user_id
         payload = {
-            'user_id': user_id,
+            'user_id': user_id_str,
             'email': email,
             'exp': datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS),
             'iat': datetime.utcnow()
@@ -102,7 +105,7 @@ class AuthService:
                     'message': 'User registered successfully, but we could not send the verification email. Please try resending from the login page.',
                     'email_sent': False,
                     'user': {
-                        'id': new_user.id,
+                        'id': str(new_user.id),
                         'email': new_user.email,
                         'first_name': new_user.first_name,
                         'last_name': new_user.last_name,
@@ -117,7 +120,7 @@ class AuthService:
                 'message': 'User registered successfully. Please check your email to verify your account.',
                 'email_sent': True,
                 'user': {
-                    'id': new_user.id,
+                    'id': str(new_user.id),
                     'email': new_user.email,
                     'first_name': new_user.first_name,
                     'last_name': new_user.last_name,
@@ -178,7 +181,7 @@ class AuthService:
                 'success': True,
                 'message': 'Authentication successful',
                 'user': {
-                    'id': user.id,
+                    'id': str(user.id),
                     'email': user.email,
                     'first_name': user.first_name,
                     'last_name': user.last_name,
@@ -240,7 +243,7 @@ class AuthService:
                 'success': True,
                 'message': 'Email verified successfully! You can now log in.',
                 'user': {
-                    'id': user.id,
+                    'id': str(user.id),
                     'email': user.email,
                     'first_name': user.first_name,
                     'last_name': user.last_name,
@@ -327,12 +330,20 @@ class AuthService:
 
         db = SessionLocal()
         try:
-            user = db.query(User).filter(User.id == payload['user_id']).first()
+            # Convert user_id from string to UUID
+            user_id_str = payload['user_id']
+            try:
+                user_id = uuid.UUID(user_id_str) if isinstance(user_id_str, str) else user_id_str
+            except (ValueError, AttributeError):
+                logging.error(f"Invalid UUID in token: {user_id_str}")
+                return None
+
+            user = db.query(User).filter(User.id == user_id).first()
             if not user or not user.is_active:
                 return None
 
             return {
-                'id': user.id,
+                'id': str(user.id),
                 'email': user.email,
                 'first_name': user.first_name,
                 'last_name': user.last_name,

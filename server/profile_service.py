@@ -2,20 +2,34 @@ from sqlalchemy.orm import Session
 from database_config import UserProfile, User, SessionLocal, ActionHistory
 from typing import Optional, Dict, Any
 import logging
+import uuid
 from datetime import datetime, timedelta
 
 class ProfileService:
 
     @staticmethod
-    def create_or_update_profile(user_id: int, profile_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _convert_user_id(user_id: str) -> uuid.UUID:
+        """Convert user_id string to UUID"""
+        if isinstance(user_id, uuid.UUID):
+            return user_id
+        try:
+            return uuid.UUID(user_id)
+        except (ValueError, AttributeError, TypeError) as e:
+            raise ValueError(f"Invalid user ID format: {user_id}")
+
+    @staticmethod
+    def create_or_update_profile(user_id: str, profile_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create or update user profile"""
         db = SessionLocal()
         try:
+            # Convert user_id to UUID
+            user_uuid = ProfileService._convert_user_id(user_id)
+
             # Treat all incoming fields as profile-only; do NOT update users table
             profile_data_filtered = { key: value for key, value in profile_data.items() if key not in {'first name', 'last name', 'email'} }
 
             # Check if profile already exists
-            existing_profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+            existing_profile = db.query(UserProfile).filter(UserProfile.user_id == user_uuid).first()
 
             if existing_profile:
                 # Update existing profile
@@ -38,7 +52,7 @@ class ProfileService:
                         mapped_data[db_field] = value
 
                 profile = UserProfile(
-                    user_id=user_id,
+                    user_id=user_uuid,
                     **mapped_data
                 )
 
@@ -63,11 +77,13 @@ class ProfileService:
             db.close()
 
     @staticmethod
-    def get_profile(user_id: int) -> Dict[str, Any]:
+    def get_profile(user_id: str) -> Dict[str, Any]:
         """Get user profile by user_id"""
         db = SessionLocal()
         try:
-            profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+            # Convert user_id to UUID
+            user_uuid = ProfileService._convert_user_id(user_id)
+            profile = db.query(UserProfile).filter(UserProfile.user_id == user_uuid).first()
 
             if not profile:
                 return {
@@ -167,12 +183,15 @@ class ProfileService:
         }
 
     @staticmethod
-    def get_complete_profile(user_id: int) -> Dict[str, Any]:
+    def get_complete_profile(user_id: str) -> Dict[str, Any]:
         """Get complete profile including user and profile data"""
         db = SessionLocal()
         try:
+            # Convert user_id to UUID
+            user_uuid = ProfileService._convert_user_id(user_id)
+
             # Get user data
-            user = db.query(User).filter(User.id == user_id).first()
+            user = db.query(User).filter(User.id == user_uuid).first()
             if not user:
                 return {
                     'success': False,
@@ -180,7 +199,7 @@ class ProfileService:
                 }
 
             # Get profile data
-            profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+            profile = db.query(UserProfile).filter(UserProfile.user_id == user_uuid).first()
 
             if profile:
                 profile_data = ProfileService._profile_to_dict(profile)
@@ -247,19 +266,22 @@ class ProfileService:
 
     # -------- Action History methods --------
     @staticmethod
-    def save_action_history(user_id: int, job_id: str, action_log: Dict[str, Any]) -> Dict[str, Any]:
+    def save_action_history(user_id: str, job_id: str, action_log: Dict[str, Any]) -> Dict[str, Any]:
         db = SessionLocal()
         try:
+            # Convert user_id to UUID
+            user_uuid = ProfileService._convert_user_id(user_id)
+
             # Clean up expired histories for this user/job
             now = datetime.utcnow()
             db.query(ActionHistory).filter(
-                ActionHistory.user_id == user_id,
+                ActionHistory.user_id == user_uuid,
                 ActionHistory.job_id == job_id,
                 (ActionHistory.expires_at <= now) | (ActionHistory.completed == True)
             ).delete(synchronize_session=False)
 
             record = ActionHistory(
-                user_id=user_id,
+                user_id=user_uuid,
                 job_id=job_id,
                 action_log=action_log,
                 created_at=now,
@@ -278,15 +300,18 @@ class ProfileService:
             db.close()
 
     @staticmethod
-    def get_action_history(user_id: int, job_id: str) -> Dict[str, Any]:
+    def get_action_history(user_id: str, job_id: str) -> Dict[str, Any]:
         db = SessionLocal()
         try:
+            # Convert user_id to UUID
+            user_uuid = ProfileService._convert_user_id(user_id)
+
             now = datetime.utcnow()
             # delete expired
             db.query(ActionHistory).filter(ActionHistory.expires_at <= now).delete(synchronize_session=False)
             db.commit()
             rec = db.query(ActionHistory).filter(
-                ActionHistory.user_id == user_id,
+                ActionHistory.user_id == user_uuid,
                 ActionHistory.job_id == job_id,
                 ActionHistory.completed == False,
                 ActionHistory.expires_at > now
@@ -301,11 +326,14 @@ class ProfileService:
             db.close()
 
     @staticmethod
-    def mark_action_history_completed(user_id: int, job_id: str) -> Dict[str, Any]:
+    def mark_action_history_completed(user_id: str, job_id: str) -> Dict[str, Any]:
         db = SessionLocal()
         try:
+            # Convert user_id to UUID
+            user_uuid = ProfileService._convert_user_id(user_id)
+
             rec = db.query(ActionHistory).filter(
-                ActionHistory.user_id == user_id,
+                ActionHistory.user_id == user_uuid,
                 ActionHistory.job_id == job_id,
                 ActionHistory.completed == False
             ).order_by(ActionHistory.created_at.desc()).first()

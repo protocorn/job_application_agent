@@ -1,9 +1,11 @@
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, Boolean, ForeignKey, JSON
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
 from datetime import timedelta
 import os
+import uuid
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -42,7 +44,7 @@ class User(Base):
     __tablename__ = "users"
     __table_args__ = {'schema': 'public'}
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
@@ -86,7 +88,7 @@ class JobApplication(Base):
     __table_args__ = {'schema': 'public'}
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("public.users.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("public.users.id"), nullable=False)
     job_id = Column(String, nullable=False)  # External job ID from job boards
     company_name = Column(String, nullable=False)
     job_title = Column(String, nullable=False)
@@ -126,7 +128,7 @@ class UserProfile(Base):
     __table_args__ = {'schema': 'public'}
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("public.users.id"), unique=True, nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("public.users.id"), unique=True, nullable=False)
 
     # Basic Information
     resume_url = Column(String)
@@ -184,7 +186,7 @@ class ActionHistory(Base):
     __table_args__ = {'schema': 'public'}
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("public.users.id"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("public.users.id"), nullable=False, index=True)
     job_id = Column(String, nullable=False, index=True)
     action_log = Column(JSON)  # store structured actions
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
@@ -199,7 +201,7 @@ class BetaFeedback(Base):
     __table_args__ = {'schema': 'public'}
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("public.users.id"), unique=True, nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("public.users.id"), unique=True, nullable=False, index=True)
 
     # Overall Experience
     overall_rating = Column(Integer, nullable=False)  # 1-5
@@ -247,13 +249,13 @@ def get_db():
     finally:
         db.close()
 
-def get_user_by_id(db, user_id: int, load_profile: bool = False, load_applications: bool = False):
+def get_user_by_id(db, user_id: uuid.UUID, load_profile: bool = False, load_applications: bool = False):
     """
     Optimized user lookup with explicit relationship loading control
 
     Args:
         db: Database session
-        user_id: User ID to fetch
+        user_id: User UUID to fetch
         load_profile: Whether to eagerly load the profile relationship
         load_applications: Whether to eagerly load job_applications relationship
 

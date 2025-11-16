@@ -68,7 +68,7 @@ class JobPriority(Enum):
 class JobRequest:
     """Job request data structure"""
     job_id: str
-    user_id: int
+    user_id: str  # Changed to str to support UUID
     job_type: str
     priority: JobPriority
     payload: Dict[str, Any]
@@ -240,8 +240,8 @@ class JobQueue:
         self.job_handlers[job_type] = handler
         self.logger.info(f"Registered handler for job type: {job_type}")
     
-    def submit_job(self, 
-                   user_id: int,
+    def submit_job(self,
+                   user_id: str,  # Changed to str to support UUID
                    job_type: str,
                    payload: Dict[str, Any],
                    priority: JobPriority = JobPriority.NORMAL,
@@ -623,7 +623,7 @@ def job_handler(job_type: str):
     return decorator
 
 # Utility functions
-def submit_resume_tailoring_job(user_id: int, payload: Dict[str, Any]) -> str:
+def submit_resume_tailoring_job(user_id: str, payload: Dict[str, Any]) -> str:
     """Submit a resume tailoring job"""
     return job_queue.submit_job(
         user_id=user_id,
@@ -633,7 +633,7 @@ def submit_resume_tailoring_job(user_id: int, payload: Dict[str, Any]) -> str:
         timeout_seconds=600  # 10 minutes for resume tailoring
     )
 
-def submit_job_application_job(user_id: int, payload: Dict[str, Any]) -> str:
+def submit_job_application_job(user_id: str, payload: Dict[str, Any]) -> str:
     """Submit a job application job"""
     return job_queue.submit_job(
         user_id=user_id,
@@ -643,7 +643,7 @@ def submit_job_application_job(user_id: int, payload: Dict[str, Any]) -> str:
         timeout_seconds=1800  # 30 minutes for job application
     )
 
-def submit_job_search_job(user_id: int, payload: Dict[str, Any]) -> str:
+def submit_job_search_job(user_id: str, payload: Dict[str, Any]) -> str:
     """Submit a job search job"""
     return job_queue.submit_job(
         user_id=user_id,
