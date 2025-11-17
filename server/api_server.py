@@ -2785,12 +2785,12 @@ def oauth_callback():
             """
 
         code = request.args.get('code')
-        state = request.args.get('state')  # user_id
+        state = request.args.get('state')  # user_id (UUID string)
 
         if not code or not state:
             return jsonify({"error": "Missing code or state parameter"}), 400
 
-        user_id = int(state)
+        user_id = state  # Keep as UUID string, don't convert to int
         result = GoogleOAuthService.handle_oauth_callback(code, user_id)
 
         if result['success']:

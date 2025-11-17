@@ -7,7 +7,8 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from cryptography.fernet import Fernet
 from database_config import SessionLocal, User
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
+import uuid
 
 # OAuth Configuration
 SCOPES = [
@@ -31,12 +32,22 @@ class GoogleOAuthService:
     """Service for managing Google OAuth authentication for users"""
 
     @staticmethod
-    def get_authorization_url(user_id: int) -> str:
+    def _convert_user_id(user_id: Union[str, uuid.UUID]) -> uuid.UUID:
+        """Convert user_id string to UUID"""
+        if isinstance(user_id, uuid.UUID):
+            return user_id
+        try:
+            return uuid.UUID(str(user_id))
+        except (ValueError, AttributeError, TypeError) as e:
+            raise ValueError(f"Invalid user ID format: {user_id}")
+
+    @staticmethod
+    def get_authorization_url(user_id: Union[str, uuid.UUID]) -> str:
         """
         Generate Google OAuth authorization URL for a user
 
         Args:
-            user_id: User ID to associate with this OAuth flow
+            user_id: User ID (UUID or string) to associate with this OAuth flow
 
         Returns:
             Authorization URL to redirect user to
@@ -66,18 +77,20 @@ class GoogleOAuthService:
         return authorization_url
 
     @staticmethod
-    def handle_oauth_callback(code: str, user_id: int) -> Dict[str, Any]:
+    def handle_oauth_callback(code: str, user_id: Union[str, uuid.UUID]) -> Dict[str, Any]:
         """
         Handle OAuth callback and store tokens for user
 
         Args:
             code: Authorization code from Google
-            user_id: User ID to store tokens for
+            user_id: User ID (UUID or string) to store tokens for
 
         Returns:
             Dictionary with success status and message
         """
         try:
+            # Convert user_id to UUID
+            user_uuid = GoogleOAuthService._convert_user_id(user_id)
             # Exchange authorization code for tokens directly - no scope validation
             import requests
             token_response = requests.post(
@@ -121,7 +134,7 @@ class GoogleOAuthService:
             # Encrypt and store tokens
             db = SessionLocal()
             try:
-                user = db.query(User).filter(User.id == user_id).first()
+                user = db.query(User).filter(User.id == user_uuid).first()
                 if not user:
                     return {'success': False, 'error': 'User not found'}
 
@@ -136,7 +149,7 @@ class GoogleOAuthService:
 
                 db.commit()
 
-                logging.info(f"Successfully stored Google OAuth tokens for user {user_id}")
+                logging.info(f"Successfully stored Google OAuth tokens for user {user_uuid}")
                 return {
                     'success': True,
                     'message': 'Google account connected successfully',
@@ -155,22 +168,25 @@ class GoogleOAuthService:
             return {'success': False, 'error': str(e)}
 
     @staticmethod
-    def get_credentials(user_id: int) -> Optional[Credentials]:
+    def get_credentials(user_id: Union[str, uuid.UUID]) -> Optional[Credentials]:
         """
         Get valid Google credentials for a user
         Refreshes token if expired
 
         Args:
-            user_id: User ID
+            user_id: User ID (UUID or string)
 
         Returns:
             Google Credentials object or None
         """
         db = SessionLocal()
         try:
-            user = db.query(User).filter(User.id == user_id).first()
+            # Convert user_id to UUID
+            user_uuid = GoogleOAuthService._convert_user_id(user_id)
+
+            user = db.query(User).filter(User.id == user_uuid).first()
             if not user or not user.google_refresh_token:
-                logging.warning(f"No Google tokens found for user {user_id}")
+                logging.warning(f"No Google tokens found for user {user_uuid}")
                 return None
 
             # Decrypt tokens
@@ -196,11 +212,11 @@ class GoogleOAuthService:
                     user.google_token_expiry = credentials.expiry
                     db.commit()
 
-                    logging.info(f"Refreshed Google token for user {user_id}")
+                    logging.info(f"Refreshed Google token for user {user_uuid}")
                 except Exception as refresh_error:
                     # If refresh fails (invalid_grant), clear the tokens
                     if 'invalid_grant' in str(refresh_error).lower():
-                        logging.warning(f"Invalid grant error for user {user_id}, clearing tokens")
+                        logging.warning(f"Invalid grant error for user {user_uuid}, clearing tokens")
                         user.google_access_token = None
                         user.google_refresh_token = None
                         user.google_token_expiry = None
@@ -211,17 +227,17 @@ class GoogleOAuthService:
             return credentials
 
         except Exception as e:
-            logging.error(f"Error getting credentials for user {user_id}: {e}")
+            logging.error(f"Error getting credentials for user {user_uuid}: {e}")
             # If it's an invalid_grant error, clear tokens
             if 'invalid_grant' in str(e).lower():
                 try:
-                    user = db.query(User).filter(User.id == user_id).first()
+                    user = db.query(User).filter(User.id == user_uuid).first()
                     if user:
                         user.google_access_token = None
                         user.google_refresh_token = None
                         user.google_token_expiry = None
                         db.commit()
-                        logging.info(f"Cleared invalid tokens for user {user_id}")
+                        logging.info(f"Cleared invalid tokens for user {user_uuid}")
                 except Exception as clear_error:
                     logging.error(f"Error clearing tokens: {clear_error}")
             return None
@@ -229,19 +245,22 @@ class GoogleOAuthService:
             db.close()
 
     @staticmethod
-    def disconnect_google_account(user_id: int) -> Dict[str, Any]:
+    def disconnect_google_account(user_id: Union[str, uuid.UUID]) -> Dict[str, Any]:
         """
         Disconnect Google account for a user
 
         Args:
-            user_id: User ID
+            user_id: User ID (UUID or string)
 
         Returns:
             Dictionary with success status
         """
         db = SessionLocal()
         try:
-            user = db.query(User).filter(User.id == user_id).first()
+            # Convert user_id to UUID
+            user_uuid = GoogleOAuthService._convert_user_id(user_id)
+
+            user = db.query(User).filter(User.id == user_uuid).first()
             if not user:
                 return {'success': False, 'error': 'User not found'}
 
@@ -252,7 +271,7 @@ class GoogleOAuthService:
 
             db.commit()
 
-            logging.info(f"Disconnected Google account for user {user_id}")
+            logging.info(f"Disconnected Google account for user {user_uuid}")
             return {'success': True, 'message': 'Google account disconnected'}
 
         except Exception as e:
@@ -263,37 +282,43 @@ class GoogleOAuthService:
             db.close()
 
     @staticmethod
-    def is_connected(user_id: int) -> bool:
+    def is_connected(user_id: Union[str, uuid.UUID]) -> bool:
         """
         Check if user has connected Google account
 
         Args:
-            user_id: User ID
+            user_id: User ID (UUID or string)
 
         Returns:
             True if connected, False otherwise
         """
         db = SessionLocal()
         try:
-            user = db.query(User).filter(User.id == user_id).first()
+            # Convert user_id to UUID
+            user_uuid = GoogleOAuthService._convert_user_id(user_id)
+
+            user = db.query(User).filter(User.id == user_uuid).first()
             return user and user.google_refresh_token is not None
         finally:
             db.close()
 
     @staticmethod
-    def get_google_email(user_id: int) -> Optional[str]:
+    def get_google_email(user_id: Union[str, uuid.UUID]) -> Optional[str]:
         """
         Get connected Google account email
 
         Args:
-            user_id: User ID
+            user_id: User ID (UUID or string)
 
         Returns:
             Google email or None
         """
         db = SessionLocal()
         try:
-            user = db.query(User).filter(User.id == user_id).first()
+            # Convert user_id to UUID
+            user_uuid = GoogleOAuthService._convert_user_id(user_id)
+
+            user = db.query(User).filter(User.id == user_uuid).first()
             return user.google_account_email if user else None
         finally:
             db.close()
