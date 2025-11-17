@@ -114,8 +114,7 @@ class JobRequest:
         data['priority'] = JobPriority(priority_value)
 
         # Convert numeric fields from strings
-        if isinstance(data.get('user_id'), str):
-            data['user_id'] = int(data['user_id'])
+        # Note: user_id is kept as string to support UUID
         if isinstance(data.get('timeout_seconds'), str):
             data['timeout_seconds'] = int(data['timeout_seconds'])
         if isinstance(data.get('retry_count'), str):
@@ -320,12 +319,12 @@ class JobQueue:
             self.logger.error(f"Error getting job status for {job_id}: {e}")
             return None
     
-    def cancel_job(self, job_id: str, user_id: int) -> bool:
+    def cancel_job(self, job_id: str, user_id: str) -> bool:
         """Cancel a job (only if owned by user)"""
         try:
             # Verify job ownership
             job_data = redis_client.hgetall(f"job_data:{job_id}")
-            if not job_data or int(job_data.get('user_id', 0)) != user_id:
+            if not job_data or job_data.get('user_id') != str(user_id):
                 return False
             
             # Remove from queue
@@ -377,7 +376,7 @@ class JobQueue:
             self.logger.error(f"Error getting queue stats: {e}")
             return {"error": str(e)}
     
-    def get_user_jobs(self, user_id: int) -> List[Dict[str, Any]]:
+    def get_user_jobs(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all jobs for a user"""
         try:
             job_ids = redis_client.smembers(f"{self.user_jobs_key}:{user_id}")
@@ -590,7 +589,7 @@ class JobQueue:
         # Combine scores
         return base_score + timestamp_score
     
-    def _get_user_active_jobs(self, user_id: int) -> List[str]:
+    def _get_user_active_jobs(self, user_id: str) -> List[str]:
         """Get list of active jobs for a user"""
         try:
             user_jobs = redis_client.smembers(f"{self.user_jobs_key}:{user_id}")

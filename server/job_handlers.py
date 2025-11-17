@@ -504,18 +504,27 @@ def handle_project_analysis(payload: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 # Utility function to submit jobs with proper error handling
-def submit_job_with_validation(user_id: int, job_type: str, payload: Dict[str, Any], priority: JobPriority = JobPriority.NORMAL) -> Dict[str, Any]:
+def submit_job_with_validation(user_id: str, job_type: str, payload: Dict[str, Any], priority: JobPriority = JobPriority.NORMAL) -> Dict[str, Any]:
     """
     Submit a job with proper validation and error handling
+
+    Args:
+        user_id: User ID (UUID string)
+        job_type: Type of job to submit
+        payload: Job payload data
+        priority: Job priority level
     """
     try:
         # Add user_id to payload
-        payload['user_id'] = user_id
-        
+        payload['user_id'] = str(user_id)
+
         # Validate user exists and is active
         with get_optimized_db_session() as session:
             from database_config import User
-            user = session.query(User).filter(User.id == user_id, User.is_active == True).first()
+            import uuid
+            # Convert string user_id to UUID for database query
+            user_uuid = uuid.UUID(str(user_id)) if not isinstance(user_id, uuid.UUID) else user_id
+            user = session.query(User).filter(User.id == user_uuid, User.is_active == True).first()
             if not user:
                 raise Exception("User not found or inactive")
         

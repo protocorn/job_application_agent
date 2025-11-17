@@ -2824,7 +2824,7 @@ def oauth_callback():
                             }}
 
                             // Countdown and auto-close
-                            let countdown = 3;
+                            let countdown = 2;
                             const countdownElement = document.getElementById('countdown');
                             const interval = setInterval(() => {{
                                 countdown--;
@@ -2833,7 +2833,15 @@ def oauth_callback():
                                 }}
                                 if (countdown <= 0) {{
                                     clearInterval(interval);
+                                    // Try to close the window
                                     window.close();
+                                    // If window.close() doesn't work, try alternative methods
+                                    setTimeout(() => {{
+                                        if (!window.closed) {{
+                                            // Create a fallback if browser blocks window.close()
+                                            document.body.innerHTML = '<div style="text-align: center; padding: 50px; font-family: Arial;"><h2 style="color: #2e7d32;">✓ Success!</h2><p>You can close this window now.</p></div>';
+                                        }}
+                                    }}, 500);
                                 }}
                             }}, 1000);
                         </script>
