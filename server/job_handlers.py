@@ -102,9 +102,9 @@ def handle_resume_tailoring(payload: Dict[str, Any]) -> Dict[str, Any]:
                 mimikree_password=mimikree_password,
                 user_full_name=user_full_name
             )
-            
-            # Increment usage counters
-            rate_limiter.increment_usage('resume_tailoring_per_user_per_day', str(user_id))
+
+            # Increment global Gemini usage counters
+            # Note: User-specific resume_tailoring counter was already incremented by check_limit()
             rate_limiter.increment_usage('gemini_requests_per_minute', 'global')
             rate_limiter.increment_usage('gemini_requests_per_day', 'global')
             

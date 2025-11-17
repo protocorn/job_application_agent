@@ -179,21 +179,29 @@ class ProductionRateLimiter:
         key = self._get_key(limit_type, identifier)
 
         try:
-            # Use sliding window algorithm
+            # Calculate reset time and window start
+            from datetime import datetime, timezone, timedelta
             now = int(time.time())
-            window_start = now - limit.window
-            
+
+            # For daily limits, use UTC midnight
+            if limit.window == 86400:  # Daily limit
+                now_utc = datetime.now(timezone.utc)
+                today_midnight = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+                next_midnight = (now_utc + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                window_start = int(today_midnight.timestamp())
+                reset_time = int(next_midnight.timestamp())
+            else:
+                # For other limits, use sliding window
+                window_start = now - limit.window
+                reset_time = now + limit.window
+
             # Clean old entries
             redis_client.zremrangebyscore(key, 0, window_start)
-            
+
             # Count current requests in window
             current_count = redis_client.zcard(key)
-            
+
             if current_count >= limit.requests:
-                # Get oldest request time for reset info
-                oldest = redis_client.zrange(key, 0, 0, withscores=True)
-                reset_time = int(oldest[0][1]) + limit.window if oldest else now + limit.window
-                
                 return False, {
                     "allowed": False,
                     "limit": limit.requests,
@@ -201,18 +209,18 @@ class ProductionRateLimiter:
                     "reset_time": reset_time,
                     "retry_after": reset_time - now
                 }
-            
+
             # Add current request
             redis_client.zadd(key, {str(now): now})
-            redis_client.expire(key, limit.window)
-            
+            redis_client.expire(key, limit.window * 2)  # Expire after 2x window to handle cleanup
+
             remaining = limit.requests - current_count - 1
-            
+
             return True, {
                 "allowed": True,
                 "limit": limit.requests,
                 "remaining": remaining,
-                "reset_time": now + limit.window
+                "reset_time": reset_time
             }
             
         except redis.RedisError as e:
@@ -267,38 +275,58 @@ class ProductionRateLimiter:
         """Get current usage statistics"""
         if limit_type not in self.LIMITS:
             return {"error": "Unknown limit type"}
-        
+
+        limit = self.LIMITS[limit_type]
+
+        # Calculate next UTC midnight for daily limits (86400 seconds = 24 hours)
+        from datetime import datetime, timezone, timedelta
+        now_timestamp = int(time.time())
+
+        if limit.window == 86400:  # Daily limit
+            # Get next UTC midnight
+            now_utc = datetime.now(timezone.utc)
+            next_midnight = (now_utc + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            reset_time = int(next_midnight.timestamp())
+        else:
+            # For non-daily limits, use rolling window
+            reset_time = now_timestamp + limit.window
+
         # Return default stats if Redis quota exceeded
         if not ProductionRateLimiter.redis_available:
-            limit = self.LIMITS[limit_type]
             return {
                 "limit": limit.requests,
                 "used": 0,
                 "remaining": limit.requests,
                 "window_seconds": limit.window,
-                "reset_time": int(time.time()) + limit.window,
+                "reset_time": reset_time,
                 "error": "Redis quota exceeded - showing default values"
             }
-        
-        limit = self.LIMITS[limit_type]
+
         key = self._get_key(limit_type, identifier)
-        
+
         try:
-            now = int(time.time())
-            window_start = now - limit.window
-            
+            # For daily limits, use UTC midnight as window start
+            if limit.window == 86400:
+                # Get today's UTC midnight
+                now_utc = datetime.now(timezone.utc)
+                today_midnight = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+                window_start = int(today_midnight.timestamp())
+            else:
+                # For other limits, use sliding window
+                window_start = now_timestamp - limit.window
+
             # Clean old entries
             redis_client.zremrangebyscore(key, 0, window_start)
-            
+
             # Get current count
             current_count = redis_client.zcard(key)
-            
+
             return {
                 "limit": limit.requests,
                 "used": current_count,
                 "remaining": max(0, limit.requests - current_count),
                 "window_seconds": limit.window,
-                "reset_time": now + limit.window
+                "reset_time": reset_time
             }
             
         except redis.RedisError as e:
