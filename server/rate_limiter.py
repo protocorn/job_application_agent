@@ -85,12 +85,12 @@ class ProductionRateLimiter:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
 
-    def is_admin_user(self, user_id: int) -> bool:
+    def is_admin_user(self, user_id: str) -> bool:
         """
         Check if a user is an admin (unlimited rate limits)
 
         Args:
-            user_id: User ID to check
+            user_id: User ID (UUID string) to check
 
         Returns:
             True if user is admin, False otherwise
@@ -98,12 +98,16 @@ class ProductionRateLimiter:
         try:
             # Import here to avoid circular imports
             from database_config import get_db, get_user_by_id
+            import uuid
 
             # Get database session
             db = next(get_db())
             try:
+                # Convert string user_id to UUID
+                user_uuid = uuid.UUID(str(user_id))
+
                 # Look up user by ID
-                user = get_user_by_id(db, user_id)
+                user = get_user_by_id(db, user_uuid)
 
                 if user and user.email:
                     return user.email in self.ADMIN_EMAILS
@@ -148,19 +152,27 @@ class ProductionRateLimiter:
                 # Try to reconnect
                 ProductionRateLimiter.redis_available = True
 
-        # Check if identifier is a user ID and if that user is admin
+        # Check if identifier is a user ID (UUID string) and if that user is admin
         try:
-            user_id = int(identifier)
-            if self.is_admin_user(user_id):
-                self.logger.info(f"Admin user {user_id} bypassing rate limit for {limit_type}")
-                return True, {
-                    "allowed": True,
-                    "admin": True,
-                    "limit": "unlimited",
-                    "remaining": "unlimited"
-                }
-        except ValueError:
-            # identifier is not a user ID (probably an IP address), proceed with normal rate limiting
+            # Try to parse as UUID - if successful, check if admin
+            import uuid
+            try:
+                user_uuid = uuid.UUID(str(identifier))
+                # It's a valid UUID, check if admin
+                if self.is_admin_user(str(identifier)):
+                    self.logger.info(f"Admin user {identifier} bypassing rate limit for {limit_type}")
+                    return True, {
+                        "allowed": True,
+                        "admin": True,
+                        "limit": "unlimited",
+                        "remaining": "unlimited"
+                    }
+            except ValueError:
+                # Not a UUID, probably an IP address - proceed with normal rate limiting
+                pass
+        except Exception as e:
+            # If anything goes wrong, proceed with normal rate limiting
+            self.logger.debug(f"Admin check skipped for identifier {identifier}: {e}")
             pass
 
         limit = self.LIMITS[limit_type]
@@ -372,10 +384,16 @@ class GeminiQuotaManager:
         
         return True, {"allowed": True}
     
-    def reserve_quota(self, user_id: int, priority: int = 5) -> str:
+    def reserve_quota(self, user_id: str, priority: int = 5) -> str:
         """
         Reserve quota for a user request
-        Returns reservation_id or raises exception
+
+        Args:
+            user_id: User ID (UUID string)
+            priority: Priority level (lower = higher priority)
+
+        Returns:
+            reservation_id or raises exception
         """
         reservation_id = f"{user_id}_{int(time.time())}_{priority}"
         
