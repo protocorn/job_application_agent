@@ -33,13 +33,37 @@ from components.executors.cmp_consent import CmpConsent
 from components.brains.gemini_page_analyzer import GeminiPageAnalyzer
 from components.executors.iframe_helper import IframeHelper
 
+# VNC streaming support
+try:
+    from components.vnc import BrowserVNCCoordinator
+    VNC_AVAILABLE = True
+except ImportError:
+    logger.warning("VNC components not available - VNC mode disabled")
+    VNC_AVAILABLE = False
+    BrowserVNCCoordinator = None
+
 
 logger = logging.getLogger(__name__)
 
 class RefactoredJobAgent:
     """The main class for the refactored job application agent."""
-    def __init__(self, playwright, headless: bool = True, keep_open: bool = False, debug: bool = False, hold_seconds: int = 0, slow_mo_ms: int = 0, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None) -> None:
+    def __init__(self, playwright, headless: bool = True, keep_open: bool = False, debug: bool = False, hold_seconds: int = 0, slow_mo_ms: int = 0, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900) -> None:
         self.playwright = playwright
+        
+        # VNC mode setup (for cloud streaming)
+        self.vnc_mode = vnc_mode and VNC_AVAILABLE
+        self.vnc_port = vnc_port
+        self.vnc_coordinator = None
+        
+        if vnc_mode and not VNC_AVAILABLE:
+            logger.warning("VNC mode requested but VNC components not available - falling back to standard mode")
+            self.vnc_mode = False
+        
+        # VNC mode requires non-headless browser (on virtual display)
+        if self.vnc_mode:
+            headless = False  # Browser must be visible (on virtual display)
+            logger.info("🖥️ VNC mode enabled - browser will run on virtual display")
+        
         self.headless = headless
         self.keep_open = keep_open
         self.debug = debug
@@ -48,8 +72,10 @@ class RefactoredJobAgent:
         self.job_id = job_id  # Store job_id for intervention notifications
         self.jobs_dict = jobs_dict  # Reference to the shared JOBS dictionary
         self.session_manager = session_manager
+        self.user_id = user_id  # Store user_id for profile loading
         self.current_session = None
         self.page: Optional[Page] = None
+        self.browser = None  # Store browser reference
         self.current_context: Optional[Union[Page, Frame]] = None
         self.state_machine: Optional[StateMachine] = None
         
@@ -68,11 +94,72 @@ class RefactoredJobAgent:
         self.iframe_helper = None
 
     async def _new_page(self) -> Page:
+        # VNC MODE: Use virtual display with VNC streaming
+        if self.vnc_mode:
+            logger.info("🖥️ Starting browser with VNC streaming...")
+            
+            # Create VNC coordinator
+            self.vnc_coordinator = BrowserVNCCoordinator(
+                display_width=1920,
+                display_height=1080,
+                vnc_port=self.vnc_port
+            )
+            
+            # Start VNC environment (display + VNC server + browser)
+            success = await self.vnc_coordinator.start()
+            
+            if not success:
+                logger.error("Failed to start VNC environment - falling back to standard mode")
+                self.vnc_mode = False
+                # Fall through to standard browser launch
+            else:
+                logger.info(f"✅ VNC environment ready on port {self.vnc_port}")
+                logger.info(f"📺 Display: {self.vnc_coordinator.virtual_display.display}")
+                
+                # Get page from VNC coordinator
+                page = self.vnc_coordinator.get_page()
+                
+                # Store browser reference
+                self.browser = self.vnc_coordinator.get_browser()
+                
+                return page
+        
+        # STANDARD MODE: Regular Playwright browser
         browser = await self.playwright.chromium.launch(headless=self.headless, slow_mo=self.slow_mo_ms)
+        self.browser = browser
         context = await browser.new_context()
         page = await context.new_page()
-        page.set_default_timeout(60000)
+        # DO NOT set a global default timeout - it affects page loads!
+        # Individual operations should specify their own timeouts
+        # page.set_default_timeout(5000)  # REMOVED - was causing page load failures
         return page
+    
+    def get_vnc_session_info(self) -> Optional[Dict[str, Any]]:
+        """
+        Get VNC session information for frontend connection
+        
+        Returns:
+            Dict with VNC connection details or None if not in VNC mode
+        """
+        if not self.vnc_mode or not self.vnc_coordinator:
+            return None
+        
+        return {
+            "vnc_enabled": True,
+            "vnc_port": self.vnc_port,
+            "vnc_url": self.vnc_coordinator.get_vnc_url(),
+            "session_id": self.current_session.session_id if self.current_session else None,
+            "current_url": self.page.url if self.page else None,
+            "status": self.vnc_coordinator.get_status()
+        }
+    
+    async def stop_vnc_session(self):
+        """Stop VNC session and cleanup"""
+        if self.vnc_coordinator:
+            logger.info("🛑 Stopping VNC session...")
+            await self.vnc_coordinator.stop()
+            self.vnc_coordinator = None
+            logger.info("✅ VNC session stopped")
     
     def _initialize_components_for_context(self, context: Union[Page, Frame]):
         """Initialize all components that require a browsing context (Page or Frame)."""
@@ -227,7 +314,8 @@ class RefactoredJobAgent:
             self._set_context(self.page)
             
             self._log_to_jobs("info", "🌐 Navigating to job posting...")
-            await self.page.goto(url, wait_until="domcontentloaded")
+            # Use 60 second timeout for page loads (job sites can be slow)
+            await self.page.goto(url, wait_until="domcontentloaded", timeout=60000)
             # Record the navigation action
             if self.action_recorder:
                 self.action_recorder.record_navigation(url, success=True)
@@ -298,7 +386,15 @@ class RefactoredJobAgent:
                 return
 
             try:
-                if self.page and not self.page.is_closed():
+                # VNC MODE: Keep browser alive for user interaction
+                if self.vnc_mode and self.vnc_coordinator:
+                    logger.info("🖥️ VNC mode - keeping browser alive for user interaction")
+                    logger.info(f"📺 VNC URL: {self.vnc_coordinator.get_vnc_url()}")
+                    self._log_to_jobs("info", f"🖥️ Browser ready for review at VNC port {self.vnc_port}")
+                    # Browser stays open - don't close!
+                    
+                # STANDARD MODE: Close browser as usual
+                elif self.page and not self.page.is_closed():
                     await self.page.context.browser.close()
                     self._log_to_jobs("info", "🔒 Browser session closed")
             except Exception:
@@ -323,7 +419,7 @@ class RefactoredJobAgent:
     # -----------------------------------------------------------------
 
     async def _state_start(self, state: ApplicationState) -> str:
-        profile = _load_profile_data()
+        profile = _load_profile_data(user_id=self.user_id)
 
         # Try to extract job context from the page if possible
         job_context = await self._extract_job_context_from_page()
@@ -1465,12 +1561,19 @@ Return ONLY a JSON object:
             logger.error("🔄 Maximum iterations reached! Too many fill_form attempts. Stopping.")
             return 'fail'
         
-        profile = _load_profile_data()
-        
+        profile = _load_profile_data(user_id=self.user_id)
+
+        # Store form_filler and profile in context for checkpoint access
+        state.context['form_filler'] = self.form_filler
+        state.context['profile'] = profile
+
         try:
             # Step 1 & 2: V2 form filler handles field detection and filling together
             # It returns a detailed result dict instead of just True/False
             result = await self.form_filler.fill_form(profile)
+
+            # Store skipped fields in context for checkpoint
+            state.context['skipped_fields'] = result.get('skipped_fields', [])
 
             # Check result from V2 form filler
             if not result.get('success'):
@@ -2507,14 +2610,57 @@ def _load_profile_data(user_id=None):
         logger.warning("🔄 Using fallback profile data...")
         return fallback_profile
 
-async def run_links_with_refactored_agent(links: list[str], headless: bool, keep_open: bool, debug: bool, hold_seconds: int, slow_mo_ms: int, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None):
+async def run_links_with_refactored_agent(links: list[str], headless: bool, keep_open: bool, debug: bool, hold_seconds: int, slow_mo_ms: int, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900):
+    """
+    Run job application agent with optional VNC streaming
+    
+    Args:
+        vnc_mode: If True, runs browser on virtual display with VNC streaming
+        vnc_port: Port for VNC server (default 5900)
+    
+    Returns:
+        Dict with VNC session info if vnc_mode=True, otherwise None
+    """
     p = await async_playwright().start()
+    vnc_session_info = None
+    
     try:
-        agent = RefactoredJobAgent(p, headless=headless, keep_open=keep_open, debug=debug, hold_seconds=hold_seconds, slow_mo_ms=slow_mo_ms, job_id=job_id, jobs_dict=jobs_dict, session_manager=session_manager)
+        agent = RefactoredJobAgent(
+            p, 
+            headless=headless, 
+            keep_open=keep_open, 
+            debug=debug, 
+            hold_seconds=hold_seconds, 
+            slow_mo_ms=slow_mo_ms, 
+            job_id=job_id, 
+            jobs_dict=jobs_dict, 
+            session_manager=session_manager, 
+            user_id=user_id,
+            vnc_mode=vnc_mode,
+            vnc_port=vnc_port
+        )
+        
         for link in links:
             await agent.process_link(link)
+        
+        # Get VNC session info before cleanup (for frontend connection)
+        if vnc_mode and agent.vnc_coordinator:
+            vnc_session_info = agent.get_vnc_session_info()
+            logger.info(f"📺 VNC session info: {vnc_session_info}")
+        
     finally:
-        # Only stop Playwright if browser should not be kept open
+        # VNC MODE: Keep browser alive for user interaction via VNC
+        if vnc_mode and hasattr(agent, 'vnc_coordinator') and agent.vnc_coordinator:
+            logger.info("🖥️ VNC mode - browser will stay alive for user interaction")
+            logger.info(f"📺 VNC accessible on port {vnc_port}")
+            logger.info("⚠️ Browser will remain open until explicitly closed via API")
+            
+            # Don't close browser or Playwright - they stay alive for VNC streaming
+            # The API endpoint will handle cleanup when user is done
+            
+            return vnc_session_info  # Return VNC info to API
+        
+        # STANDARD MODE: Regular cleanup
         should_keep_open = (
             (hasattr(agent, 'keep_browser_open_for_human') and agent.keep_browser_open_for_human) or
             keep_open or
@@ -2533,6 +2679,8 @@ async def run_links_with_refactored_agent(links: list[str], headless: bool, keep
             except KeyboardInterrupt:
                 logger.info("👋 User interrupted - closing browser...")
                 await p.stop()
+        
+        return None
 
 def main():
     import argparse
@@ -2548,6 +2696,7 @@ def main():
     parser.add_argument("--debug", action="store_true", help="Debug mode: wait for Enter during human intervention and keep browser open indefinitely")
     parser.add_argument("--hold-seconds", type=int, default=10, help="Seconds to keep browser open")
     parser.add_argument("--slowmo", type=int, default=0, help="Slow motion in milliseconds")
+    parser.add_argument("--user-id", type=str, default=None, help="User ID to load profile from database")
     args = parser.parse_args()
 
     links = args.links.split(',') if ',' in args.links else [args.links]
@@ -2558,7 +2707,8 @@ def main():
         keep_open=args.keep_open,
         debug=args.debug,
         hold_seconds=args.hold_seconds,
-        slow_mo_ms=args.slowmo
+        slow_mo_ms=args.slowmo,
+        user_id=args.user_id
     ))
 
 if __name__ == "__main__":

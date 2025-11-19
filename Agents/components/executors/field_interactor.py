@@ -3,6 +3,7 @@ import re
 from typing import Any, Dict, List, Optional
 from playwright.async_api import Page, Frame, Locator
 from loguru import logger
+from components.executors.question_extractor import QuestionExtractor
 
 class FieldInteractor:
     """A specialist in finding, identifying, and interacting with complex form fields."""
@@ -11,6 +12,7 @@ class FieldInteractor:
         self.page = page
         self.action_recorder = action_recorder
         self._cached_fields: Optional[List[Dict[str, Any]]] = None
+        self.question_extractor = QuestionExtractor(page)
 
     async def fill_field(self, field_data: Dict[str, Any], value: Any, profile: Optional[Dict[str, Any]] = None, max_retries: int = 2) -> None:
         """Fills a single field with verification and retry logic."""
@@ -476,6 +478,26 @@ class FieldInteractor:
 
                 # Basic check if field is filled
                 is_filled = await self._check_if_filled(element, input_type, field_category)
+                
+                # Extract question context for radio/checkbox fields
+                field_question = ''
+                question_options = []
+                option_label = ''
+                
+                if field_category in ['radio', 'checkbox']:
+                    try:
+                        question_data = await self.question_extractor.extract_question_for_field(element, field_category)
+                        field_question = question_data.get('question', '')
+                        question_options = question_data.get('allOptions', [])
+                        option_label = question_data.get('optionLabel', label)  # This option's label
+                        
+                        # If we found a question, update the label to use it
+                        if field_question and len(field_question) > len(label):
+                            logger.debug(f"📋 Improved label for {field_category}: '{label}' -> '{field_question}'")
+                            label = field_question
+                    except Exception as e:
+                        logger.debug(f"Could not extract question for {field_category}: {e}")
+                        option_label = label
 
                 form_fields.append({
                     'element': element,
@@ -487,11 +509,13 @@ class FieldInteractor:
                     'tag_name': tag_name,
                     'is_dropdown': 'dropdown' in field_category,
                     'is_filled': is_filled,
-                    'options': options,  # Available options for dropdowns
+                    'options': options if options else question_options,  # Use question_options for radio/checkbox
                     'required': await element.get_attribute('required') is not None,
                     'placeholder': await element.get_attribute('placeholder') or '',
                     'stable_id': stable_id,  # Stable identifier
                     'element_index': i,  # Original index for reference
+                    'field_question': field_question,  # The question text for radio/checkbox groups
+                    'option_label': option_label if field_category in ['radio', 'checkbox'] else '',  # This specific option's label
                 })
             except Exception as e:
                 error_count += 1

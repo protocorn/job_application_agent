@@ -168,18 +168,36 @@ class ActionRecorder:
         logger.debug(f"Recorded select option: {field_label} = {value} via {interaction_method}")
     
     def record_file_upload(self, selector: str, file_path: str, success: bool = True, 
-                          error: Optional[str] = None):
-        """Record file upload action"""
+                          error: Optional[str] = None, upload_method: str = None, 
+                          field_label: str = None):
+        """
+        Record file upload action with detailed method information for replay.
+        
+        Args:
+            selector: CSS selector or identifier for the upload element
+            file_path: Path to the uploaded file
+            success: Whether upload succeeded
+            error: Error message if failed
+            upload_method: How the upload was performed (direct_input, click_trigger, drop_zone, etc.)
+            field_label: Human-readable label for the upload field
+        """
+        metadata = {}
+        if upload_method:
+            metadata['upload_method'] = upload_method
+            metadata['interaction_type'] = 'file_upload'
+            
         action = ActionStep(
             type="upload_file",
             timestamp=time.time(),
             selector=selector,
             value=file_path,
+            field_label=field_label or "File Upload",
             success=success,
-            error=error
+            error=error,
+            metadata=metadata if metadata else None
         )
         self.actions.append(action)
-        logger.debug(f"Recorded file upload: {file_path}")
+        logger.debug(f"Recorded file upload: {file_path} via {upload_method or 'unknown method'}")
     
     def record_wait(self, duration_ms: int, reason: str = ""):
         """Record a wait/timeout action"""

@@ -40,6 +40,14 @@ class FieldInteractorV2:
         self.action_recorder = action_recorder
         self.dropdown_handler = get_dropdown_handler()  # Fast v2 handler
         self._cached_fields: Optional[List[Dict[str, Any]]] = None
+        
+        # Import QuestionExtractor here to avoid circular imports
+        try:
+            from components.executors.question_extractor import QuestionExtractor
+            self.question_extractor = QuestionExtractor(page)
+        except Exception as e:
+            logger.warning(f"Could not initialize QuestionExtractor: {e}")
+            self.question_extractor = None
 
     async def fill_field(
         self,
@@ -75,8 +83,12 @@ class FieldInteractorV2:
         }
 
         try:
-            # Check if already filled
-            if await self._is_already_filled(element, category):
+            # Check if already filled (special handling for groups)
+            if category in ['radio_group', 'checkbox_group']:
+                # For groups, we ALWAYS try to fill (don't skip based on individual element state)
+                # The group handler will check if the correct option is selected
+                pass
+            elif await self._is_already_filled(element, category):
                 logger.info(f"⏭️ '{field_label}' already filled, skipping")
                 # For already-filled fields, record the VALUE WE INTENDED TO FILL (from profile)
                 # not what we read from the DOM, because DOM values can be truncated or mismatched
@@ -100,6 +112,14 @@ class FieldInteractorV2:
             elif category == 'ashby_button_group':
                 await self._fill_button_group(element, str(value), field_label, result)
 
+            elif category == 'radio_group':
+                # Special handling for radio groups - find the specific radio button to click
+                await self._fill_radio_group(field_data, str(value), field_label, result)
+            
+            elif category == 'checkbox_group':
+                # Special handling for checkbox groups - check multiple boxes based on value
+                await self._fill_checkbox_group(field_data, value, field_label, result)
+            
             elif category in ['checkbox', 'radio']:
                 await self._fill_checkbox_radio(element, str(value), field_label, category, result)
 
@@ -238,9 +258,16 @@ class FieldInteractorV2:
             # Fallback to JavaScript injection (bypasses overlays/blockers)
             logger.debug(f"Standard fill failed for '{field_label}', trying JavaScript injection...")
             try:
-                # Get element ID or selector
-                element_id = await element.get_attribute('id')
-                element_name = await element.get_attribute('name')
+                # Get element ID or selector with fast timeout
+                try:
+                    element_id = await asyncio.wait_for(element.get_attribute('id'), timeout=2)
+                except asyncio.TimeoutError:
+                    element_id = None
+
+                try:
+                    element_name = await asyncio.wait_for(element.get_attribute('name'), timeout=2)
+                except asyncio.TimeoutError:
+                    element_name = None
 
                 if not element_id and not element_name:
                     # Re-raise original error if we can't identify element
@@ -418,6 +445,251 @@ class FieldInteractorV2:
                 field_type=category
             )
 
+    async def _fill_radio_group(
+        self,
+        field_data: Dict[str, Any],
+        value: str,
+        field_label: str,
+        result: Dict[str, Any]
+    ) -> None:
+        """
+        Fill a radio group by finding and clicking the radio button that matches the value.
+        
+        Args:
+            field_data: The consolidated radio group field data
+            value: The exact option text to select (e.g., "Master's Degree")
+            field_label: The question text
+            result: Result dictionary to update
+        """
+        try:
+            individual_radios = field_data.get('individual_radios', [])
+            
+            if not individual_radios:
+                logger.error(f"No individual radio buttons found in radio group '{field_label}'")
+                result.update({
+                    "success": False,
+                    "error": "No individual radio buttons in group"
+                })
+                return
+            
+            logger.info(f"🔘 Filling radio group '{field_label}' with value '{value}'")
+            logger.debug(f"   Target value: '{value}'")
+            logger.debug(f"   Searching through {len(individual_radios)} radio buttons...")
+            
+            # Log available options for debugging with their sources
+            for idx, r in enumerate(individual_radios):
+                opt_label = r.get('option_label', '')
+                reg_label = r.get('label', '')
+                logger.debug(f"      Radio {idx+1}: option_label='{opt_label}', label='{reg_label}'")
+            
+            # Find the radio button that matches the desired value
+            value_lower = value.lower().strip()
+            matched_radio = None
+            best_match_score = 0
+            
+            # STEP 1: Try exact matches first (most reliable)
+            for radio_field in individual_radios:
+                option_label = radio_field.get('option_label', '').lower().strip()
+                # Fallback to regular label if option_label is empty
+                if not option_label:
+                    option_label = radio_field.get('label', '').lower().strip()
+                
+                logger.debug(f"   Comparing '{value_lower}' with '{option_label}'")
+                
+                if option_label == value_lower:
+                    matched_radio = radio_field
+                    logger.debug(f"   ✅ Exact match found: '{radio_field.get('option_label', radio_field.get('label', ''))}'")
+                    break
+            
+            # STEP 2: If no exact match, try smart partial matching
+            if not matched_radio:
+                for radio_field in individual_radios:
+                    option_label = radio_field.get('option_label', '').lower().strip()
+                    radio_label = radio_field.get('label', '').lower().strip()
+                    
+                    # Calculate match score (prefer longer, more specific matches)
+                    match_score = 0
+                    
+                    # Check if value is contained in option (e.g., "Master's" in "Master's Degree")
+                    if value_lower in option_label:
+                        # Penalize if option is much longer (likely a false positive)
+                        length_ratio = len(value_lower) / len(option_label) if option_label else 0
+                        if length_ratio > 0.5:  # Value is at least 50% of option length
+                            match_score = length_ratio * 100
+                    
+                    # Check if option is contained in value (e.g., "Yes" in "Yes, I agree")
+                    elif option_label in value_lower:
+                        # Penalize if value is much longer
+                        length_ratio = len(option_label) / len(value_lower) if value_lower else 0
+                        if length_ratio > 0.5:
+                            match_score = length_ratio * 80
+                    
+                    # Keep the best match
+                    if match_score > best_match_score:
+                        best_match_score = match_score
+                        matched_radio = radio_field
+                
+                if matched_radio and best_match_score > 0:
+                    logger.debug(f"   ✅ Partial match found (score={best_match_score:.1f}): '{matched_radio.get('option_label', '')}'")
+            
+            if not matched_radio:
+                logger.warning(f"❌ No radio button matches value '{value}' in group '{field_label}'")
+                logger.debug(f"   Available options: {[r.get('option_label', '') for r in individual_radios]}")
+                result.update({
+                    "success": False,
+                    "error": f"No radio button matches desired value '{value}'"
+                })
+                return
+            
+            # Fill the matched radio button
+            matched_element = matched_radio.get('element')
+            matched_label = matched_radio.get('option_label', value)
+            
+            logger.info(f"🎯 Clicking radio button: '{matched_label}'")
+            
+            # Use the existing radio button fill method
+            await self._fill_radio_button(
+                element=matched_element,
+                value=matched_label,  # Use the option label as the value to match
+                field_label=matched_label,
+                result=result
+            )
+            
+        except Exception as e:
+            logger.error(f"Error filling radio group: {e}")
+            result.update({
+                "success": False,
+                "error": str(e)
+            })
+    
+    async def _fill_checkbox_group(
+        self,
+        field_data: Dict[str, Any],
+        value: Any,
+        field_label: str,
+        result: Dict[str, Any]
+    ) -> None:
+        """
+        Fill a checkbox group by checking multiple boxes based on the value.
+        
+        Value can be:
+        - A list of option texts: ["Asian", "White"]
+        - A comma-separated string: "Asian, White"
+        - A single value for single checkbox: "true" or the checkbox label
+        
+        Args:
+            field_data: The consolidated checkbox group field data
+            value: The option(s) to select
+            field_label: The question text
+            result: Result dictionary to update
+        """
+        try:
+            individual_checkboxes = field_data.get('individual_checkboxes', [])
+            
+            if not individual_checkboxes:
+                logger.error(f"No individual checkboxes found in checkbox group '{field_label}'")
+                result.update({
+                    "success": False,
+                    "error": "No individual checkboxes in group"
+                })
+                return
+            
+            logger.info(f"☑️  Filling checkbox group '{field_label}'")
+            logger.debug(f"   Value to fill: {value}")
+            logger.debug(f"   Available checkboxes: {len(individual_checkboxes)}")
+            
+            # Parse value into list of options to check
+            options_to_check = []
+            if isinstance(value, list):
+                options_to_check = value
+            elif isinstance(value, str):
+                # Check if it's comma-separated
+                if ',' in value:
+                    options_to_check = [opt.strip() for opt in value.split(',')]
+                # Check if it's a boolean string (single checkbox)
+                elif value.lower() in ['true', 'yes', '1', 'on', 'checked']:
+                    # Check all checkboxes (or just the first one for single checkbox groups)
+                    options_to_check = ['true']
+                elif value.lower() in ['false', 'no', '0', 'off', 'unchecked']:
+                    # Don't check any
+                    options_to_check = []
+                else:
+                    # Treat as a single option name
+                    options_to_check = [value]
+            
+            # If single checkbox and value is boolean, just check/uncheck it
+            if len(individual_checkboxes) == 1 and len(options_to_check) == 1 and options_to_check[0].lower() in ['true', 'false']:
+                checkbox_field = individual_checkboxes[0]
+                checkbox_element = checkbox_field.get('element')
+                should_check = options_to_check[0].lower() == 'true'
+                
+                logger.info(f"   Single checkbox: {'Checking' if should_check else 'Unchecking'}")
+                
+                await self._fill_checkbox_radio(
+                    checkbox_element,
+                    'true' if should_check else 'false',
+                    field_label,
+                    'checkbox',
+                    result
+                )
+                return
+            
+            # Multi-select checkbox group - check specific options
+            checked_count = 0
+            
+            for option_to_check in options_to_check:
+                option_lower = option_to_check.lower().strip()
+                
+                # Find matching checkbox
+                matched_checkbox = None
+                for cb_field in individual_checkboxes:
+                    cb_label = cb_field.get('option_label', cb_field.get('label', '')).lower().strip()
+                    cb_name = cb_field.get('name', '').lower().strip()
+                    
+                    # Try exact or partial match
+                    if cb_label == option_lower or cb_name == option_lower:
+                        matched_checkbox = cb_field
+                        break
+                    elif option_lower in cb_label or cb_label in option_lower:
+                        matched_checkbox = cb_field
+                        break
+                
+                if matched_checkbox:
+                    cb_element = matched_checkbox.get('element')
+                    cb_label = matched_checkbox.get('option_label', matched_checkbox.get('label', ''))
+                    
+                    logger.info(f"   ✅ Checking: '{cb_label}'")
+                    
+                    # Check this checkbox
+                    cb_result = {}
+                    await self._fill_checkbox_radio(cb_element, 'true', cb_label, 'checkbox', cb_result)
+                    
+                    if cb_result.get('success'):
+                        checked_count += 1
+                else:
+                    logger.warning(f"   ⚠️  Could not find checkbox for option: '{option_to_check}'")
+            
+            # Mark as success if we checked at least one box
+            if checked_count > 0:
+                result.update({
+                    "success": True,
+                    "method": "checkbox_group",
+                    "final_value": f"{checked_count} checkboxes selected"
+                })
+                logger.info(f"✅ Checkbox group filled: {checked_count}/{len(options_to_check)} options checked")
+            else:
+                result.update({
+                    "success": False,
+                    "error": "No checkboxes were successfully checked"
+                })
+        
+        except Exception as e:
+            logger.error(f"Error filling checkbox group: {e}")
+            result.update({
+                "success": False,
+                "error": str(e)
+            })
+    
     async def _fill_radio_button(
         self,
         element: Locator,
@@ -432,11 +704,18 @@ class FieldInteractorV2:
         - Each radio button in a group has a specific value (e.g., "Yes", "No", "Maybe")
         - We need to find and click the radio button whose value matches our desired value
         - The field_label might be the radio button's text label (like "No")
+        - The value parameter should be the EXACT text of the option to select (e.g., "Not a Veteran", not "false")
         """
         try:
             # Strategy 1: Check if this element's value/label matches what we want
             element_value = None
             element_label = None
+            element_id = None
+
+            try:
+                element_id = await asyncio.wait_for(element.get_attribute('id'), timeout=1)
+            except Exception:
+                pass
 
             try:
                 # Try to get the value attribute
@@ -445,12 +724,24 @@ class FieldInteractorV2:
                 pass
 
             try:
-                # Try to get associated label text
-                element_label_text = await asyncio.wait_for(element.text_content(), timeout=1)
-                if element_label_text:
-                    element_label = element_label_text.strip()
+                # Try to get associated label text using label[for=id]
+                if element_id:
+                    label_element = self.page.locator(f'label[for="{element_id}"]').first
+                    if await label_element.count() > 0:
+                        element_label = await label_element.text_content()
+                        if element_label:
+                            element_label = element_label.strip()
+                
+                # Try parent label if no label[for=id] found
+                if not element_label:
+                    parent = element.locator('..')
+                    parent_tag = await parent.evaluate('el => el.tagName.toLowerCase()')
+                    if parent_tag == 'label':
+                        element_label = await parent.text_content()
+                        if element_label:
+                            element_label = element_label.strip()
 
-                # Also try aria-label
+                # Also try aria-label as fallback
                 if not element_label:
                     aria_label = await asyncio.wait_for(element.get_attribute('aria-label'), timeout=1)
                     if aria_label:
@@ -459,24 +750,40 @@ class FieldInteractorV2:
                 pass
 
             # Check if this radio button matches our desired value
-            value_lower = str(value).lower()
-            label_lower = field_label.lower() if field_label else ""
-
+            # Support case-insensitive matching and partial matching
+            value_lower = str(value).lower().strip()
+            
             matches = False
-            if element_value and element_value.lower() == value_lower:
-                matches = True
-                logger.debug(f"Radio button matches by value: {element_value} == {value}")
-            elif element_label and element_label.lower() == value_lower:
-                matches = True
-                logger.debug(f"Radio button matches by label: {element_label} == {value}")
-            elif label_lower and label_lower == value_lower:
-                # The field_label itself matches the value (e.g., field labeled "No" and value is "No")
-                matches = True
-                logger.debug(f"Radio button matches by field_label: {field_label} == {value}")
+            match_reason = ""
+            
+            # Try exact match on label first (most reliable)
+            if element_label:
+                element_label_lower = element_label.lower().strip()
+                if element_label_lower == value_lower:
+                    matches = True
+                    match_reason = f"exact label match: '{element_label}' == '{value}'"
+                # Try partial match (e.g., "Veteran" matches "I am a Veteran")
+                elif value_lower in element_label_lower or element_label_lower in value_lower:
+                    matches = True
+                    match_reason = f"partial label match: '{element_label}' contains '{value}'"
+            
+            # Try value attribute match
+            if not matches and element_value:
+                element_value_lower = element_value.lower().strip()
+                if element_value_lower == value_lower:
+                    matches = True
+                    match_reason = f"value attribute match: '{element_value}' == '{value}'"
+            
+            # Try field_label match (the label we extracted for this field)
+            if not matches and field_label:
+                field_label_lower = field_label.lower().strip()
+                if field_label_lower == value_lower:
+                    matches = True
+                    match_reason = f"field label match: '{field_label}' == '{value}'"
 
             if matches:
                 # This is the radio button we want to select - click it
-                logger.debug(f"Clicking radio button '{field_label}' to select '{value}'")
+                logger.info(f"✅ Matched radio button: {match_reason}")
 
                 # Try standard click first
                 try:
@@ -497,7 +804,7 @@ class FieldInteractorV2:
                             "method": "radio_click",
                             "final_value": value
                         })
-                        logger.info(f"✅ Radio button '{field_label}' successfully selected")
+                        logger.info(f"✅ Radio button successfully selected: '{value}'")
                         return
                     else:
                         logger.warning(f"Radio button clicked but not showing as checked")
@@ -519,13 +826,12 @@ class FieldInteractorV2:
                     return
             else:
                 # This radio button doesn't match our value - we shouldn't click it
-                logger.warning(f"Radio button '{field_label}' doesn't match desired value '{value}'")
-                logger.warning(f"  Element value: {element_value}, Element label: {element_label}")
+                logger.debug(f"Radio button doesn't match: element_label='{element_label}', element_value='{element_value}', field_label='{field_label}', desired='{value}'")
                 result.update({
                     "success": False,
                     "method": "radio_value_mismatch",
                     "final_value": None,
-                    "error": f"Radio button label/value doesn't match desired value '{value}'"
+                    "error": f"Radio button doesn't match desired value '{value}' (label='{element_label}', value='{element_value}')"
                 })
 
         except Exception as e:
@@ -546,8 +852,10 @@ class FieldInteractorV2:
     ) -> None:
         """Fill Ashby-style button group."""
         try:
-            # Use Ashby handler from factory
-            handler = self.dropdown_factory.handlers[3]  # AshbyButtonGroupHandler
+            # Import the Ashby handler
+            from components.executors.ats_dropdown_handlers import AshbyButtonGroupHandler
+
+            handler = AshbyButtonGroupHandler(self.page)
             success = await handler.fill(element, value, field_label)
 
             if success:
@@ -801,7 +1109,11 @@ class FieldInteractorV2:
                             await element.set_input_files(resume_path)
                             logger.info("✅ Resume uploaded via Workday file input")
                             if self.action_recorder:
-                                self.action_recorder.record_file_upload(selector, resume_path, success=True)
+                                self.action_recorder.record_file_upload(
+                                    selector, resume_path, success=True,
+                                    upload_method="direct_input",
+                                    field_label="Resume Upload (Workday)"
+                                )
                             return True
                         else:
                             # Button/drop zone with file chooser
@@ -812,7 +1124,11 @@ class FieldInteractorV2:
                             await file_chooser.set_files(resume_path)
                             logger.info(f"✅ Resume uploaded via Workday {selector}")
                             if self.action_recorder:
-                                self.action_recorder.record_file_upload(selector, resume_path, success=True)
+                                self.action_recorder.record_file_upload(
+                                    selector, resume_path, success=True,
+                                    upload_method="click_trigger",
+                                    field_label="Resume Upload (Workday)"
+                                )
                             return True
                 except Exception as e:
                     logger.debug(f"Workday upload strategy failed for {selector}: {e}")
@@ -826,7 +1142,11 @@ class FieldInteractorV2:
                         await fi.set_input_files(resume_path)
                         logger.info("✅ Resume uploaded via visible file input")
                         if self.action_recorder:
-                            self.action_recorder.record_file_upload('input[type="file"]', resume_path, success=True)
+                            self.action_recorder.record_file_upload(
+                                'input[type="file"]', resume_path, success=True,
+                                upload_method="direct_input",
+                                field_label="Resume Upload (Direct Input)"
+                            )
                         return True
                 except Exception:
                     continue
@@ -849,7 +1169,11 @@ class FieldInteractorV2:
                     await file_chooser.set_files(resume_path)
                     logger.info("✅ Resume uploaded via button trigger")
                     if self.action_recorder:
-                        self.action_recorder.record_file_upload('button[trigger]', resume_path, success=True)
+                        self.action_recorder.record_file_upload(
+                            'button[trigger]', resume_path, success=True,
+                            upload_method="click_trigger",
+                            field_label="Resume Upload (Button Trigger)"
+                        )
                     return True
             except Exception:
                 pass
@@ -865,7 +1189,11 @@ class FieldInteractorV2:
                     await file_chooser.set_files(resume_path)
                     logger.info("✅ Resume uploaded via generic trigger")
                     if self.action_recorder:
-                        self.action_recorder.record_file_upload('generic[trigger]', resume_path, success=True)
+                        self.action_recorder.record_file_upload(
+                            'generic[trigger]', resume_path, success=True,
+                            upload_method="click_trigger",
+                            field_label="Resume Upload (Generic Trigger)"
+                        )
                     return True
             except Exception:
                 pass
@@ -874,10 +1202,27 @@ class FieldInteractorV2:
             logger.info("🧠 Deterministic strategies failed - using AI to locate upload element...")
             try:
                 ai_upload_result = await self._ai_locate_and_upload_resume(resume_path)
-                if ai_upload_result:
+                if ai_upload_result and isinstance(ai_upload_result, dict):
+                    # AI returns dict with success, selector, and method
                     logger.info("✅ Resume uploaded via AI-powered locator")
                     if self.action_recorder:
-                        self.action_recorder.record_file_upload('ai_powered_locator', resume_path, success=True)
+                        # Record with ACTUAL selector and method from AI
+                        selector = ai_upload_result.get('selector', 'ai_powered_locator')
+                        method = ai_upload_result.get('method', 'unknown')
+                        self.action_recorder.record_file_upload(
+                            selector, 
+                            resume_path, 
+                            success=True,
+                            error=None,
+                            upload_method=method,
+                            field_label="Resume/CV Upload"
+                        )
+                        logger.info(f"🎬 Recorded file upload: selector={selector}, method={method}")
+                    return True
+                elif ai_upload_result:  # Backward compatibility for bool return
+                    logger.info("✅ Resume uploaded via AI-powered locator")
+                    if self.action_recorder:
+                        self.action_recorder.record_file_upload('ai_powered_locator_legacy', resume_path, success=True)
                     return True
             except Exception as e:
                 logger.debug(f"AI-powered upload strategy failed: {e}")
@@ -1045,7 +1390,15 @@ class FieldInteractorV2:
 
             success = await self._execute_ai_upload_instructions(upload_instructions, resume_path)
 
-            return success
+            # Return dict with selector and method info for action recording
+            if success:
+                return {
+                    'success': True,
+                    'selector': upload_instructions.get('selector', 'ai_powered_locator'),
+                    'method': upload_instructions.get('method', 'unknown'),
+                    'interaction_details': upload_instructions.get('interaction_details', {})
+                }
+            return False
 
         except Exception as e:
             logger.error(f"AI-powered upload locator failed: {e}")

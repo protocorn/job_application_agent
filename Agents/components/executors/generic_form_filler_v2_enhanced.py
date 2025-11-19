@@ -7,6 +7,7 @@ Enhanced Generic Form Filler V2 with:
 - Final Gemini review before submission
 """
 import asyncio
+import re
 from typing import Any, Dict, List, Optional, Tuple, Set
 from playwright.async_api import Page, Frame
 from loguru import logger
@@ -16,6 +17,7 @@ from components.executors.deterministic_field_mapper import DeterministicFieldMa
 from components.brains.gemini_field_mapper import GeminiFieldMapper
 from components.exceptions.field_exceptions import RequiresHumanInputError
 from components.state.field_completion_tracker import FieldCompletionTracker
+from components.validators.field_value_validator import FieldValueValidator
 
 
 class FieldAttemptTracker:
@@ -129,7 +131,15 @@ class GenericFormFillerV2Enhanced:
             last_detected_fields = all_fields  # Save for correction mechanism
             logger.info(f"🔍 Detected {len(all_fields)} fields (fast mode - no pre-extraction)")
 
-            # Step 2: Clean fields (remove invalid ones)
+            # Step 2: Consolidate radio button groups (so we don't send duplicates to Gemini)
+            all_fields = await self._consolidate_radio_groups(all_fields)
+            logger.info(f"🔗 After radio grouping: {len(all_fields)} fields")
+            
+            # Step 2.5: Consolidate checkbox groups (same logic - group related checkboxes)
+            all_fields = await self._consolidate_checkbox_groups(all_fields)
+            logger.info(f"🔗 After checkbox grouping: {len(all_fields)} fields")
+
+            # Step 3: Clean fields (remove invalid ones)
             valid_fields = await self._clean_detected_fields(all_fields)
             logger.info(f"✅ {len(valid_fields)} valid fields after cleaning")
 
@@ -195,7 +205,250 @@ class GenericFormFillerV2Enhanced:
         logger.info(f"📊 Methods used: {result['fields_by_method']['deterministic']} deterministic, {result['fields_by_method']['ai']} AI")
         logger.info(f"⏭️ Skipped {len(result['skipped_fields'])} fields after all attempts")
 
+        # Step 8: Look for Next/Continue button and click it (but never Submit)
+        next_button_clicked = await self._try_click_next_button()
+        result["next_button_clicked"] = next_button_clicked
+
         return result
+
+    async def _consolidate_radio_groups(self, fields: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Consolidate radio buttons into groups so Gemini sees ONE field per question, not multiple.
+        
+        Before: 5 separate fields for "When do you expect to graduate?" (one per option)
+        After: 1 field with question and all 5 options
+        
+        Args:
+            fields: List of all detected fields
+        
+        Returns:
+            Updated list with radio groups consolidated
+        """
+        try:
+            radio_groups = {}  # key: name attribute, value: list of radio buttons
+            non_radio_fields = []
+            
+            for field in fields:
+                if field.get('field_category') == 'radio':
+                    field_name = field.get('name', '')
+                    if field_name:
+                        if field_name not in radio_groups:
+                            radio_groups[field_name] = []
+                        radio_groups[field_name].append(field)
+                    else:
+                        # Radio without name - treat as individual field
+                        non_radio_fields.append(field)
+                else:
+                    # Not a radio button - keep as is
+                    non_radio_fields.append(field)
+            
+            # Create one consolidated field per radio group
+            for field_name, group_fields in radio_groups.items():
+                if len(group_fields) == 0:
+                    continue
+                
+                # Use the first field as the base
+                first_field = group_fields[0]
+                
+                # Get the question (all radios in group should have same question)
+                question = first_field.get('field_question', first_field.get('label', ''))
+                
+                # Get all options from all radio buttons in the group
+                all_options = []
+                seen_option_texts = set()
+                
+                for radio_field in group_fields:
+                    # IMPORTANT: Use option_label ONLY, not label (label has been overwritten with the question)
+                    option_label = radio_field.get('option_label', '')
+                    radio_id = radio_field.get('id', '')
+                    radio_value = radio_field.get('name', '')
+                    
+                    # Debug: Check if option_label is missing
+                    if not option_label:
+                        logger.warning(f"⚠️  Radio button missing option_label! ID={radio_id}, name={radio_value}")
+                        # Try to extract from options list as fallback
+                        radio_options = radio_field.get('options', [])
+                        if radio_options:
+                            # Find the option for this specific radio button
+                            for opt in radio_options:
+                                if isinstance(opt, dict) and opt.get('id') == radio_id:
+                                    option_label = opt.get('text', '')
+                                    break
+                    
+                    # Avoid duplicates
+                    if option_label and option_label not in seen_option_texts:
+                        all_options.append({
+                            'text': option_label,
+                            'value': radio_value,
+                            'id': radio_id,
+                            'element': radio_field.get('element')  # Keep reference to actual element
+                        })
+                        seen_option_texts.add(option_label)
+                    elif not option_label:
+                        logger.warning(f"⚠️  Could not determine option label for radio button ID={radio_id}")
+                
+                # If we didn't get options from option_label, use the options list
+                if not all_options:
+                    all_options = first_field.get('options', [])
+                
+                # Create consolidated field
+                consolidated = {
+                    'element': first_field['element'],  # Representative element (we'll find the right one when filling)
+                    'label': question,  # Use the question as the label
+                    'field_question': question,
+                    'field_category': 'radio_group',  # Mark as group
+                    'options': all_options,
+                    'name': field_name,
+                    'id': first_field.get('id', ''),
+                    'stable_id': f"radio_group:{field_name}",
+                    'required': first_field.get('required', False),
+                    'placeholder': '',
+                    'individual_radios': group_fields,  # Keep all individual radio fields for filling
+                    'input_type': 'radio',
+                    'tag_name': 'input',
+                    'is_dropdown': False,
+                    'is_filled': first_field.get('is_filled', False),
+                    'element_index': first_field.get('element_index', 0)
+                }
+                
+                non_radio_fields.append(consolidated)
+                
+                logger.debug(f"📻 Consolidated radio group: '{question}' with options: {[opt['text'] for opt in all_options]}")
+            
+            logger.info(f"🔗 Consolidated {len(radio_groups)} radio groups from {sum(len(g) for g in radio_groups.values())} individual buttons")
+            
+            return non_radio_fields
+        
+        except Exception as e:
+            logger.error(f"Error consolidating radio groups: {e}")
+            return fields
+    
+    async def _consolidate_checkbox_groups(self, fields: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Consolidate checkboxes into groups by their shared question.
+        
+        Unlike radio buttons (same name), checkboxes often have different names but share a question.
+        We group them by:
+        1. Shared question text
+        2. Shared ID prefix pattern
+        
+        Args:
+            fields: List of all fields
+        
+        Returns:
+            Updated list with checkbox groups consolidated
+        """
+        try:
+            # Import QuestionExtractor
+            from components.executors.question_extractor import QuestionExtractor
+            
+            checkbox_fields = []
+            non_checkbox_fields = []
+            
+            # Separate checkboxes from other fields
+            for field in fields:
+                if field.get('field_category') == 'checkbox':
+                    checkbox_fields.append(field)
+                else:
+                    non_checkbox_fields.append(field)
+            
+            if not checkbox_fields:
+                return fields
+            
+            # Extract checkbox elements
+            checkbox_elements = [f['element'] for f in checkbox_fields]
+            
+            # Use QuestionExtractor to group checkboxes intelligently
+            extractor = QuestionExtractor(self.page)
+            grouped_checkboxes = await extractor.group_checkboxes_by_question(checkbox_elements)
+            
+            logger.info(f"☑️  Grouped {len(checkbox_fields)} checkboxes into {len(grouped_checkboxes)} groups")
+            
+            # Convert grouped checkboxes to field format
+            for group_idx, group in enumerate(grouped_checkboxes):
+                question = group.get('question', '')
+                checkboxes_data = group.get('checkboxes', [])
+                
+                if len(checkboxes_data) == 0:
+                    continue
+                
+                # If it's a single checkbox with a good question, keep it as individual
+                if len(checkboxes_data) == 1 and question:
+                    # Single checkbox (e.g., terms & conditions, work authorization yes/no)
+                    cb_data = checkboxes_data[0]
+                    
+                    # Find the original field data
+                    matching_field = None
+                    for cf in checkbox_fields:
+                        if cf.get('id') == cb_data.get('id') or cf.get('name') == cb_data.get('name'):
+                            matching_field = cf
+                            break
+                    
+                    if matching_field:
+                        # Update label to use the question
+                        if question and len(question) > len(matching_field.get('label', '')):
+                            matching_field['label'] = question
+                            matching_field['field_question'] = question
+                        non_checkbox_fields.append(matching_field)
+                    
+                elif len(checkboxes_data) > 1:
+                    # Multiple checkboxes - create a consolidated group
+                    first_cb = checkboxes_data[0]
+                    
+                    # Build options list
+                    all_options = []
+                    for cb_data in checkboxes_data:
+                        all_options.append({
+                            'text': cb_data.get('label', cb_data.get('name', '')),
+                            'name': cb_data.get('name', ''),
+                            'id': cb_data.get('id', ''),
+                            'value': cb_data.get('value', '')
+                        })
+                    
+                    # Find original field elements
+                    individual_checkboxes = []
+                    for cb_data in checkboxes_data:
+                        for cf in checkbox_fields:
+                            if cf.get('id') == cb_data.get('id') or cf.get('name') == cb_data.get('name'):
+                                individual_checkboxes.append(cf)
+                                break
+                    
+                    if individual_checkboxes:
+                        first_field = individual_checkboxes[0]
+                        
+                        # Create consolidated checkbox group
+                        consolidated = {
+                            'element': first_field['element'],
+                            'label': question or f"Checkbox Group {group_idx + 1}",
+                            'field_question': question,
+                            'field_category': 'checkbox_group',
+                            'options': all_options,
+                            'name': first_field.get('name', ''),
+                            'id': first_field.get('id', ''),
+                            'stable_id': f"checkbox_group:{first_cb.get('name', group_idx)}",
+                            'required': first_field.get('required', False),
+                            'placeholder': '',
+                            'individual_checkboxes': individual_checkboxes,
+                            'input_type': 'checkbox',
+                            'tag_name': 'input',
+                            'is_dropdown': False,
+                            'is_filled': False,
+                            'element_index': first_field.get('element_index', 0)
+                        }
+                        
+                        non_checkbox_fields.append(consolidated)
+                        logger.debug(f"☑️  Consolidated checkbox group: '{question}' ({len(checkboxes_data)} options)")
+                else:
+                    # Empty group - shouldn't happen
+                    pass
+            
+            return non_checkbox_fields
+        
+        except Exception as e:
+            logger.error(f"Error consolidating checkbox groups: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return fields
 
     async def _clean_detected_fields(self, fields: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
@@ -326,6 +579,13 @@ class GenericFormFillerV2Enhanced:
             if not element:
                 return False
 
+            # Validate and clean the value before filling
+            cleaned_value = FieldValueValidator.validate_and_clean(
+                mapping.value,
+                field_label,
+                field.get('field_category', 'text_input')
+            )
+
             # Prepare field data (no pre-extracted options in fast mode)
             field_data = {
                 'element': element,
@@ -333,9 +593,15 @@ class GenericFormFillerV2Enhanced:
                 'field_category': field.get('field_category', 'text_input'),
                 'stable_id': field.get('stable_id', '')
             }
+            
+            # Include group data for radio_group and checkbox_group
+            if field.get('field_category') == 'radio_group':
+                field_data['individual_radios'] = field.get('individual_radios', [])
+            elif field.get('field_category') == 'checkbox_group':
+                field_data['individual_checkboxes'] = field.get('individual_checkboxes', [])
 
-            # Fill the field
-            fill_result = await self.interactor.fill_field(field_data, mapping.value, profile)
+            # Fill the field with cleaned value
+            fill_result = await self.interactor.fill_field(field_data, cleaned_value, profile)
 
             if fill_result['success']:
                 # Trust the fill result - it already verified success
@@ -439,6 +705,17 @@ class GenericFormFillerV2Enhanced:
                         continue
                     
                     value = generated_text
+                elif mapping_type in ['multiselect', 'multiselect_skills']:
+                    # Get value for multiselect fields (list of options)
+                    value = mapping_data.get('value')
+                    if not value or (isinstance(value, list) and len(value) == 0):
+                        logger.debug(f"⏭️ No value for multiselect '{field_label}'")
+                        result['skipped_fields'].append({
+                            "field": field_label,
+                            "reason": "AI returned empty multiselect value"
+                        })
+                        continue
+                    # Value is already a list, keep it as is
                 else:
                     # Get value for simple/dropdown fields
                     value = mapping_data.get('value')
@@ -450,12 +727,19 @@ class GenericFormFillerV2Enhanced:
                         })
                         continue
                 
+                # Validate and clean the value before filling
+                cleaned_value = FieldValueValidator.validate_and_clean(
+                    value,
+                    field_label,
+                    field.get('field_category', 'text_input')
+                )
+
                 # Get fresh element
                 element = await self._get_fresh_element(field)
                 if not element:
                     logger.debug(f"⏭️ Could not get fresh element for '{field_label}'")
                     continue
-                
+
                 # Prepare field data (fast mode - no pre-extracted options)
                 field_data = {
                     'element': element,
@@ -464,8 +748,14 @@ class GenericFormFillerV2Enhanced:
                     'stable_id': field.get('stable_id', '')
                 }
                 
-                # Fill the field
-                fill_result = await self.interactor.fill_field(field_data, value, profile)
+                # Include group data for radio_group and checkbox_group
+                if field.get('field_category') == 'radio_group':
+                    field_data['individual_radios'] = field.get('individual_radios', [])
+                elif field.get('field_category') == 'checkbox_group':
+                    field_data['individual_checkboxes'] = field.get('individual_checkboxes', [])
+
+                # Fill the field with cleaned value
+                fill_result = await self.interactor.fill_field(field_data, cleaned_value, profile)
                 
                 if fill_result['success']:
                     # Log differently for generated text vs mapped values
@@ -843,7 +1133,8 @@ If there are problems, set approved=false and list specific issues.
         try:
             if stable_id.startswith('id:'):
                 element_id = stable_id[3:]
-                return self.page.locator(f'#{element_id}').first
+                # Use attribute selector to handle IDs with special characters (dots, colons, etc.)
+                return self.page.locator(f'[id="{element_id}"]').first
             elif stable_id.startswith('name:'):
                 name = stable_id[5:]
                 return self.page.locator(f'[name="{name}"]').first
@@ -876,3 +1167,257 @@ If there are problems, set approved=false and list specific issues.
                 field['options'] = cached_options[field_id]
 
         return current_fields
+
+    async def _try_click_next_button(self) -> bool:
+        """
+        Try to find and click a Next/Continue button (but never Submit).
+
+        Returns:
+            bool: True if a button was clicked, False otherwise
+        """
+        try:
+            logger.info("🔍 Looking for Next/Continue button...")
+
+            # CRITICAL: Patterns that indicate SUBMIT buttons (NEVER click these)
+            submit_patterns = [
+                r'\bsubmit\b',
+                r'\bapply\b',
+                r'\bsend\s+application\b',
+                r'\bfinish\b',
+                r'\bcomplete\s+application\b',
+                r'\breview\s+and\s+submit\b',
+                r'\bconfirm\s+and\s+submit\b',
+            ]
+
+            # Safe patterns for Next/Continue buttons (OK to click)
+            next_patterns = [
+                r'\bnext\b',
+                r'\bcontinue\b',
+                r'\bproceed\b',
+                r'\bgo\s+to\s+next\b',
+                r'\bsave\s+and\s+continue\b',
+                r'\bsave\s+and\s+next\b',
+                r'\bsave\s*&\s*continue\b',  # "Save & Continue"
+                r'\bsave\s*&\s*next\b',  # "Save & Next"
+                r'\barrow\s+right\b',
+                r'^>\s*$',  # Just an arrow
+                r'^→\s*$',  # Unicode arrow
+                r'\bnext\s+step\b',
+                r'\bnext\s+page\b',
+            ]
+
+            # Find all buttons on the page
+            all_buttons = await self.page.locator('button, input[type="button"], input[type="submit"], a[role="button"]').all()
+
+            logger.debug(f"Found {len(all_buttons)} total buttons on the page")
+            found_buttons = []  # Track all visible buttons for debugging
+
+            for button in all_buttons:
+                try:
+                    # Check if button is visible
+                    if not await button.is_visible():
+                        continue
+
+                    # Get button text/label
+                    button_text = await button.text_content() or ""
+                    aria_label = await button.get_attribute('aria-label') or ""
+                    button_type = await button.get_attribute('type') or ""
+                    combined_text = f"{button_text} {aria_label}".lower().strip()
+
+                    if not combined_text:
+                        continue
+
+                    # Track visible buttons for debugging
+                    found_buttons.append(combined_text)
+
+                    # SAFETY CHECK: Never click submit buttons
+                    is_submit = any(re.search(pattern, combined_text, re.IGNORECASE)
+                                   for pattern in submit_patterns)
+
+                    if is_submit:
+                        logger.debug(f"⛔ Skipping SUBMIT button: '{combined_text}'")
+                        continue
+
+                    # Check if it's a Next/Continue button
+                    is_next = any(re.search(pattern, combined_text, re.IGNORECASE)
+                                 for pattern in next_patterns)
+
+                    if is_next:
+                        logger.info(f"✅ Found Next/Continue button: '{combined_text}'")
+
+                        # Click the button
+                        await button.click(timeout=5000)
+                        logger.info(f"🎯 Clicked Next/Continue button successfully")
+
+                        # Wait for page to load
+                        await self.page.wait_for_timeout(2000)
+
+                        return True
+
+                except Exception as e:
+                    logger.debug(f"Error checking button: {e}")
+                    continue
+
+            # Log all found buttons for debugging
+            if found_buttons:
+                logger.info(f"ℹ️ No Next/Continue button found. Visible buttons on page: {found_buttons[:10]}")
+            else:
+                logger.info("ℹ️ No visible buttons found on this page")
+            return False
+
+        except Exception as e:
+            logger.error(f"❌ Error looking for Next button: {e}")
+            return False
+
+    async def _final_gemini_checkpoint(
+        self,
+        unfilled_fields: List[Dict[str, Any]],
+        skipped_fields: List[Dict[str, str]],
+        visible_buttons: List[str],
+        profile: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Final checkpoint before giving up - ask Gemini if there's anything we can still do.
+
+        Args:
+            unfilled_fields: Fields that weren't filled
+            skipped_fields: Fields that were skipped with reasons
+            visible_buttons: List of visible button texts on page
+            profile: User profile data
+
+        Returns:
+            {
+                "can_progress": bool,
+                "confidence": float,
+                "instructions": {...},
+                "green_signal": bool
+            }
+        """
+        try:
+            import google.generativeai as genai
+            import base64
+
+            logger.info("🔍 Final Gemini checkpoint - analyzing if we can progress further...")
+
+            # Take screenshot for visual analysis
+            # Handle both Page and Frame objects
+            try:
+                if hasattr(self.page, 'screenshot'):
+                    screenshot = await self.page.screenshot()
+                else:
+                    # If it's a frame, get the page from it
+                    page = self.page.page
+                    screenshot = await page.screenshot()
+                screenshot_b64 = base64.b64encode(screenshot).decode()
+            except Exception as e:
+                logger.warning(f"Could not take screenshot: {e}")
+                screenshot_b64 = None
+
+            # Prepare unfilled fields summary
+            unfilled_summary = []
+            for field in unfilled_fields[:10]:  # Limit to 10 for token efficiency
+                unfilled_summary.append({
+                    "label": field.get("label", "Unknown"),
+                    "category": field.get("field_category", "unknown"),
+                    "stable_id": field.get("stable_id", "")
+                })
+
+            # Prepare context
+            from components.brains.gemini_field_mapper import GeminiFieldMapper
+            field_mapper = GeminiFieldMapper()
+            profile_context = field_mapper._create_profile_context(profile, context_type="final_checkpoint")
+
+            unfilled_text = "\n".join([f"- {f['label']} ({f['category']})" for f in unfilled_summary]) if unfilled_summary else "None"
+            skipped_text = "\n".join([f"- {s['field']}: {s['reason']}" for s in skipped_fields[:10]]) if skipped_fields else "None"
+            buttons_text = "\n".join([f"- {btn}" for btn in visible_buttons[:15]]) if visible_buttons else "None"
+
+            prompt = f"""
+You are a final checkpoint analyzer for a job application form filling agent. The agent is about to give up, but first you need to determine if there's ANYTHING we can still do to progress.
+
+{profile_context}
+
+CURRENT SITUATION:
+Unfilled Fields:
+{unfilled_text}
+
+Skipped Fields:
+{skipped_text}
+
+Visible Buttons on Page:
+{buttons_text}
+
+CRITICAL QUESTIONS:
+1. Can ANY of the unfilled/skipped fields be filled using the profile data?
+   - Look for phone numbers, names, emails, addresses, etc. that match profile
+   - Can we infer values? (e.g., "Are you 18+?" → Yes if has work experience)
+
+2. Is there a button we should click to progress?
+   - Look for buttons that might continue the form (even if not labeled "Next")
+   - Could "Review", "Save", or other buttons move us forward?
+   - NEVER suggest clicking Submit/Apply/Finish buttons
+
+3. Should we wait for dynamic content to load?
+
+4. Or should we give GREEN SIGNAL (truly nothing more can be done)?
+
+Respond in JSON format:
+{{
+  "can_progress": true/false,
+  "confidence": 0.0-1.0,
+  "green_signal": true/false,
+  "instructions": {{
+    "action": "fill_field" | "click_button" | "wait" | "stop",
+    "details": {{
+      "field_label": "field to fill (if action=fill_field)",
+      "value": "value to use from profile (if action=fill_field)",
+      "button_text": "button to click (if action=click_button)",
+      "wait_ms": 3000,
+      "reasoning": "why this action will help progress"
+    }}
+  }}
+}}
+
+If GREEN SIGNAL (nothing can be done), set:
+- can_progress: false
+- green_signal: true
+- action: "stop"
+"""
+
+            model = genai.GenerativeModel("gemini-2.0-flash")
+            response = model.generate_content([
+                prompt,
+                {
+                    "mime_type": "image/png",
+                    "data": screenshot_b64
+                }
+            ])
+
+            # Parse response
+            import json
+            response_text = response.text
+
+            # Extract JSON from markdown code blocks if present
+            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+            if json_match:
+                response_text = json_match.group(1)
+
+            result = json.loads(response_text)
+
+            if result.get("green_signal"):
+                logger.info("✅ Gemini GREEN SIGNAL: No more actions possible, safe to stop")
+            elif result.get("can_progress"):
+                logger.info(f"🚀 Gemini suggests we can progress: {result.get('instructions', {}).get('details', {}).get('reasoning', 'No reason provided')}")
+            else:
+                logger.warning("⚠️ Gemini uncertain - defaulting to stop")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"❌ Final checkpoint failed: {e}")
+            # Default to green signal if checkpoint fails
+            return {
+                "can_progress": False,
+                "confidence": 0.0,
+                "green_signal": True,
+                "instructions": {"action": "stop", "details": {"reasoning": "Checkpoint failed, defaulting to stop"}}
+            }

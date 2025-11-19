@@ -163,6 +163,9 @@ class GeminiFieldMapper:
             field_category = field.get('field_category', 'text_input')
             options = field.get('options', [])
             
+            # For radio buttons and checkboxes, include question context if available
+            field_question = field.get('field_question', '')
+            
             catalog[field_id] = {
                 'label': label,
                 'field_category': field_category,
@@ -171,7 +174,8 @@ class GeminiFieldMapper:
                 'placeholder': field.get('placeholder', ''),
                 'input_type': field.get('input_type', 'text'),
                 'is_dropdown': 'dropdown' in field_category,
-                'requires_manual_writing': self._requires_manual_writing(label, field_category)
+                'requires_manual_writing': self._requires_manual_writing(label, field_category),
+                'field_question': field_question  # Question text for radio/checkbox groups
             }
         
         return catalog
@@ -203,9 +207,13 @@ class GeminiFieldMapper:
             field_text = f"ID: {field_id}\n"
             field_text += f"  Label: {field_info['label']}\n"
             field_text += f"  Type: {field_info['field_category']}\n"
+            
+            # Include question context for radio/checkbox fields
+            if field_info.get('field_question'):
+                field_text += f"  Question: {field_info['field_question']}\n"
 
             if field_info['options']:
-                options_text = ", ".join([opt['text'] for opt in field_info['options'][:10]])
+                options_text = ", ".join([opt['text'] if isinstance(opt, dict) else str(opt) for opt in field_info['options'][:15]])
                 field_text += f"  Options: [{options_text}]\n"
 
             if field_info['requires_manual_writing']:
@@ -276,6 +284,29 @@ Use the profile data with CONFIDENCE. If the profile contains information, USE I
    - These are NOT honeypots - they are required legal checkboxes that must be checked
    - Examples: "I agree to the terms and conditions", "I acknowledge the privacy policy", "Accept terms"
    - DO NOT skip these just because they have "honeypot" in the ID - that's a false positive from bad naming by website developers
+
+2.2. RADIO BUTTONS & RADIO GROUPS: RETURN EXACT OPTION TEXT, NOT BOOLEAN
+   - CRITICAL: For radio buttons, you MUST return the EXACT text of the option to select from the available options
+   - NEVER return "true", "false", "Yes", "No" as generic values - these must match the actual option text shown
+   - Example: If the question is "Are you a veteran?" and options are ["Veteran", "Not a Veteran", "Decline to Answer"]
+     * CORRECT: "ID: veteran_status -> DROPDOWN: Not a Veteran" (exact option text)
+     * WRONG: "ID: veteran_status -> SIMPLE: false" (boolean value - this will fail!)
+   - Example: If question is "Gender?" and options are ["Male", "Female", "Non-binary", "Prefer not to say"]
+     * CORRECT: "ID: gender -> DROPDOWN: Male" (exact option from list)
+     * WRONG: "ID: gender -> SIMPLE: Male" (should be DROPDOWN with exact text from options)
+   - The system needs the exact option text to click the right radio button
+   - Always use the DROPDOWN type for radio buttons and provide the exact option text to select
+
+2.3. CHECKBOX GROUPS: SINGLE CHECKBOX vs MULTI-SELECT
+   - SINGLE CHECKBOX (e.g., "Do you have work authorization?"):
+     * If only ONE checkbox in the group, return boolean
+     * Format: "ID: work_auth -> SIMPLE: true" or "SIMPLE: false"
+   - MULTI-SELECT CHECKBOXES (e.g., "What is your race/ethnicity? Select all that apply"):
+     * If MULTIPLE checkboxes in the group, return comma-separated list of options to check
+     * Format: "ID: race_group -> MULTISELECT: Asian, White" (select multiple)
+     * Format: "ID: sexual_orientation -> MULTISELECT: Prefer not to answer" (select one from many)
+   - Use profile data to determine which options to select
+   - For diversity questions, use profile's demographic data confidently when available
 
 2.5. MULTISELECT SKILLS: For Workday multiselect fields (skills, technologies, tools)
    - Map to relevant skills from profile skill categories
@@ -449,6 +480,15 @@ YOUR RESPONSE:
                                 'type': 'multiselect_skills',
                                 'value': skills,
                                 'source': 'profile_skills',
+                                'label': field_catalog.get(id_part, {}).get('label', '')
+                            }
+                        elif action_type == 'MULTISELECT':
+                            # Parse comma-separated options for checkbox groups
+                            options = [opt.strip() for opt in action_value.split(',') if opt.strip()]
+                            result[id_part] = {
+                                'type': 'multiselect',
+                                'value': options,  # List of options to check
+                                'source': 'ai_multiselect',
                                 'label': field_catalog.get(id_part, {}).get('label', '')
                             }
                         elif action_type == 'MANUAL':

@@ -290,7 +290,10 @@ class DeterministicFieldMapper:
         """
         # Normalize the label
         normalized_label = field_label.lower().strip()
-        normalized_label = re.sub(r'[*:]+$', '', normalized_label)  # Remove trailing * or :
+        # Remove newlines and other whitespace within the label
+        normalized_label = re.sub(r'\s+', ' ', normalized_label)
+        # Remove trailing punctuation like *, :, etc.
+        normalized_label = re.sub(r'[*:]+$', '', normalized_label).strip()
 
         # Strategy 1: Exact match (fastest - 60% hit rate)
         exact_result = self._try_exact_match(normalized_label, profile)
