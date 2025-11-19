@@ -47,6 +47,8 @@ class StateMachine:
         self._current_state_name = initial_state
         self.app_state = ApplicationState(page.url)
         self.max_transitions = 25  # A generous limit to prevent runaways
+        self.checkpoint_attempts = 0  # Track how many times we've called final checkpoint
+        self.max_checkpoint_attempts = 2  # Max checkpoint retries to prevent infinite loops
 
     def add_state(self, name: str, handler: Callable[[ApplicationState], Awaitable[Optional[str]]]):
         """Register a state and its corresponding handler function."""
@@ -64,7 +66,8 @@ class StateMachine:
                 self._current_state_name = 'fail'
                 break
 
-            if self._is_stuck_in_loop():
+            is_stuck = await self._is_stuck_in_loop()
+            if is_stuck:
                 logger.critical("🔁 State machine is stuck in a loop without making progress. Halting.")
                 self.app_state.context['human_intervention_reason'] = "Agent is stuck in a loop on the same page. Please review."
                 self._current_state_name = 'human_intervention'
@@ -106,7 +109,7 @@ class StateMachine:
         logger.info(f"🏁 State machine finished. Final state: {self._current_state_name or 'success'}")
         return self.app_state
 
-    def _is_stuck_in_loop(self) -> bool:
+    async def _is_stuck_in_loop(self) -> bool:
         """
         Enhanced loop detector that catches:
         - Short loops (A→B→A→B)
@@ -155,6 +158,17 @@ class StateMachine:
                 any_progress = any(entry.get('progress', False) for entry in last_four)
                 if not any_progress:
                     logger.critical(f"🔁 Stagnation detected: Same URL and field count for 4 transitions without progress")
+
+                    # Before declaring stuck, try final Gemini checkpoint
+                    if self.checkpoint_attempts < self.max_checkpoint_attempts:
+                        checkpoint_result = await self._try_final_checkpoint()
+                        if checkpoint_result:
+                            # Checkpoint gave us instructions, let's continue
+                            logger.info("🚀 Checkpoint provided instructions - continuing")
+                            self.checkpoint_attempts += 1
+                            return False  # Not stuck, checkpoint will help
+
+                    # Either checkpoint failed or max attempts reached
                     return True
 
         # Strategy 3: Classic A→B→A→B pattern detection (backward compatibility)
@@ -180,3 +194,99 @@ class StateMachine:
                 return True
 
         return False
+
+    async def _try_final_checkpoint(self) -> bool:
+        """
+        Call the final Gemini checkpoint to see if we can still progress.
+
+        Returns:
+            bool: True if checkpoint gave us instructions to execute, False otherwise
+        """
+        try:
+            logger.info("🔍 Attempting final Gemini checkpoint before giving up...")
+
+            # Get the form filler from context if available
+            form_filler = self.app_state.context.get('form_filler')
+            profile = self.app_state.context.get('profile')
+
+            if not form_filler or not profile:
+                logger.warning("⚠️ Cannot run checkpoint - form_filler or profile not in context")
+                return False
+
+            # Collect unfilled fields and buttons
+            try:
+                from components.executors.field_interactor import FieldInteractor
+                interactor = FieldInteractor(self.page)
+                all_fields = await interactor.get_all_form_fields(extract_options=False)
+
+                # Get visible buttons
+                all_buttons = await self.page.locator('button, input[type="button"], input[type="submit"], a[role="button"]').all()
+                visible_buttons = []
+                for button in all_buttons:
+                    if await button.is_visible():
+                        button_text = await button.text_content() or ""
+                        if button_text.strip():
+                            visible_buttons.append(button_text.strip())
+
+            except Exception as e:
+                logger.error(f"Error collecting page state for checkpoint: {e}")
+                all_fields = []
+                visible_buttons = []
+
+            # Get skipped fields from context
+            skipped_fields = self.app_state.context.get('skipped_fields', [])
+
+            # Call the checkpoint
+            checkpoint_result = await form_filler._final_gemini_checkpoint(
+                unfilled_fields=all_fields,
+                skipped_fields=skipped_fields,
+                visible_buttons=visible_buttons,
+                profile=profile
+            )
+
+            # Check the result
+            if checkpoint_result.get('green_signal'):
+                logger.info("✅ Gemini GREEN SIGNAL - safe to stop")
+                return False
+
+            if checkpoint_result.get('can_progress'):
+                # Execute the instructions
+                instructions = checkpoint_result.get('instructions', {})
+                action = instructions.get('action')
+                details = instructions.get('details', {})
+
+                logger.info(f"🎯 Executing checkpoint instruction: {action}")
+
+                if action == 'fill_field':
+                    # Store the field to fill in context for the next iteration
+                    self.app_state.context['checkpoint_fill_field'] = {
+                        'label': details.get('field_label'),
+                        'value': details.get('value')
+                    }
+                    return True
+
+                elif action == 'click_button':
+                    # Try to click the button
+                    button_text = details.get('button_text', '')
+                    try:
+                        button = self.page.get_by_text(button_text, exact=False).first
+                        await button.click(timeout=5000)
+                        logger.info(f"✅ Clicked button: '{button_text}'")
+                        await self.page.wait_for_timeout(2000)
+                        self.app_state.context['progress_made'] = True
+                        return True
+                    except Exception as e:
+                        logger.warning(f"Failed to click button '{button_text}': {e}")
+                        return False
+
+                elif action == 'wait':
+                    wait_ms = details.get('wait_ms', 3000)
+                    logger.info(f"⏳ Waiting {wait_ms}ms for dynamic content...")
+                    await self.page.wait_for_timeout(wait_ms)
+                    return True
+
+            return False
+
+        except Exception as e:
+            logger.error(f"❌ Final checkpoint failed: {e}")
+            return False

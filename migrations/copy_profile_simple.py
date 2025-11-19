@@ -1,0 +1,131 @@
+"""
+Simple profile copy using only existing model fields
+"""
+
+import sys
+from pathlib import Path
+
+# Add parent directory to path
+sys.path.append(str(Path(__file__).parent.parent))
+
+from database_config import SessionLocal, User, UserProfile
+from uuid import UUID
+import uuid
+
+def copy_profile_simple():
+    """Copy profile using only fields that exist in the model"""
+
+    # Source: chordiasahil24@gmail.com (has profile)
+    source_id = "de18962e-29c6-4227-9b0e-28287fdbef3e"
+    # Target: chordiasahil2412@gmail.com (needs profile)
+    target_id = "033b8626-a468-48fc-9601-fdaec6f0fee9"
+
+    db = SessionLocal()
+
+    try:
+        # Convert to UUID
+        source_uuid = UUID(source_id)
+        target_uuid = UUID(target_id)
+
+        # Get source profile
+        source_profile = db.query(UserProfile).filter(UserProfile.user_id == source_uuid).first()
+        if not source_profile:
+            print("ERROR: Source profile not found")
+            return False
+
+        # Get target user
+        target_user = db.query(User).filter(User.id == target_uuid).first()
+        if not target_user:
+            print("ERROR: Target user not found")
+            return False
+
+        # Check if target already has a profile
+        existing_profile = db.query(UserProfile).filter(UserProfile.user_id == target_uuid).first()
+        if existing_profile:
+            print(f"Deleting existing profile for {target_user.email}...")
+            db.delete(existing_profile)
+            db.commit()
+
+        print(f"\n{'='*80}")
+        print(f"Creating profile for: {target_user.email}")
+        print(f"{'='*80}\n")
+
+        # Create new profile with only the fields that exist in the model
+        new_profile = UserProfile(
+            id=uuid.uuid4(),
+            user_id=target_uuid,
+
+            # Basic Information
+            resume_url=source_profile.resume_url,
+            cover_letter_template=source_profile.cover_letter_template,
+            date_of_birth=source_profile.date_of_birth,
+            gender=source_profile.gender,
+            nationality=source_profile.nationality,
+            preferred_language=source_profile.preferred_language,
+            phone=source_profile.phone,
+            address=source_profile.address,
+            city=source_profile.city,
+            state=source_profile.state,
+            zip_code=source_profile.zip_code,
+            country=source_profile.country,
+            country_code=source_profile.country_code,
+            state_code=source_profile.state_code,
+
+            # Social Links
+            linkedin=source_profile.linkedin,
+            github=source_profile.github,
+            other_links=source_profile.other_links,
+
+            # Education, Work, Projects, Skills (JSON)
+            education=source_profile.education,
+            work_experience=source_profile.work_experience,
+            projects=source_profile.projects,
+            skills=source_profile.skills,
+
+            # Additional Info
+            summary=source_profile.summary,
+            disabilities=source_profile.disabilities,
+            veteran_status=source_profile.veteran_status,
+            visa_status=source_profile.visa_status,
+            visa_sponsorship=source_profile.visa_sponsorship,
+            preferred_location=source_profile.preferred_location,
+            willing_to_relocate=source_profile.willing_to_relocate
+        )
+
+        db.add(new_profile)
+        db.commit()
+
+        print("SUCCESS: Profile created successfully!")
+        print(f"\nProfile details:")
+        print(f"  User: {target_user.email}")
+        print(f"  Phone: {new_profile.phone}")
+        print(f"  LinkedIn: {new_profile.linkedin}")
+        print(f"  GitHub: {new_profile.github}")
+        print(f"  Resume URL: {new_profile.resume_url}")
+
+        education_count = len(new_profile.education) if new_profile.education else 0
+        work_count = len(new_profile.work_experience) if new_profile.work_experience else 0
+        print(f"  Education entries: {education_count}")
+        print(f"  Work experience entries: {work_count}")
+        print(f"\n{'='*80}\n")
+
+        return True
+
+    except Exception as e:
+        print(f"ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        db.rollback()
+        return False
+
+    finally:
+        db.close()
+
+
+if __name__ == "__main__":
+    print("\n" + "="*80)
+    print("CREATE PROFILE FOR chordiasahil2412@gmail.com")
+    print("="*80 + "\n")
+
+    success = copy_profile_simple()
+    sys.exit(0 if success else 1)

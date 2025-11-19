@@ -45,6 +45,53 @@ from mimikree_service import mimikree_service
 #Initialize the app
 app = Flask(__name__)
 
+# ============= VNC STREAMING SETUP (NEW) =============
+# Global flag for VNC availability
+VNC_ENABLED = False
+socketio = None
+
+try:
+    from flask_socketio import SocketIO
+    
+    # Initialize Socket.IO for VNC streaming
+    socketio = SocketIO(
+        app, 
+        cors_allowed_origins="*",
+        async_mode='threading',
+        logger=False,  # Reduce verbosity
+        engineio_logger=False
+    )
+    
+    # Import VNC components
+    try:
+        from vnc_api_endpoints import vnc_api
+        from vnc_socketio_handler import setup_vnc_socketio
+        
+        # Setup VNC WebSocket handlers
+        setup_vnc_socketio(socketio)
+        
+        # Register VNC API endpoints
+        app.register_blueprint(vnc_api)
+        
+        VNC_ENABLED = True
+        logging.info("✅ VNC streaming initialized successfully")
+        
+    except ImportError as e:
+        VNC_ENABLED = False
+        logging.warning(f"⚠️ VNC endpoints not available: {e}")
+        logging.info("   VNC mode disabled - will use standard mode")
+        logging.info("   This is normal for local development without VNC dependencies")
+        
+except ImportError as e:
+    # Flask-SocketIO not installed
+    VNC_ENABLED = False
+    socketio = None
+    logging.warning(f"⚠️ Flask-SocketIO not installed: {e}")
+    logging.info("   VNC streaming disabled - will use standard mode")
+    logging.info("   Install with: pip install flask-socketio")
+    
+# ============= END VNC SETUP =============
+
 # Configure CORS for development and production
 # Default includes multiple localhost ports for development and Vercel production
 default_origins = 'http://localhost:3000,http://localhost:3001,http://localhost:5173,https://job-agent-frontend-two.vercel.app'
@@ -1518,7 +1565,7 @@ def apply_batch_jobs():
     """Apply to multiple jobs in batch mode"""
     try:
         data = request.json
-        user_id = request.user_id
+        user_id = request.current_user['id']
 
         if not data:
             logging.error("No data provided in request")
@@ -3942,19 +3989,32 @@ if __name__ == "__main__":
     # Get port from environment variable (Railway, Heroku, etc.) or default to 5000
     port = int(os.getenv('PORT', 5000))
 
-    if is_development:
-        # Development mode with auto-reload disabled to prevent Windows socket issues
-        logging.info(f"🔧 Running in DEVELOPMENT mode on port {port}")
-        app.run(host='0.0.0.0', port=port, debug=True, use_reloader=False)
+    # Use socketio.run() if VNC is enabled, otherwise use app.run()
+    if socketio and VNC_ENABLED:
+        logging.info(f"🚀 Starting server with Socket.IO support on port {port}")
+        logging.info(f"   Mode: {'DEVELOPMENT' if is_development else 'PRODUCTION'}")
+        logging.info(f"   VNC Streaming: ENABLED ✅")
+        
+        socketio.run(
+            app,
+            host='0.0.0.0',
+            port=port,
+            debug=is_development,
+            allow_unsafe_werkzeug=True,
+            use_reloader=False  # Disable reloader to prevent Windows socket issues
+        )
     else:
-        # Production mode - more stable
-        logging.info(f"🚀 Running in PRODUCTION mode on port {port}")
-        from waitress import serve
-        try:
-            serve(app, host='0.0.0.0', port=port, threads=4)
-        except ImportError:
-            logging.warning("Waitress not installed, falling back to Flask dev server")
-            app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+        logging.info(f"🚀 Starting server on port {port}")
+        logging.info(f"   Mode: {'DEVELOPMENT' if is_development else 'PRODUCTION'}")
+        logging.info(f"   VNC Streaming: DISABLED (Socket.IO not available)")
+        
+        # Use standard Flask server
+        app.run(
+            host='0.0.0.0',
+            port=port,
+            debug=is_development,
+            use_reloader=False
+        )
 
     # Cleanup on shutdown
     try:

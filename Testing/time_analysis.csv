@@ -1,0 +1,4 @@
+Application Complexity,Count,Avg Time (seconds),Manual Time Estimate (seconds),Time Saved (seconds)
+Simple (<10 fields),1,120.8,900,779.1
+Medium (10-20 fields),3,188.9,1500,1311.1
+Complex (>20 fields),3,320.9,2400,2079.1

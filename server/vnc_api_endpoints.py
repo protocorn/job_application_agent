@@ -1,0 +1,644 @@
+"""
+VNC API Endpoints for Backend
+
+Provides REST API endpoints for managing VNC browser sessions
+"""
+
+import logging
+import asyncio
+import sys
+import os
+from flask import Blueprint, request, jsonify
+
+# Add paths
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'Agents'))
+
+from Agents.components.vnc import vnc_session_manager
+from Agents.job_application_agent import run_links_with_refactored_agent
+from Agents.components.session.session_manager import SessionManager
+from auth import require_auth
+from batch_vnc_manager import batch_vnc_manager
+from dev_browser_session import dev_browser_session
+
+logger = logging.getLogger(__name__)
+
+# Create Blueprint
+vnc_api = Blueprint('vnc_api', __name__)
+
+# Global session manager for persistence
+session_manager = SessionManager(storage_dir="sessions")
+
+# Check if we're in development mode (Windows - no VNC available)
+import os
+import platform
+IS_WINDOWS = platform.system() == 'Windows'
+IS_DEVELOPMENT = os.getenv('FLASK_ENV') == 'development' or IS_WINDOWS
+
+if IS_DEVELOPMENT and IS_WINDOWS:
+    logger.info("🪟 Running on Windows - using dev browser sessions (VNC not available)")
+    logger.info("   VNC will work when deployed to Railway (Linux)")
+else:
+    logger.info("🐧 Running on Linux - VNC fully available")
+
+
+@vnc_api.route("/api/vnc/apply-job", methods=['POST'])
+@require_auth
+def apply_job_with_vnc():
+    """
+    Start job application with VNC streaming enabled
+    
+    Request body:
+    {
+        "jobUrl": "https://job-url.com",
+        "resumeUrl": "https://resume-url.com",
+        "userId": "user-id"
+    }
+    
+    Response:
+    {
+        "success": true,
+        "session_id": "uuid",
+        "vnc_port": 5900,
+        "websocket_url": "wss://your-backend.railway.app/vnc-stream/uuid",
+        "message": "VNC session started"
+    }
+    """
+    try:
+        data = request.json
+        job_url = data.get('jobUrl')
+        user_id = request.current_user['id']
+        
+        if not job_url:
+            return jsonify({"error": "jobUrl is required"}), 400
+        
+        logger.info(f"🎬 Starting VNC job application for user {user_id}")
+        logger.info(f"   Job URL: {job_url}")
+        
+        # Generate session ID
+        import uuid
+        session_id = str(uuid.uuid4())
+        
+        # Start the job application in background with VNC
+        import threading
+        
+        def run_agent_async():
+            """Run agent in background thread"""
+            try:
+                # Create new event loop for this thread
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                logger.info(f"🤖 Starting agent with VNC for session {session_id}")
+                
+                # Run agent with VNC mode enabled
+                vnc_info = loop.run_until_complete(
+                    run_links_with_refactored_agent(
+                        links=[job_url],
+                        headless=False,  # Must be False for VNC
+                        keep_open=True,  # Keep browser open for user
+                        debug=False,
+                        hold_seconds=0,
+                        slow_mo_ms=0,
+                        job_id=session_id,
+                        jobs_dict={},
+                        session_manager=session_manager,
+                        user_id=user_id,
+                        vnc_mode=True,  # ENABLE VNC!
+                        vnc_port=5900 + len(vnc_session_manager.sessions)  # Auto-assign port
+                    )
+                )
+                
+                logger.info(f"✅ Agent completed for session {session_id}")
+                logger.info(f"   VNC info: {vnc_info}")
+                
+            except Exception as e:
+                logger.error(f"Error in agent thread: {e}")
+            finally:
+                loop.close()
+        
+        # Start agent in background thread
+        thread = threading.Thread(target=run_agent_async, daemon=True)
+        thread.start()
+        
+        # Wait a bit for VNC to initialize
+        import time
+        time.sleep(3)
+        
+        # Return VNC connection info immediately
+        # (Agent will keep browser alive in background)
+        
+        # Determine WebSocket protocol based on environment
+        # Development: ws:// (HTTP)
+        # Production: wss:// (HTTPS)
+        import os
+        is_development = os.getenv('FLASK_ENV') == 'development' or 'localhost' in request.host
+        ws_protocol = 'ws' if is_development else 'wss'
+        
+        # In development, use localhost:6900 (websockify port)
+        # In production, use request.host with /vnc-stream path
+        if is_development:
+            # Local development - direct connection to websockify
+            websocket_url = f"{ws_protocol}://localhost:6900"
+        else:
+            # Production - through backend proxy
+            websocket_url = f"{ws_protocol}://{request.host}/vnc-stream/{session_id}"
+        
+        logger.info(f"📡 WebSocket URL: {websocket_url}")
+        
+        return jsonify({
+            "success": True,
+            "session_id": session_id,
+            "vnc_port": 5900,  # Will be dynamic based on available ports
+            "websocket_url": websocket_url,
+            "websocket_port": 6900,  # Direct websockify port
+            "message": "VNC session started - connecting...",
+            "instructions": "Browser is being filled by agent. You can watch and take over when ready.",
+            "is_development": is_development
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error starting VNC job application: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@vnc_api.route("/api/vnc/sessions", methods=['GET'])
+@require_auth
+def get_vnc_sessions():
+    """
+    Get all active VNC sessions for current user
+    
+    Response:
+    {
+        "sessions": [
+            {
+                "session_id": "uuid",
+                "job_url": "https://...",
+                "vnc_port": 5900,
+                "status": "active",
+                "created_at": "2025-01-18T10:30:00"
+            }
+        ]
+    }
+    """
+    try:
+        user_id = request.current_user['id']
+        sessions = vnc_session_manager.get_user_sessions(user_id)
+        
+        return jsonify({
+            "success": True,
+            "sessions": sessions
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error getting VNC sessions: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@vnc_api.route("/api/vnc/session/<session_id>", methods=['GET'])
+@require_auth
+def get_vnc_session(session_id):
+    """
+    Get specific VNC session info
+    
+    Response:
+    {
+        "session_id": "uuid",
+        "job_url": "https://...",
+        "vnc_port": 5900,
+        "websocket_url": "wss://...",
+        "status": "active"
+    }
+    """
+    try:
+        # Try VNC session manager first
+        session = vnc_session_manager.get_session(session_id)
+        
+        # Fall back to dev session manager (for Windows local development)
+        if not session:
+            session = dev_browser_session.get_session(session_id)
+        
+        if not session:
+            return jsonify({"error": "Session not found"}), 404
+        
+        # Verify user owns this session
+        user_id = request.current_user['id']
+        if session.get('user_id') != user_id:
+            return jsonify({"error": "Unauthorized"}), 403
+        
+        # Check if this is a dev session (Windows local development)
+        is_dev_session = session.get('dev_mode', False)
+        
+        if is_dev_session:
+            # Development mode - VNC not available
+            # Browser is open locally but no VNC stream
+            logger.info(f"📝 Returning dev session info for {session_id}")
+            return jsonify({
+                "success": True,
+                "session_id": session_id,
+                "job_url": session.get('job_url'),
+                "vnc_port": None,
+                "websocket_url": None,  # No WebSocket in dev mode
+                "status": session.get('status'),
+                "created_at": None,
+                "is_development": True,
+                "dev_mode": True,
+                "message": "⚠️ VNC not available on Windows. Browser is open locally - check your screen! Deploy to Railway for VNC streaming."
+            }), 200
+        
+        # Real VNC session
+        # Determine WebSocket URL based on environment
+        import os
+        is_development = os.getenv('FLASK_ENV') == 'development' or 'localhost' in request.host
+        ws_protocol = 'ws' if is_development else 'wss'
+        
+        if is_development:
+            websocket_url = f"{ws_protocol}://localhost:6900"
+        else:
+            websocket_url = f"{ws_protocol}://{request.host}/vnc-stream/{session_id}"
+        
+        return jsonify({
+            "success": True,
+            "session_id": session_id,
+            "job_url": session.get('job_url'),
+            "vnc_port": session.get('vnc_port'),
+            "websocket_url": websocket_url,
+            "websocket_port": 6900,
+            "status": session.get('status'),
+            "created_at": session.get('created_at'),
+            "is_development": is_development,
+            "dev_mode": False
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error getting VNC session: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@vnc_api.route("/api/vnc/session/<session_id>", methods=['DELETE'])
+@require_auth
+def close_vnc_session(session_id):
+    """
+    Close a VNC session and cleanup resources
+    
+    Response:
+    {
+        "success": true,
+        "message": "Session closed"
+    }
+    """
+    try:
+        session = vnc_session_manager.get_session(session_id)
+        
+        if not session:
+            return jsonify({"error": "Session not found"}), 404
+        
+        # Verify user owns this session
+        user_id = request.current_user['id']
+        if session.get('user_id') != user_id:
+            return jsonify({"error": "Unauthorized"}), 403
+        
+        # Close session asynchronously
+        loop = asyncio.new_event_loop()
+        success = loop.run_until_complete(
+            vnc_session_manager.close_session(session_id)
+        )
+        loop.close()
+        
+        if success:
+            return jsonify({
+                "success": True,
+                "message": "VNC session closed"
+            }), 200
+        else:
+            return jsonify({"error": "Failed to close session"}), 500
+            
+    except Exception as e:
+        logger.error(f"Error closing VNC session: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@vnc_api.route("/api/vnc/health", methods=['GET'])
+def vnc_health():
+    """
+    Health check for VNC infrastructure
+    
+    Response:
+    {
+        "status": "healthy",
+        "active_sessions": 3,
+        "available_ports": 7,
+        "vnc_available": true
+    }
+    """
+    try:
+        active_count = len(vnc_session_manager.sessions)
+        available_ports = vnc_session_manager.max_sessions - active_count
+        
+        return jsonify({
+            "status": "healthy",
+            "active_sessions": active_count,
+            "available_ports": available_ports,
+            "max_sessions": vnc_session_manager.max_sessions,
+            "vnc_available": True
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error in VNC health check: {e}")
+        return jsonify({
+            "status": "unhealthy",
+            "error": str(e),
+            "vnc_available": False
+        }), 500
+
+
+# ============= BATCH VNC ENDPOINTS (NEW) =============
+
+@vnc_api.route("/api/vnc/batch-apply", methods=['POST'])
+@require_auth
+def batch_apply_with_vnc():
+    """
+    Start batch job application with VNC sessions
+    Processes jobs sequentially, each gets own VNC session
+    
+    Request:
+    {
+        "jobUrls": ["url1", "url2", "url3"]
+    }
+    
+    Response:
+    {
+        "success": true,
+        "batch_id": "batch-uuid",
+        "total_jobs": 3,
+        "jobs": [...]
+    }
+    """
+    try:
+        data = request.json
+        job_urls = data.get('jobUrls', [])
+        user_id = request.current_user['id']
+        
+        if not job_urls or not isinstance(job_urls, list):
+            return jsonify({"error": "jobUrls must be a non-empty list"}), 400
+        
+        if len(job_urls) > 10:
+            return jsonify({"error": "Maximum 10 jobs per batch"}), 400
+        
+        logger.info(f"📦 Starting batch VNC apply for user {user_id}")
+        logger.info(f"   Jobs: {len(job_urls)}")
+        
+        # Create batch
+        batch_id = batch_vnc_manager.create_batch(user_id, job_urls)
+        batch = batch_vnc_manager.get_batch(batch_id)
+        
+        # Start processing in background thread
+        import threading
+        
+        def process_batch_sequential():
+            """Process all jobs in the batch sequentially"""
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                for idx, job in enumerate(batch.jobs):
+                    try:
+                        logger.info(f"🎯 Processing job {idx + 1}/{len(batch.jobs)}: {job.job_url}")
+                        
+                        # Update status: filling
+                        batch_vnc_manager.update_job_status(
+                            batch_id, job.job_id, 'filling', progress=0
+                        )
+                        
+                        # Calculate VNC port (5900, 5901, 5902, etc.)
+                        vnc_port = 5900 + idx
+                        
+                        # Run agent with VNC mode (agent creates VNC internally)
+                        vnc_info = loop.run_until_complete(
+                            run_links_with_refactored_agent(
+                                links=[job.job_url],
+                                headless=False,  # Visible on virtual display
+                                keep_open=True,  # Keep browser open!
+                                debug=False,
+                                hold_seconds=0,
+                                slow_mo_ms=100,  # Slight slow-mo for visibility
+                                job_id=job.job_id,
+                                jobs_dict={},
+                                session_manager=session_manager,
+                                user_id=user_id,
+                                vnc_mode=True,  # ENABLE VNC!
+                                vnc_port=vnc_port
+                            )
+                        )
+                        
+                        # Check if VNC info was returned
+                        if vnc_info and vnc_info.get('vnc_enabled'):
+                            # VNC mode worked - session was created
+                            vnc_session_id = vnc_info.get('session_id')
+                            actual_vnc_port = vnc_info.get('vnc_port', vnc_port)
+                            
+                            logger.info(f"✅ VNC session active: {vnc_session_id} on port {actual_vnc_port}")
+                        else:
+                            # VNC mode didn't start (Windows/missing dependencies)
+                            # Register as dev session for local testing
+                            logger.warning(f"⚠️ VNC not available - using dev mode for job {job.job_id}")
+                            vnc_session_id = job.job_id
+                            actual_vnc_port = vnc_port
+                            
+                            # Register in dev session manager (allows frontend to query it)
+                            dev_browser_session.register_session(
+                                session_id=job.job_id,
+                                job_url=job.job_url,
+                                user_id=user_id,
+                                current_url=job.job_url  # Fallback URL
+                            )
+                            
+                            logger.info(f"📝 Registered dev session: {job.job_id} (browser is open locally)")
+                        
+                        # Determine WebSocket URL
+                        is_development = os.getenv('FLASK_ENV') == 'development'
+                        ws_protocol = 'ws' if is_development else 'wss'
+                        
+                        if is_development:
+                            vnc_url = f"{ws_protocol}://localhost:{6900 + idx}"
+                        else:
+                            vnc_url = f"{ws_protocol}://your-backend.railway.app/vnc-stream/{vnc_session_id}"
+                        
+                        # Update status: ready for review
+                        batch_vnc_manager.update_job_status(
+                            batch_id, job.job_id, 'ready_for_review',
+                            progress=100,
+                            vnc_session_id=vnc_session_id,
+                            vnc_port=actual_vnc_port,
+                            vnc_url=vnc_url
+                        )
+                        
+                        logger.info(f"✅ Job {idx + 1} ready for review: {job.job_url}")
+                        
+                    except Exception as e:
+                        logger.error(f"❌ Job {idx + 1} failed: {e}")
+                        batch_vnc_manager.update_job_status(
+                            batch_id, job.job_id, 'failed',
+                            error=str(e)
+                        )
+                
+                # Mark batch as completed
+                batch.status = 'completed'
+                logger.info(f"✅ Batch {batch_id} processing completed")
+                
+            except Exception as e:
+                logger.error(f"Error processing batch {batch_id}: {e}")
+                batch.status = 'failed'
+            finally:
+                loop.close()
+        
+        # Start background processing
+        thread = threading.Thread(target=process_batch_sequential, daemon=True)
+        thread.start()
+        
+        # Return initial batch status immediately
+        return jsonify({
+            "success": True,
+            "batch_id": batch_id,
+            "total_jobs": len(job_urls),
+            "jobs": batch.to_dict()['jobs'],
+            "message": f"Started processing {len(job_urls)} jobs sequentially"
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error starting batch VNC apply: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@vnc_api.route("/api/vnc/batch/<batch_id>/status", methods=['GET'])
+@require_auth
+def get_batch_status(batch_id):
+    """
+    Get current status of batch and all jobs
+    Frontend polls this every 2 seconds for updates
+    
+    Response:
+    {
+        "batch_id": "uuid",
+        "status": "processing|completed",
+        "total_jobs": 5,
+        "completed_jobs": 2,
+        "ready_for_review": 1,
+        "filling_jobs": 1,
+        "jobs": [...]
+    }
+    """
+    try:
+        batch = batch_vnc_manager.get_batch(batch_id)
+        
+        if not batch:
+            return jsonify({"error": "Batch not found"}), 404
+        
+        # Verify user owns this batch
+        user_id = request.current_user['id']
+        if batch.user_id != user_id:
+            return jsonify({"error": "Unauthorized"}), 403
+        
+        return jsonify(batch.to_dict()), 200
+        
+    except Exception as e:
+        logger.error(f"Error getting batch status: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@vnc_api.route("/api/vnc/batch/<batch_id>/job/<job_id>/submit", methods=['POST'])
+@require_auth
+def mark_job_submitted(batch_id, job_id):
+    """
+    Mark a job as submitted by user
+    Called after user manually submits the application
+    
+    Response:
+    {
+        "success": true,
+        "message": "Job marked as submitted"
+    }
+    """
+    try:
+        batch = batch_vnc_manager.get_batch(batch_id)
+        
+        if not batch:
+            return jsonify({"error": "Batch not found"}), 404
+        
+        # Verify user owns this batch
+        user_id = request.current_user['id']
+        if batch.user_id != user_id:
+            return jsonify({"error": "Unauthorized"}), 403
+        
+        # Mark job as completed
+        success = batch_vnc_manager.mark_job_submitted(batch_id, job_id)
+        
+        if success:
+            logger.info(f"✅ Job {job_id} marked as submitted by user")
+            
+            # Check if batch is complete
+            if batch_vnc_manager.is_batch_complete(batch_id):
+                logger.info(f"🎉 Batch {batch_id} fully completed!")
+            
+            return jsonify({
+                "success": True,
+                "message": "Job marked as submitted"
+            }), 200
+        else:
+            return jsonify({"error": "Job not found"}), 404
+            
+    except Exception as e:
+        logger.error(f"Error marking job submitted: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@vnc_api.route("/api/vnc/batch/<batch_id>", methods=['DELETE'])
+@require_auth
+def delete_batch(batch_id):
+    """
+    Delete a batch and close all associated VNC sessions
+    
+    Response:
+    {
+        "success": true,
+        "message": "Batch and all sessions closed"
+    }
+    """
+    try:
+        batch = batch_vnc_manager.get_batch(batch_id)
+        
+        if not batch:
+            return jsonify({"error": "Batch not found"}), 404
+        
+        # Verify user owns this batch
+        user_id = request.current_user['id']
+        if batch.user_id != user_id:
+            return jsonify({"error": "Unauthorized"}), 403
+        
+        # Close all VNC sessions for this batch
+        loop = asyncio.new_event_loop()
+        for job in batch.jobs:
+            if job.vnc_session_id:
+                try:
+                    loop.run_until_complete(
+                        vnc_session_manager.close_session(job.vnc_session_id)
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to close VNC session {job.vnc_session_id}: {e}")
+        loop.close()
+        
+        # Remove batch
+        if batch_id in batch_vnc_manager.batches:
+            del batch_vnc_manager.batches[batch_id]
+        
+        logger.info(f"✅ Batch {batch_id} deleted")
+        
+        return jsonify({
+            "success": True,
+            "message": "Batch and all VNC sessions closed"
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error deleting batch: {e}")
+        return jsonify({"error": str(e)}), 500
+

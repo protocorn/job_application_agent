@@ -1,0 +1,4 @@
+Failure Type,Count,% of Total,Fix Priority
+Popup Not Resolved,7,100.0%,High
+Field Detection,7,100.0%,Medium
+Auth Required,1,14.3%,Low (expected)

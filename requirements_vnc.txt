@@ -1,0 +1,16 @@
+# VNC Streaming Dependencies for Cloud Browser Automation
+
+# WebSocket support for VNC streaming
+websockets==12.0
+python-socketio==5.11.0
+flask-socketio==5.3.6
+
+# noVNC proxy (converts VNC to WebSocket)
+websockify==0.11.0
+
+# Virtual display helpers
+pyvirtualdisplay==3.0
+
+# Additional browser automation helpers
+pillow==10.1.0  # For screenshot processing
+

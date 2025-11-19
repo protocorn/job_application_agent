@@ -1,0 +1,9 @@
+{
+  "comment": "Add these dependencies to Website/job-agent-frontend/package.json",
+  "dependencies": {
+    "@novnc/novnc": "^1.4.0",
+    "socket.io-client": "^4.7.2"
+  },
+  "install_command": "npm install @novnc/novnc socket.io-client"
+}
+
