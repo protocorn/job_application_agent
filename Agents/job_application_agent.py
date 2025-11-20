@@ -116,6 +116,10 @@ class RefactoredJobAgent:
                 logger.info(f"✅ VNC environment ready on port {self.vnc_port}")
                 logger.info(f"📺 Display: {self.vnc_coordinator.virtual_display.display}")
                 
+                # CRITICAL: Store VNC session info for later retrieval
+                self.vnc_session_started = True
+                self.vnc_start_url = None  # Will be set when we navigate
+                
                 # Get page from VNC coordinator
                 page = self.vnc_coordinator.get_page()
                 

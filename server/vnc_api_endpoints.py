@@ -8,6 +8,7 @@ import logging
 import asyncio
 import sys
 import os
+from datetime import datetime
 from flask import Blueprint, request, jsonify
 
 # Add paths
@@ -211,14 +212,22 @@ def get_vnc_session(session_id):
     }
     """
     try:
+        logger.info(f"🔍 Looking for VNC session: {session_id}")
+        
         # Try VNC session manager first
         session = vnc_session_manager.get_session(session_id)
+        logger.info(f"   VNC manager: {'Found' if session else 'Not found'}")
         
         # Fall back to dev session manager (for Windows local development)
         if not session:
             session = dev_browser_session.get_session(session_id)
+            logger.info(f"   Dev manager: {'Found' if session else 'Not found'}")
         
+        # Debug: Log all available sessions
         if not session:
+            logger.warning(f"❌ Session {session_id} not found anywhere")
+            logger.info(f"   Available VNC sessions: {list(vnc_session_manager.sessions.keys())}")
+            logger.info(f"   Available Dev sessions: {list(dev_browser_session.sessions.keys())}")
             return jsonify({"error": "Session not found"}), 404
         
         # Verify user owns this session
@@ -431,29 +440,45 @@ def batch_apply_with_vnc():
                             )
                         )
                         
-                        # Check if VNC info was returned
+                        # VNC info might be None if agent went through human intervention
+                        # Register session info either way so API can find it
+                        vnc_session_id = job.job_id  # Use job_id as session_id
+                        actual_vnc_port = vnc_port
+                        
+                        # CRITICAL: Register session in vnc_session_manager
+                        # This allows /api/vnc/session/{id} to find it
                         if vnc_info and vnc_info.get('vnc_enabled'):
-                            # VNC mode worked - session was created
-                            vnc_session_id = vnc_info.get('session_id')
-                            actual_vnc_port = vnc_info.get('vnc_port', vnc_port)
-                            
-                            logger.info(f"✅ VNC session active: {vnc_session_id} on port {actual_vnc_port}")
+                            logger.info(f"✅ VNC mode active for job {job.job_id}")
                         else:
-                            # VNC mode didn't start (Windows/missing dependencies)
-                            # Register as dev session for local testing
-                            logger.warning(f"⚠️ VNC not available - using dev mode for job {job.job_id}")
-                            vnc_session_id = job.job_id
-                            actual_vnc_port = vnc_port
+                            logger.warning(f"⚠️ VNC info not returned, but browser should be open")
+                        
+                        # Register session in both managers for compatibility
+                        # (agent created VNC but didn't register in global manager)
+                        try:
+                            from Agents.components.vnc import vnc_session_manager as vsm
                             
-                            # Register in dev session manager (allows frontend to query it)
+                            # Store minimal session info that API can retrieve
+                            vsm.sessions[vnc_session_id] = {
+                                'session_id': vnc_session_id,
+                                'user_id': user_id,
+                                'job_url': job.job_url,
+                                'vnc_port': actual_vnc_port,
+                                'status': 'active',
+                                'created_at': datetime.now()
+                            }
+                            
+                            logger.info(f"✅ Registered VNC session {vnc_session_id} in global manager")
+                        except Exception as e:
+                            logger.warning(f"Could not register in VNC manager: {e}")
+                            
+                            # Fallback: Register in dev session manager
                             dev_browser_session.register_session(
                                 session_id=job.job_id,
                                 job_url=job.job_url,
                                 user_id=user_id,
-                                current_url=job.job_url  # Fallback URL
+                                current_url=job.job_url
                             )
-                            
-                            logger.info(f"📝 Registered dev session: {job.job_id} (browser is open locally)")
+                            logger.info(f"📝 Registered as dev session: {job.job_id}")
                         
                         # Determine WebSocket URL
                         is_development = os.getenv('FLASK_ENV') == 'development'
