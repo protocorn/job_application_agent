@@ -3061,9 +3061,14 @@ def root():
     })
 
 @app.route("/api/health", methods=['GET'])
+@app.route("/health", methods=['GET'])
 def health():
     """Detailed health check endpoint"""
-    return jsonify({"status": "ok"})
+    return jsonify({
+        "status": "ok",
+        "vnc_enabled": VNC_ENABLED if 'VNC_ENABLED' in globals() else False,
+        "timestamp": time.time()
+    })
 
 # Session Management API Routes
 

@@ -1,17 +1,6 @@
-providers = ["python"]
-
-[phases.setup]
-nixPkgs = ["python311Full", "python311Packages.pip", "python311Packages.virtualenv", "postgresql"]
-
-[phases.install]
-cmds = [
-  "python -m venv /opt/venv",
-  "/opt/venv/bin/pip install --upgrade pip",
-  "/opt/venv/bin/pip install -r requirements_production.txt"
-]
-
-[phases.build]
-cmds = ["echo 'Build phase complete'"]
+# Force Railway to use Dockerfile instead of Nixpacks auto-detection
+[build]
+builder = "dockerfile"
 
 [start]
-cmd = "/opt/venv/bin/python server/api_server.py"
+cmd = "python server/api_server.py"

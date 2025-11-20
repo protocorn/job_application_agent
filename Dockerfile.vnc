@@ -45,11 +45,11 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
-COPY requirements.txt .
+COPY requirements_production.txt .
 COPY requirements_vnc.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements_production.txt
 RUN pip install --no-cache-dir -r requirements_vnc.txt
 
 # Install Playwright browsers
@@ -69,9 +69,24 @@ EXPOSE 5000
 EXPOSE 5900
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:5000/health')"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=5 \
+    CMD python -c "import requests; requests.get('http://localhost:5000/api/health', timeout=5)" || exit 1
 
-# Start script (will start Xvfb, VNC, and Flask app)
-CMD ["python", "server/api_server.py"]
+# Create startup script that initializes VNC infrastructure
+RUN echo '#!/bin/bash\n\
+# Start Xvfb in background\n\
+Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset &\n\
+export DISPLAY=:99\n\
+sleep 2\n\
+\n\
+# Start x11vnc in background\n\
+x11vnc -display :99 -nopw -forever -shared -rfbport 5900 &\n\
+sleep 2\n\
+\n\
+# Start Flask application\n\
+python server/api_server.py\n\
+' > /app/start.sh && chmod +x /app/start.sh
+
+# Start script
+CMD ["/app/start.sh"]
 
