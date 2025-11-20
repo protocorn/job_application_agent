@@ -21,6 +21,7 @@ from Agents.components.session.session_manager import SessionManager
 from auth import require_auth
 from batch_vnc_manager import batch_vnc_manager
 from dev_browser_session import dev_browser_session
+from vnc_stream_proxy import register_vnc_session, unregister_vnc_session
 
 logger = logging.getLogger(__name__)
 
@@ -125,34 +126,37 @@ def apply_job_with_vnc():
         # Wait a bit for VNC to initialize
         import time
         time.sleep(3)
-        
+
+        # Calculate ports (VNC and WebSocket)
+        vnc_port = 5900 + len(vnc_session_manager.sessions)
+        ws_port = 6900 + (vnc_port - 5900)  # Offset from base
+
+        # Register session for WebSocket proxying
+        register_vnc_session(session_id, vnc_port, ws_port)
+        logger.info(f"📝 Registered session {session_id} - VNC:{vnc_port}, WS:{ws_port}")
+
         # Return VNC connection info immediately
         # (Agent will keep browser alive in background)
-        
-        # Determine WebSocket protocol based on environment
-        # Development: ws:// (HTTP)
-        # Production: wss:// (HTTPS)
+
+        # Determine WebSocket protocol and URL based on environment
         import os
         is_development = os.getenv('FLASK_ENV') == 'development' or 'localhost' in request.host
-        ws_protocol = 'ws' if is_development else 'wss'
-        
-        # In development, use localhost:6900 (websockify port)
-        # In production, use request.host with /vnc-stream path
-        if is_development:
-            # Local development - direct connection to websockify
-            websocket_url = f"{ws_protocol}://localhost:6900"
-        else:
-            # Production - through backend proxy
-            websocket_url = f"{ws_protocol}://{request.host}/vnc-stream/{session_id}"
-        
+        ws_protocol = 'ws' if (is_development and 'localhost' in request.host) else 'wss'
+
+        # Use Flask WebSocket route for VNC streaming
+        # This proxies to the local websockify instance
+        websocket_url = f"{ws_protocol}://{request.host}/vnc-stream/{session_id}"
+
         logger.info(f"📡 WebSocket URL: {websocket_url}")
-        
+        logger.info(f"   Session ID: {session_id}")
+        logger.info(f"   Is development: {is_development}")
+
         return jsonify({
             "success": True,
             "session_id": session_id,
-            "vnc_port": 5900,  # Will be dynamic based on available ports
+            "vnc_port": vnc_port,
             "websocket_url": websocket_url,
-            "websocket_port": 6900,  # Direct websockify port
+            "websocket_port": ws_port,
             "message": "VNC session started - connecting...",
             "instructions": "Browser is being filled by agent. You can watch and take over when ready.",
             "is_development": is_development

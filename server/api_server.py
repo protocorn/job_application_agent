@@ -66,16 +66,22 @@ try:
     try:
         from vnc_api_endpoints import vnc_api
         from vnc_socketio_handler import setup_vnc_socketio
-        
-        # Setup VNC WebSocket handlers
+        from vnc_stream_proxy import setup_vnc_websocket_routes
+
+        # Setup VNC WebSocket handlers (Socket.IO based)
         setup_vnc_socketio(socketio)
-        
+
+        # Setup VNC WebSocket proxy routes (Flask-Sock based)
+        vnc_ws_enabled = setup_vnc_websocket_routes(app)
+        if vnc_ws_enabled:
+            logging.info("✅ VNC WebSocket proxy routes registered")
+
         # Register VNC API endpoints
         app.register_blueprint(vnc_api)
-        
+
         VNC_ENABLED = True
         logging.info("✅ VNC streaming initialized successfully")
-        
+
     except ImportError as e:
         VNC_ENABLED = False
         logging.warning(f"⚠️ VNC endpoints not available: {e}")
