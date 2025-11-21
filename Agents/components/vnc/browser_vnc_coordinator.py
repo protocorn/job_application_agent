@@ -277,6 +277,11 @@ class BrowserVNCCoordinator:
         except Exception as e:
             logger.error(f"Failed to inject file: {e}")
             return False
+
+    def get_status(self) -> dict:
+        """Get status of all VNC components"""
+        return {
+            "virtual_display": {
                 "running": self.virtual_display.is_running if self.virtual_display else False,
                 "display": self.virtual_display.display if self.virtual_display else None,
                 "resolution": f"{self.display_width}x{self.display_height}"
