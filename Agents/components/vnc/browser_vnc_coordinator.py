@@ -9,6 +9,7 @@ import logging
 import asyncio
 import subprocess
 import time
+import sys
 from typing import Optional
 from playwright.async_api import Browser, Page, async_playwright
 
@@ -85,17 +86,19 @@ class BrowserVNCCoordinator:
             # Step 2.5: Start websockify proxy (WebSocket → VNC)
             logger.info(f"🔌 Starting websockify proxy WS:{self.ws_port} → VNC:{self.vnc_port}...")
             try:
-                # Start websockify as a subprocess (no --daemon, we manage it)
-                # Redirect output to DEVNULL to avoid blocking
+                # Start websockify as a subprocess using python -m to ensure it uses the same environment
+                cmd = [
+                    sys.executable, '-m', 'websockify',
+                    '--verbose',
+                    str(self.ws_port),
+                    f'localhost:{self.vnc_port}'
+                ]
+                
                 self.websockify_process = subprocess.Popen(
-                    [
-                        'websockify',
-                        '--verbose',  # Enable logging
-                        str(self.ws_port),  # WebSocket port
-                        f'localhost:{self.vnc_port}'  # VNC target
-                    ],
-                    stdout=subprocess.DEVNULL,  # Suppress output
-                    stderr=subprocess.DEVNULL
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
                 )
                 
                 # Give it a moment to start and bind to port
@@ -103,13 +106,20 @@ class BrowserVNCCoordinator:
                 
                 # Check if it's still running
                 if self.websockify_process.poll() is not None:
-                    # Process exited - check return code
+                    # Process exited - capture output
+                    _, stderr = self.websockify_process.communicate()
                     returncode = self.websockify_process.returncode
-                    logger.error(f"Websockify failed to start (exit code: {returncode})")
+                    
+                    logger.error(f"❌ Websockify failed to start (exit code: {returncode})")
+                    logger.error(f"   Error output: {stderr}")
+                    
                     logger.warning("Continuing without websockify (Flask-Sock will handle WebSocket directly)")
                     self.websockify_process = None
                 else:
                     logger.info(f"✅ Websockify proxy started on port {self.ws_port} (PID: {self.websockify_process.pid})")
+                    
+                    # Read startup line to confirm it's listening (optional, non-blocking check)
+                    # We won't block here, just assume it's good if it didn't exit
                     
             except FileNotFoundError:
                 logger.warning("websockify command not found - continuing without it")
