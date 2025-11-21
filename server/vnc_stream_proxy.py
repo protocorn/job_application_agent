@@ -67,7 +67,10 @@ def setup_vnc_websocket_routes(app):
 
             if not session_ports:
                 logger.error(f"❌ No VNC session found for: {session_id}")
-                ws.close(reason="Session not found")
+                try:
+                    ws.close(1008, "Session not found")  # 1008 = Policy Violation
+                except:
+                    pass
                 return
 
             ws_port = session_ports['ws_port']
@@ -91,9 +94,12 @@ def setup_vnc_websocket_routes(app):
                                 data = data.encode()
                             vnc_socket.sendall(data)
                     except Exception as e:
-                        logger.error(f"Error forwarding to VNC: {e}")
+                        logger.debug(f"Client → VNC forwarding ended: {e}")
                     finally:
-                        vnc_socket.close()
+                        try:
+                            vnc_socket.close()
+                        except:
+                            pass
 
                 def forward_to_client():
                     """Forward data from VNC to client"""
@@ -104,9 +110,12 @@ def setup_vnc_websocket_routes(app):
                                 break
                             ws.send(data)
                     except Exception as e:
-                        logger.error(f"Error forwarding to client: {e}")
+                        logger.debug(f"VNC → Client forwarding ended: {e}")
                     finally:
-                        ws.close()
+                        try:
+                            ws.close()
+                        except:
+                            pass
 
                 # Start forwarding threads
                 client_thread = threading.Thread(target=forward_to_vnc, daemon=True)
@@ -123,10 +132,16 @@ def setup_vnc_websocket_routes(app):
 
             except ConnectionRefusedError:
                 logger.error(f"❌ Could not connect to websockify on port {ws_port}")
-                ws.close(reason="Websockify not available")
+                try:
+                    ws.close(1011, "Websockify not available")  # Use numeric code instead of reason kwarg
+                except:
+                    pass
             except Exception as e:
                 logger.error(f"❌ Error in VNC proxy: {e}")
-                ws.close(reason=str(e))
+                try:
+                    ws.close(1011, str(e))  # Use numeric code instead of reason kwarg
+                except:
+                    pass
 
         logger.info("✅ VNC WebSocket proxy routes registered (Flask-Sock)")
         return True
