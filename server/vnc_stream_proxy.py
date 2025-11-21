@@ -62,7 +62,7 @@ def setup_vnc_websocket_routes(app):
             """
             logger.info(f"🔌 New VNC WebSocket connection for session: {session_id}")
 
-            # Get the websockify port for this session
+            # Get the VNC port for this session
             session_ports = get_vnc_session_port(session_id)
 
             if not session_ports:
@@ -73,16 +73,20 @@ def setup_vnc_websocket_routes(app):
                     pass
                 return
 
-            ws_port = session_ports['ws_port']
-            logger.info(f"📡 Proxying to websockify on localhost:{ws_port}")
+            # CRITICAL FIX: Connect directly to VNC server (TCP), not websockify
+            # The frontend connects to this Flask-Sock endpoint via WebSocket.
+            # We must unwrap the WebSocket frames and forward raw TCP to the VNC server.
+            # Connecting to websockify (6900) would fail because it expects a WebSocket handshake.
+            vnc_port = session_ports['vnc_port']
+            logger.info(f"📡 Proxying directly to VNC server on localhost:{vnc_port}")
 
-            # Connect to local websockify
+            # Connect to local VNC server
             try:
                 vnc_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                vnc_socket.connect(('localhost', ws_port))
-                logger.info(f"✅ Connected to websockify for session {session_id}")
+                vnc_socket.connect(('localhost', vnc_port))
+                logger.info(f"✅ Connected to VNC server for session {session_id}")
 
-                # Proxy data between client WebSocket and websockify
+                # Proxy data between client WebSocket and VNC server
                 def forward_to_vnc():
                     """Forward data from client to VNC"""
                     try:
@@ -131,9 +135,9 @@ def setup_vnc_websocket_routes(app):
                 logger.info(f"🔌 VNC WebSocket closed for session {session_id}")
 
             except ConnectionRefusedError:
-                logger.error(f"❌ Could not connect to websockify on port {ws_port}")
+                logger.error(f"❌ Could not connect to VNC server on port {vnc_port}")
                 try:
-                    ws.close(1011, "Websockify not available")  # Use numeric code instead of reason kwarg
+                    ws.close(1011, "VNC server not available")  # Use numeric code instead of reason kwarg
                 except:
                     pass
             except Exception as e:
