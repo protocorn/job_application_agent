@@ -405,6 +405,10 @@ def batch_apply_with_vnc():
         batch_id = batch_vnc_manager.create_batch(user_id, job_urls)
         batch = batch_vnc_manager.get_batch(batch_id)
         
+        # Capture request host for WebSocket URL generation (before thread)
+        request_host = request.host
+        is_development = os.getenv('FLASK_ENV') == 'development' or 'localhost' in request_host
+        
         # Start processing in background thread
         import threading
         
@@ -472,6 +476,12 @@ def batch_apply_with_vnc():
                             }
                             
                             logger.info(f"✅ Registered VNC session {vnc_session_id} in global manager")
+                            
+                            # CRITICAL: Also register in vnc_stream_proxy for WebSocket routing
+                            ws_port = 6900 + idx  # Calculate websockify port
+                            register_vnc_session(vnc_session_id, actual_vnc_port, ws_port)
+                            logger.info(f"📝 Registered session {vnc_session_id} for WebSocket proxy - VNC:{actual_vnc_port}, WS:{ws_port}")
+                            
                         except Exception as e:
                             logger.warning(f"Could not register in VNC manager: {e}")
                             
@@ -485,13 +495,12 @@ def batch_apply_with_vnc():
                             logger.info(f"📝 Registered as dev session: {job.job_id}")
                         
                         # Determine WebSocket URL
-                        is_development = os.getenv('FLASK_ENV') == 'development'
                         ws_protocol = 'ws' if is_development else 'wss'
                         
                         if is_development:
                             vnc_url = f"{ws_protocol}://localhost:{6900 + idx}"
                         else:
-                            vnc_url = f"{ws_protocol}://your-backend.railway.app/vnc-stream/{vnc_session_id}"
+                            vnc_url = f"{ws_protocol}://{request_host}/vnc-stream/{vnc_session_id}"
                         
                         # Update status: ready for review
                         batch_vnc_manager.update_job_status(
