@@ -59,7 +59,12 @@ class VNCServer:
                 '-noxrecord',  # Better performance
                 '-quiet',  # Less verbose
                 '-cursor', 'arrow', # Fix cursor mismatch
+                '-capslock', # Enable CapsLock support
+                '-nopw' if not self.password else None, # Handle no password explicitly
+                '-clip', '1920x1080+0+0', # Clip to screen size to prevent leaks
             ]
+            # Remove None values
+            cmd = [str(x) for x in cmd if x is not None]
             
             # Add password if provided
             if self.password:
@@ -68,8 +73,6 @@ class VNCServer:
                 with open(passwd_file, 'w') as f:
                     f.write(self.password)
                 cmd.extend(['-rfbauth', passwd_file])
-            else:
-                cmd.append('-nopw')  # No password
             
             # Start x11vnc process
             self.vnc_process = subprocess.Popen(

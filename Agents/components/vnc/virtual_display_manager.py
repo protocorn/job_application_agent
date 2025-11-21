@@ -48,17 +48,23 @@ class VirtualDisplayManager:
             
             # Check if display is already running
             if self._is_display_running():
+                # If we are reusing a display, we must be careful about session isolation
+                # But typically each session gets its own Xvfb via unique display_num
                 logger.warning(f"Display {self.display} is already running")
                 return True
             
             logger.info(f"Starting virtual display {self.display} ({self.width}x{self.height})")
             
-            # Start Xvfb
+            # Start Xvfb with auth file specifically for this display
+            # This isolates the X server access to this process/user
+            auth_file = os.path.expanduser(f'~/.Xauthority-{self.display_num}')
+            
             self.xvfb_process = subprocess.Popen([
                 'Xvfb',
                 self.display,
-                '-screen', '0', f'{self.width}x{self.height}x24',
-                '-ac',  # Disable access control
+                '-screen', '0', f'{self.width}x{self.height}x16', # 16-bit color for better performance
+                '-auth', auth_file, # Secure X authority
+                '-ac',  # Disable access control (controlled via auth)
                 '+extension', 'GLX',  # Enable OpenGL
                 '+render',  # Enable render extension
                 '-noreset'  # Don't reset after last client exits

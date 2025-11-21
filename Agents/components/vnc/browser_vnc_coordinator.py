@@ -42,6 +42,7 @@ class BrowserVNCCoordinator:
         self.vnc_password = vnc_password
         
         self.virtual_display = None
+        self.window_manager_process = None # Track Window Manager
         self.vnc_server = None
         self.websockify_process = None
         self.ws_port = 6900 + (vnc_port - 5900)  # Calculate websockify port
@@ -70,6 +71,17 @@ class BrowserVNCCoordinator:
                 logger.error("Failed to start virtual display")
                 return False
             
+            # Step 1.5: Start Window Manager (Optional)
+            # Fluxbox helps with popups and file pickers, but we can try without it
+            # if simplicity is preferred. 
+            
+            # SKIPPING fluxbox for now based on request.
+            # If popups fail to render later, we can re-enable it.
+            # logger.info("🪟 Starting Window Manager (fluxbox)...")
+            # ... (code commented out)
+            
+            self.window_manager_process = None
+
             # Step 2: Start VNC server
             logger.info("🖥️ Starting VNC server...")
             self.vnc_server = VNCServer(
@@ -141,12 +153,16 @@ class BrowserVNCCoordinator:
                     '--no-sandbox',  # Required for Docker/cloud
                     '--disable-setuid-sandbox',
                     '--disable-gpu',  # Not needed for virtual display
+                    '--start-maximized', # Start maximized for better VNC experience
+                    '--window-position=0,0',
                 ]
             )
             
-            # Create browser context
+            # Create browser context with maximized viewport
+            # Use no_viewport=True to respect --start-maximized
             context = await self.browser.new_context(
-                viewport={'width': self.display_width, 'height': self.display_height}
+                viewport=None, # Let window manager handle size via start-maximized
+                no_viewport=True
             )
             
             # Create page
@@ -199,6 +215,16 @@ class BrowserVNCCoordinator:
                     except:
                         pass
             
+            # Stop Window Manager
+            if self.window_manager_process:
+                try:
+                    import os
+                    import signal
+                    os.killpg(os.getpgid(self.window_manager_process.pid), signal.SIGTERM)
+                    logger.info("✓ Window Manager stopped")
+                except Exception as e:
+                    logger.debug(f"Error stopping Window Manager: {e}")
+
             # Stop VNC server
             if self.vnc_server:
                 self.vnc_server.stop()
@@ -226,10 +252,31 @@ class BrowserVNCCoordinator:
             return f"vnc://localhost:{self.vnc_port}"
         return None
     
-    def get_status(self) -> dict:
-        """Get status of all components"""
-        return {
-            "virtual_display": {
+    async def inject_file(self, file_path: str, target_path: str) -> bool:
+        """
+        Inject a local file into the remote VNC environment
+        
+        Args:
+            file_path: Local path to the file (on the server's disk)
+            target_path: Target path inside the VNC environment (e.g., /tmp/resume.pdf)
+        
+        Returns:
+            True if successful
+        """
+        try:
+            import shutil
+            
+            # Since we are running on the same machine (in Docker/Server),
+            # we just copy the file to the location expected by the browser.
+            # The "VNC environment" shares the same filesystem as the backend code.
+            
+            shutil.copy2(file_path, target_path)
+            logger.info(f"✅ Injected file to {target_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to inject file: {e}")
+            return False
                 "running": self.virtual_display.is_running if self.virtual_display else False,
                 "display": self.virtual_display.display if self.virtual_display else None,
                 "resolution": f"{self.display_width}x{self.display_height}"
