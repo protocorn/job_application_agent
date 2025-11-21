@@ -153,16 +153,13 @@ class BrowserVNCCoordinator:
                     '--no-sandbox',  # Required for Docker/cloud
                     '--disable-setuid-sandbox',
                     '--disable-gpu',  # Not needed for virtual display
-                    '--start-maximized', # Start maximized for better VNC experience
-                    '--window-position=0,0',
+                    # Reverted maximization to fix glitches
                 ]
             )
             
-            # Create browser context with maximized viewport
-            # Use no_viewport=True to respect --start-maximized
+            # Create browser context with fixed viewport
             context = await self.browser.new_context(
-                viewport=None, # Let window manager handle size via start-maximized
-                no_viewport=True
+                viewport={'width': self.display_width, 'height': self.display_height}
             )
             
             # Create page

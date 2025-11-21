@@ -61,7 +61,7 @@ class VNCServer:
                 '-cursor', 'arrow', # Fix cursor mismatch
                 '-capslock', # Enable CapsLock support
                 '-nopw' if not self.password else None, # Handle no password explicitly
-                '-clip', '1920x1080+0+0', # Clip to screen size to prevent leaks
+                # Removed -clip to prevent potential geometry conflicts/disconnects
             ]
             # Remove None values
             cmd = [str(x) for x in cmd if x is not None]
