@@ -7,6 +7,8 @@ for cloud-based browser automation with user interaction capability.
 
 import logging
 import asyncio
+import subprocess
+import time
 from typing import Optional
 from playwright.async_api import Browser, Page, async_playwright
 
@@ -40,6 +42,8 @@ class BrowserVNCCoordinator:
         
         self.virtual_display = None
         self.vnc_server = None
+        self.websockify_process = None
+        self.ws_port = 6900 + (vnc_port - 5900)  # Calculate websockify port
         self.playwright = None
         self.browser = None
         self.page = None
@@ -78,6 +82,41 @@ class BrowserVNCCoordinator:
                 self.virtual_display.stop()
                 return False
             
+            # Step 2.5: Start websockify proxy (WebSocket → VNC)
+            logger.info(f"🔌 Starting websockify proxy WS:{self.ws_port} → VNC:{self.vnc_port}...")
+            try:
+                # Start websockify in background
+                self.websockify_process = subprocess.Popen(
+                    [
+                        'websockify',
+                        '--daemon',  # Run in background
+                        str(self.ws_port),  # WebSocket port
+                        f'localhost:{self.vnc_port}'  # VNC target
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE
+                )
+                
+                # Give it a moment to start
+                time.sleep(0.5)
+                
+                # Check if it started successfully
+                if self.websockify_process.poll() is not None:
+                    logger.error("Websockify failed to start")
+                    # Don't fail the whole session - Flask-Sock might work without it
+                    logger.warning("Continuing without websockify (Flask-Sock will handle WebSocket directly)")
+                    self.websockify_process = None
+                else:
+                    logger.info(f"✅ Websockify proxy started on port {self.ws_port}")
+                    
+            except FileNotFoundError:
+                logger.warning("websockify command not found - continuing without it")
+                logger.info("   Flask-Sock will attempt direct WebSocket → VNC proxying")
+                self.websockify_process = None
+            except Exception as e:
+                logger.warning(f"Could not start websockify: {e}")
+                self.websockify_process = None
+            
             # Step 3: Start Playwright with visible browser on virtual display
             logger.info("🌐 Starting Playwright browser on virtual display...")
             self.playwright = await async_playwright().start()
@@ -104,6 +143,7 @@ class BrowserVNCCoordinator:
             logger.info("✅ VNC-enabled browser environment started successfully")
             logger.info(f"📺 Display: {self.virtual_display.display}")
             logger.info(f"🖥️ VNC Port: {self.vnc_port}")
+            logger.info(f"🔌 WebSocket Port: {self.ws_port}")
             logger.info(f"🌐 Browser: Ready")
             
             return True
@@ -133,6 +173,19 @@ class BrowserVNCCoordinator:
                     logger.info("✓ Playwright stopped")
                 except Exception as e:
                     logger.debug(f"Error stopping Playwright: {e}")
+            
+            # Stop websockify
+            if self.websockify_process:
+                try:
+                    self.websockify_process.terminate()
+                    self.websockify_process.wait(timeout=5)
+                    logger.info("✓ Websockify stopped")
+                except Exception as e:
+                    logger.debug(f"Error stopping websockify: {e}")
+                    try:
+                        self.websockify_process.kill()
+                    except:
+                        pass
             
             # Stop VNC server
             if self.vnc_server:
@@ -173,6 +226,10 @@ class BrowserVNCCoordinator:
                 "running": self.vnc_server.is_running if self.vnc_server else False,
                 "port": self.vnc_port,
                 "url": self.get_vnc_url()
+            },
+            "websockify": {
+                "running": self.websockify_process is not None and self.websockify_process.poll() is None,
+                "ws_port": self.ws_port
             },
             "browser": {
                 "running": self.browser is not None,
