@@ -85,29 +85,31 @@ class BrowserVNCCoordinator:
             # Step 2.5: Start websockify proxy (WebSocket → VNC)
             logger.info(f"🔌 Starting websockify proxy WS:{self.ws_port} → VNC:{self.vnc_port}...")
             try:
-                # Start websockify in background
+                # Start websockify as a subprocess (no --daemon, we manage it)
+                # Redirect output to DEVNULL to avoid blocking
                 self.websockify_process = subprocess.Popen(
                     [
                         'websockify',
-                        '--daemon',  # Run in background
+                        '--verbose',  # Enable logging
                         str(self.ws_port),  # WebSocket port
                         f'localhost:{self.vnc_port}'  # VNC target
                     ],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
+                    stdout=subprocess.DEVNULL,  # Suppress output
+                    stderr=subprocess.DEVNULL
                 )
                 
-                # Give it a moment to start
-                time.sleep(0.5)
+                # Give it a moment to start and bind to port
+                time.sleep(1.5)
                 
-                # Check if it started successfully
+                # Check if it's still running
                 if self.websockify_process.poll() is not None:
-                    logger.error("Websockify failed to start")
-                    # Don't fail the whole session - Flask-Sock might work without it
+                    # Process exited - check return code
+                    returncode = self.websockify_process.returncode
+                    logger.error(f"Websockify failed to start (exit code: {returncode})")
                     logger.warning("Continuing without websockify (Flask-Sock will handle WebSocket directly)")
                     self.websockify_process = None
                 else:
-                    logger.info(f"✅ Websockify proxy started on port {self.ws_port}")
+                    logger.info(f"✅ Websockify proxy started on port {self.ws_port} (PID: {self.websockify_process.pid})")
                     
             except FileNotFoundError:
                 logger.warning("websockify command not found - continuing without it")
