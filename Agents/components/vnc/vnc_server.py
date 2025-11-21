@@ -58,6 +58,8 @@ class VNCServer:
                 '-noxfixes',  # Better performance
                 '-noxrecord',  # Better performance
                 '-quiet',  # Less verbose
+                '-cursor', 'arrow', # Fix cursor mismatch
+                '-ncache', '10' # Cache for better responsiveness
             ]
             
             # Add password if provided
