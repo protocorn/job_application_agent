@@ -149,11 +149,24 @@ class BrowserVNCCoordinator:
             self.browser = await self.playwright.chromium.launch(
                 headless=False,  # Visible browser on virtual display!
                 args=[
-                    '--disable-dev-shm-usage',  # Overcome limited resource problems
-                    '--no-sandbox',  # Required for Docker/cloud
+                    '--disable-dev-shm-usage',
+                    '--no-sandbox',
                     '--disable-setuid-sandbox',
-                    '--disable-gpu',  # Not needed for virtual display
-                    # Reverted maximization to fix glitches
+                    '--disable-gpu',
+                    # LOCK DOWN FILE ACCESS
+                    # This flag prevents the browser from accessing local files
+                    # except those we explicitly allow via the file chooser.
+                    # However, Playwright doesn't have a strict "sandbox file system" flag easily accessible
+                    # without using Docker containers per session.
+                    # Best mitigation: Run browser as a non-privileged user (which Railway does by default).
+                    
+                    # Hiding the "Chrome is being controlled by automated test software" infobar
+                    # might help make it look less like a debug tool, but doesn't secure files.
+                    '--disable-infobars',
+                    
+                    # Kiosk mode forces full screen and removes window chrome (address bar, etc)
+                    # making it harder to navigate away or open settings/file managers via UI
+                    '--kiosk',
                 ]
             )
             
@@ -178,6 +191,21 @@ class BrowserVNCCoordinator:
             await self.stop()
             return False
     
+    async def cleanup_session_files(self, session_id: str):
+        """Cleanup session-specific files"""
+        try:
+            import shutil
+            import os
+            
+            # Cleanup temp directory for this session
+            session_dir = f"/tmp/session_{session_id}"
+            if os.path.exists(session_dir):
+                shutil.rmtree(session_dir)
+                logger.info(f"🧹 Cleaned up session files: {session_dir}")
+                
+        except Exception as e:
+            logger.error(f"Error cleaning up session files: {e}")
+
     async def stop(self):
         """Stop all components"""
         try:
@@ -231,6 +259,9 @@ class BrowserVNCCoordinator:
                 self.virtual_display.stop()
             
             logger.info("✅ VNC environment stopped")
+            
+            # Try to cleanup files if session ID is available via instance
+            # Note: Ideally session_id should be passed to coordinator init
             
         except Exception as e:
             logger.error(f"Error stopping VNC environment: {e}")
@@ -317,5 +348,9 @@ class BrowserVNCSession:
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit"""
+        # Stop coordinator
         await self.coordinator.stop()
+        
+        # Cleanup session-specific files
+        await self.coordinator.cleanup_session_files(self.session_id)
 

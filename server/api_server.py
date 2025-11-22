@@ -155,6 +155,18 @@ def initialize_production_infrastructure():
         schedule_backups()
         logging.info("✅ Backup scheduler initialized")
         
+        # Recover VNC sessions
+        try:
+            from Agents.components.vnc.vnc_session_manager import vnc_session_manager
+            import asyncio
+            # We need to run this in the background loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(vnc_session_manager.recover_sessions())
+            logging.info("✅ VNC session recovery check complete")
+        except Exception as e:
+            logging.warning(f"⚠️ VNC recovery failed (non-critical): {e}")
+        
         logging.info("🚀 Production infrastructure initialized successfully")
         
     except Exception as e:
@@ -3365,40 +3377,6 @@ def get_session_screenshot(session_id):
     except Exception as e:
         logging.error(f"Error getting screenshot for session {session_id}: {e}")
         return jsonify({"error": f"Failed to get screenshot: {str(e)}"}), 500
-
-@app.route("/api/sessions/batch-apply", methods=['POST'])
-def batch_apply():
-    """Start batch application process"""
-    try:
-        data = request.json
-        if not data:
-            return jsonify({"error": "No data provided"}), 400
-
-        job_urls = data.get('jobUrls', [])
-        if not job_urls:
-            return jsonify({"error": "No job URLs provided"}), 400
-
-        # Create sessions for each job
-        created_sessions = []
-        for job_url in job_urls:
-            session = session_manager.create_session(job_url)
-            created_sessions.append(session.to_dict())
-
-        logging.info(f"Created {len(created_sessions)} sessions for batch application")
-
-        # TODO: Trigger the actual batch processing
-        # For now, just return the created sessions
-
-        return jsonify({
-            "success": True,
-            "message": f"Created {len(created_sessions)} sessions for batch processing",
-            "sessions": created_sessions
-        }), 200
-
-    except Exception as e:
-        logging.error(f"Error in batch apply: {e}")
-        return jsonify({"error": f"Failed to start batch application: {str(e)}"}), 500
-
 
 # ============================================================
 # PROJECT MANAGEMENT API ROUTES

@@ -9,6 +9,8 @@ import logging
 import asyncio
 from typing import Dict, Optional, Any
 from datetime import datetime, timedelta
+from sqlalchemy.orm import Session
+from database_config import SessionLocal, VNCSession
 
 from .browser_vnc_coordinator import BrowserVNCCoordinator
 
@@ -30,6 +32,9 @@ class VNCSessionManager:
         self.max_sessions = max_sessions
         self.sessions: Dict[str, Dict[str, Any]] = {}
         self.port_allocations = set()  # Track allocated ports
+        
+        # Try to recover sessions from DB on startup?
+        # We probably need an explicit 'recover_sessions()' call to avoid blocking init
         
     def _allocate_port(self) -> Optional[int]:
         """Allocate next available VNC port"""
@@ -86,7 +91,7 @@ class VNCSessionManager:
                 self._free_port(vnc_port)
                 return None
             
-            # Store session info
+            # Store session info in memory
             session_info = {
                 "session_id": session_id,
                 "job_url": job_url,
@@ -100,6 +105,23 @@ class VNCSessionManager:
             }
             
             self.sessions[session_id] = session_info
+            
+            # Persist to Database
+            try:
+                db = SessionLocal()
+                db_session = VNCSession(
+                    id=session_id,
+                    user_id=user_id,
+                    job_url=job_url,
+                    vnc_port=vnc_port,
+                    status="active"
+                )
+                db.add(db_session)
+                db.commit()
+                db.close()
+                logger.info(f"💾 Persisted VNC session {session_id} to DB")
+            except Exception as e:
+                logger.error(f"Failed to persist session to DB: {e}")
             
             logger.info(f"✅ VNC session {session_id} created successfully")
             logger.info(f"   VNC Port: {vnc_port}")
@@ -148,7 +170,18 @@ class VNCSessionManager:
                 self._free_port(vnc_port)
             
             # Remove from sessions
-            del self.sessions[session_id]
+            if session_id in self.sessions:
+                del self.sessions[session_id]
+            
+            # Remove from DB
+            try:
+                db = SessionLocal()
+                db.query(VNCSession).filter(VNCSession.id == session_id).delete()
+                db.commit()
+                db.close()
+                logger.info(f"🗑️ Removed VNC session {session_id} from DB")
+            except Exception as e:
+                logger.error(f"Failed to remove session from DB: {e}")
             
             logger.info(f"✅ VNC session {session_id} closed")
             return True
@@ -209,6 +242,55 @@ class VNCSessionManager:
                 
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
+
+
+    async def recover_sessions(self):
+        """
+        Recover active sessions from database after server restart.
+        This is called when the server starts up.
+        """
+        logger.info("🔄 Checking for VNC sessions to recover...")
+        try:
+            db = SessionLocal()
+            # Find sessions that were 'active' when the server died
+            # (and are not too old, e.g. created in last 24h)
+            cutoff = datetime.utcnow() - timedelta(hours=24)
+            active_sessions = db.query(VNCSession).filter(
+                VNCSession.status == "active",
+                VNCSession.created_at > cutoff
+            ).all()
+            
+            recovered_count = 0
+            
+            for db_session in active_sessions:
+                session_id = db_session.id
+                job_url = db_session.job_url
+                user_id = str(db_session.user_id)
+                
+                logger.info(f"♻️ Recovering session {session_id} for {job_url}")
+                
+                # Re-create the session (spin up new VNC/Browser)
+                # Note: create_session handles port allocation
+                new_session = await self.create_session(session_id, job_url, user_id)
+                
+                if new_session:
+                    recovered_count += 1
+                    # Note: We don't need to update DB status because create_session sets it to 'active'
+                    # effectively "refreshing" the session record
+                else:
+                    # If recovery failed, mark as failed in DB so we don't try forever
+                    db_session.status = "failed_recovery"
+                    db.commit()
+            
+            db.close()
+            
+            if recovered_count > 0:
+                logger.info(f"✅ Successfully recovered {recovered_count} VNC sessions")
+            else:
+                logger.info("No sessions needed recovery")
+                
+        except Exception as e:
+            logger.error(f"Error recovering sessions: {e}")
 
 
 # Global VNC session manager instance

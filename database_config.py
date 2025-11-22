@@ -241,6 +241,23 @@ class BetaFeedback(Base):
     # Relationship
     user = relationship("User")
 
+class VNCSession(Base):
+    __tablename__ = "vnc_sessions"
+    __table_args__ = {'schema': 'public'}
+
+    id = Column(String, primary_key=True) # session_id
+    user_id = Column(UUID(as_uuid=True), ForeignKey("public.users.id"), nullable=False)
+    job_url = Column(String, nullable=False)
+    vnc_port = Column(Integer)
+    status = Column(String, default="active") # active, completed, failed
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Metadata for recovery
+    resume_path = Column(String) # Path to resume on server storage (for re-injection)
+    
+    user = relationship("User")
+
 # Database utility functions
 def get_db():
     db = SessionLocal()
