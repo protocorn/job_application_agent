@@ -14,10 +14,12 @@ from loguru import logger
 
 from components.executors.field_interactor_v2 import FieldInteractorV2
 from components.executors.deterministic_field_mapper import DeterministicFieldMapper, FieldMappingConfidence
+from components.executors.learned_patterns_mapper import LearnedPatternsMapper
 from components.brains.gemini_field_mapper import GeminiFieldMapper
 from components.exceptions.field_exceptions import RequiresHumanInputError
 from components.state.field_completion_tracker import FieldCompletionTracker
 from components.validators.field_value_validator import FieldValueValidator
+from components.pattern_recorder import PatternRecorder
 
 
 class FieldAttemptTracker:
@@ -55,9 +57,11 @@ class FieldAttemptTracker:
 
         attempted = self.attempts.get(field_id, set())
 
-        # Strategy order: deterministic → AI → skip
+        # Strategy order: deterministic → learned_pattern → AI → skip
         if 'deterministic' not in attempted:
             return 'deterministic'
+        elif 'learned_pattern' not in attempted:
+            return 'learned_pattern'
         elif 'ai' not in attempted:
             return 'ai'
         else:
@@ -78,12 +82,15 @@ class GenericFormFillerV2Enhanced:
     MAX_ITERATIONS = 5
     DYNAMIC_CONTENT_WAIT_MS = 1000
 
-    def __init__(self, page: Page | Frame, action_recorder=None):
+    def __init__(self, page: Page | Frame, action_recorder=None, user_id=None):
         self.page = page
         self.action_recorder = action_recorder
+        self.user_id = user_id
         self.interactor = FieldInteractorV2(page, action_recorder)
         self.deterministic_mapper = DeterministicFieldMapper()
+        self.learned_mapper = LearnedPatternsMapper()  # NEW: Tier 2 - Learned patterns
         self.ai_mapper = GeminiFieldMapper()
+        self.pattern_recorder = PatternRecorder()  # NEW: Records AI successes
         self.completion_tracker = FieldCompletionTracker()
         self.attempt_tracker = FieldAttemptTracker()
 
@@ -100,7 +107,7 @@ class GenericFormFillerV2Enhanced:
             "success": False,
             "total_fields_filled": 0,
             "iterations": 0,
-            "fields_by_method": {"deterministic": 0, "ai": 0},
+            "fields_by_method": {"deterministic": 0, "learned_pattern": 0, "ai": 0},
             "errors": [],
             "requires_human": [],
             "skipped_fields": [],
@@ -202,7 +209,16 @@ class GenericFormFillerV2Enhanced:
         # Final summary
         result["total_fields_filled"] = len(result["filled_fields"])
         logger.info(f"🏁 Form filling completed: {result['total_fields_filled']} fields filled in {result['iterations']} iterations")
-        logger.info(f"📊 Methods used: {result['fields_by_method']['deterministic']} deterministic, {result['fields_by_method']['ai']} AI")
+        logger.info(f"📊 Methods used: {result['fields_by_method']['deterministic']} deterministic, {result['fields_by_method']['learned_pattern']} learned patterns, {result['fields_by_method']['ai']} AI")
+
+        # Log AI call reduction
+        ai_reduction = 0
+        if result['fields_by_method']['learned_pattern'] > 0:
+            total_mapped = result['fields_by_method']['learned_pattern'] + result['fields_by_method']['ai']
+            if total_mapped > 0:
+                ai_reduction = (result['fields_by_method']['learned_pattern'] / total_mapped) * 100
+                logger.info(f"💡 AI call reduction: {ai_reduction:.1f}% (learned patterns used instead of AI)")
+
         logger.info(f"⏭️ Skipped {len(result['skipped_fields'])} fields after all attempts")
 
         # Step 8: Look for Next/Continue button and click it (but never Submit)
@@ -504,20 +520,21 @@ class GenericFormFillerV2Enhanced:
         """
         BATCH STRATEGY: Process all fields efficiently:
         Phase 1: Try deterministic on ALL fields
+        Phase 1.5: Try learned patterns on remaining fields
         Phase 2: Collect fields needing AI help
         Phase 3: Make ONE batch Gemini call for all AI fields
         Phase 4: Apply all AI responses
         """
         filled_count = 0
-        
+
         # PHASE 1: Try deterministic on all fields first
         logger.info("📋 Phase 1: Attempting deterministic mapping for all fields...")
-        fields_needing_ai = []
-        
+        fields_needing_learned = []
+
         for field in fields:
             field_id = self._get_field_id(field)
             field_label = field.get('label', 'Unknown')
-            
+
             # Skip if all methods exhausted
             next_method = self.attempt_tracker.get_next_method(field_id)
             if not next_method:
@@ -527,24 +544,42 @@ class GenericFormFillerV2Enhanced:
                         "reason": "All strategies attempted, field still empty"
                     })
                 continue
-            
+
             # Try deterministic if not yet attempted
             if next_method == 'deterministic':
                 success = await self._try_deterministic(field, profile, result)
                 self.attempt_tracker.mark_attempted(field_id, 'deterministic')
-                
+
                 if success:
                     filled_count += 1
                     continue  # Success, move to next field
                 else:
-                    # Deterministic failed - add to AI batch
+                    # Deterministic failed - try learned patterns next
+                    fields_needing_learned.append(field)
+
+            # If learned_pattern is next method, add to learned batch
+            elif next_method == 'learned_pattern':
+                fields_needing_learned.append(field)
+
+        # PHASE 1.5: Try learned patterns on remaining fields
+        fields_needing_ai = []
+        if fields_needing_learned:
+            logger.info(f"🧠 Phase 1.5: Attempting learned pattern matching for {len(fields_needing_learned)} fields...")
+            for field in fields_needing_learned:
+                field_id = self._get_field_id(field)
+                field_label = field.get('label', 'Unknown')
+
+                success = await self._try_learned_pattern(field, profile, result)
+                self.attempt_tracker.mark_attempted(field_id, 'learned_pattern')
+
+                if success:
+                    filled_count += 1
+                    continue  # Success, move to next field
+                else:
+                    # Learned pattern failed - add to AI batch
                     if not self.attempt_tracker.has_attempted(field_id, 'ai'):
                         fields_needing_ai.append(field)
-            
-            # If AI is next method, add to batch
-            elif next_method == 'ai':
-                fields_needing_ai.append(field)
-        
+
         # PHASE 2 & 3: Batch AI processing
         if fields_needing_ai:
             logger.info(f"🤖 Phase 2: Batch processing {len(fields_needing_ai)} fields with Gemini...")
@@ -618,6 +653,110 @@ class GenericFormFillerV2Enhanced:
 
         except Exception as e:
             logger.error(f"❌ Error in deterministic attempt for '{field_label}': {e}")
+            return False
+
+    async def _try_learned_pattern(
+        self,
+        field: Dict[str, Any],
+        profile: Dict[str, Any],
+        result: Dict[str, Any]
+    ) -> bool:
+        """Try to fill field using learned patterns from database."""
+        field_label = field.get('label', 'Unknown')
+
+        try:
+            # Query learned patterns
+            learned_pattern = self.learned_mapper.map_field(
+                field_label,
+                field.get('field_category', 'text_input'),
+                profile
+            )
+
+            if not learned_pattern:
+                logger.debug(f"⏭️ No learned pattern for '{field_label}'")
+                return False
+
+            # Get value from profile using the learned profile field
+            value = self.learned_mapper.get_profile_value(profile, learned_pattern.profile_field)
+
+            if not value:
+                logger.debug(
+                    f"⏭️ Learned pattern found '{field_label}' → {learned_pattern.profile_field}, "
+                    f"but no value in profile"
+                )
+                # Record failure to reduce confidence
+                await self.pattern_recorder.record_pattern(
+                    field_label,
+                    learned_pattern.profile_field,
+                    field.get('field_category', 'text_input'),
+                    success=False,
+                    user_id=self.user_id
+                )
+                return False
+
+            # Get fresh element
+            element = await self._get_fresh_element(field)
+            if not element:
+                return False
+
+            # Validate and clean the value
+            cleaned_value = FieldValueValidator.validate_and_clean(
+                value,
+                field_label,
+                field.get('field_category', 'text_input')
+            )
+
+            # Prepare field data
+            field_data = {
+                'element': element,
+                'label': field_label,
+                'field_category': field.get('field_category', 'text_input'),
+                'stable_id': field.get('stable_id', '')
+            }
+
+            # Include group data for radio_group and checkbox_group
+            if field.get('field_category') == 'radio_group':
+                field_data['individual_radios'] = field.get('individual_radios', [])
+            elif field.get('field_category') == 'checkbox_group':
+                field_data['individual_checkboxes'] = field.get('individual_checkboxes', [])
+
+            # Fill the field
+            fill_result = await self.interactor.fill_field(field_data, cleaned_value, profile)
+
+            if fill_result['success']:
+                logger.info(
+                    f"✅ Learned Pattern: '{field_label}' = '{cleaned_value}' "
+                    f"(from {learned_pattern.profile_field}, confidence: {learned_pattern.confidence_score:.2f})"
+                )
+                result["fields_by_method"]["learned_pattern"] += 1
+                result["filled_fields"][field_label] = cleaned_value
+
+                field_id = self._get_field_id(field)
+                self.completion_tracker.mark_field_completed(field_id, field_label, cleaned_value)
+
+                # Record successful reuse to boost confidence
+                await self.pattern_recorder.record_pattern(
+                    field_label,
+                    learned_pattern.profile_field,
+                    field.get('field_category', 'text_input'),
+                    success=True,
+                    user_id=self.user_id
+                )
+                return True
+            else:
+                logger.debug(f"⏭️ Learned pattern fill failed for '{field_label}'")
+                # Record failure to reduce confidence
+                await self.pattern_recorder.record_pattern(
+                    field_label,
+                    learned_pattern.profile_field,
+                    field.get('field_category', 'text_input'),
+                    success=False,
+                    user_id=self.user_id
+                )
+                return False
+
+        except Exception as e:
+            logger.error(f"❌ Error in learned pattern attempt for '{field_label}': {e}")
             return False
 
     async def _try_ai_batch(
@@ -755,8 +894,37 @@ class GenericFormFillerV2Enhanced:
                     field_data['individual_checkboxes'] = field.get('individual_checkboxes', [])
 
                 # Fill the field with cleaned value
+                # CRITICAL: Check if this is a file upload but AI provided long text (essay/cover letter)
+                if field.get('field_category') == 'file_upload' and len(str(cleaned_value)) > 100 and not str(cleaned_value).lower().endswith(('.pdf', '.doc', '.docx', '.txt')):
+                    logger.info(f"📄 Detected text content for file upload '{field_label}'. Creating temporary file...")
+                    try:
+                        import tempfile
+                        import os
+                        
+                        # Create temporary file with the content
+                        # Use field label for filename if possible
+                        safe_label = "".join([c for c in field_label if c.isalnum() or c in (' ', '_', '-')]).strip()[:30] or "document"
+                        temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt', prefix=f"{safe_label}_")
+                        temp_file.write(str(cleaned_value))
+                        temp_file.close()
+                        
+                        logger.info(f"✅ Created temporary file: {temp_file.name}")
+                        cleaned_value = temp_file.name
+                        
+                        # Track for cleanup if agent has tracker
+                        if hasattr(self, 'created_files'):
+                            self.created_files.append(temp_file.name)
+                            
+                    except Exception as e:
+                        logger.error(f"Failed to create temp file for text content: {e}")
+                        result['skipped_fields'].append({
+                            "field": field_label,
+                            "reason": "Failed to convert AI text to file"
+                        })
+                        continue
+
                 fill_result = await self.interactor.fill_field(field_data, cleaned_value, profile)
-                
+
                 if fill_result['success']:
                     # Log differently for generated text vs mapped values
                     if mapping_type == 'manual':
@@ -765,11 +933,25 @@ class GenericFormFillerV2Enhanced:
                         logger.info(f"✅ AI Generated: '{field_label}' = '{display_value}'")
                     else:
                         logger.info(f"✅ AI Batch: '{field_label}' = '{value}'")
-                    
+
                     result["fields_by_method"]["ai"] += 1
                     result["filled_fields"][field_label] = value
                     self.completion_tracker.mark_field_completed(field_id, field_label, value)
                     filled_count += 1
+
+                    # NEW: Record successful AI mapping as learned pattern (except manual/essay fields)
+                    if mapping_type not in ['manual', 'needs_human_input']:
+                        # Try to infer profile_field from the mapping
+                        profile_field = mapping_data.get('profile_field')
+                        if profile_field:
+                            await self.pattern_recorder.record_pattern(
+                                field_label,
+                                profile_field,
+                                field.get('field_category', 'text_input'),
+                                success=True,
+                                user_id=self.user_id
+                            )
+                            logger.debug(f"📝 Recorded pattern: '{field_label}' → {profile_field}")
                 else:
                     logger.debug(f"⏭️ AI batch fill failed for '{field_label}'")
                     result['skipped_fields'].append({

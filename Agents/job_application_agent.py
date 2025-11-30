@@ -675,25 +675,28 @@ class RefactoredJobAgent:
             page_analysis = await self._comprehensive_page_analysis(state)
             logger.info(f"🤖 AI Analysis Result: {page_analysis}")
             
+            normalized_action = self._normalize_ai_action(page_analysis)
+            page_analysis['action'] = normalized_action
+            
             # Execute the AI-recommended action
-            if page_analysis['action'] == 'find_apply_button':
+            if normalized_action == 'find_apply_button':
                 logger.info("🎯 AI: Page is a job listing - looking for apply button")
                 return await self._handle_find_apply_button(state)
                 
-            elif page_analysis['action'] == 'fill_form':
+            elif normalized_action == 'fill_form':
                 logger.info("📝 AI: Form detected - proceeding to fill")
                 state.context['has_clicked_apply'] = True
                 return 'fill_form'
                 
-            elif page_analysis['action'] == 'handle_iframe':
+            elif normalized_action == 'handle_iframe':
                 logger.info("🖼️ AI: Iframe detected - switching context")
                 return await self._handle_iframe_switch(state)
                 
-            elif page_analysis['action'] == 'submit_form':
+            elif normalized_action == 'submit_form':
                 logger.info("📤 AI: Form ready for submission")
                 return await self._handle_form_submission_intelligent(state)
                 
-            elif page_analysis['action'] == 'application_complete':
+            elif normalized_action == 'application_complete':
                 logger.info("✅ AI: Application appears complete")
                 # Double-check for explicit success indicators before declaring success
                 if await self._verify_application_success(state):
@@ -703,17 +706,21 @@ class RefactoredJobAgent:
                     state.context['human_intervention_reason'] = "AI believes application is complete, but no clear success indicators found. Please verify if the application was successfully submitted."
                     return 'human_intervention'
                 
-            elif page_analysis['action'] == 'need_human_intervention':
+            elif normalized_action == 'need_human_intervention':
                 logger.info("👤 AI: Requires human intervention")
                 state.context['human_intervention_reason'] = page_analysis['reason']
                 return 'human_intervention'
                 
-            elif page_analysis['action'] == 'navigate_to_next_page':
+            elif normalized_action == 'navigate_to_next_page':
                 logger.info("➡️ AI: Navigating to next page")
                 return await self._handle_navigation(state, page_analysis)
+            
+            elif normalized_action == 'click_element':
+                logger.info("🖱️ AI: Click specific element")
+                return await self._handle_click_element(state, page_analysis)
                 
             else:
-                logger.warning(f"⚠️ AI returned unknown action: {page_analysis['action']}")
+                logger.warning(f"⚠️ AI returned unknown action: {normalized_action}")
                 state.context['human_intervention_reason'] = f"AI could not determine next action: {page_analysis.get('reason', 'Unknown reason')}"
                 return 'human_intervention'
                 
@@ -838,6 +845,7 @@ POSSIBLE ACTIONS (choose exactly ONE):
 5. "application_complete" - ONLY if you see explicit success confirmation messages ("Application submitted", "Thank you for applying", etc.)
 6. "navigate_to_next_page" - If you see METHOD SELECTION buttons like "Autofill with Resume", "Apply Manually", "Use Last Application" (NOT "Apply Now" buttons!)
 7. "need_human_intervention" - If the page requires human attention (captcha, broken pages, authentication failures) - DO NOT use this for resume uploads, chatbots, or help widgets
+8. "click_element" - If a specific visible button/link/text needs to be clicked (e.g., "Consent & Continue"). Provide the exact on-screen text in "target_text".
 
 CRITICAL DISTINCTION - "Apply Now" vs "Method Selection":
 - "Apply Now" / "Start Applying" / "Submit Application" buttons → These should trigger either "find_apply_button" (if on job listing) OR be handled as navigation buttons
@@ -867,7 +875,8 @@ Return ONLY a JSON object:
     "confidence": 0.0-1.0,
     "reason": "Brief explanation of why this action was chosen",
     "page_type": "job_listing|application_form|auth_page|success_page|other",
-    "elements_detected": ["list", "of", "key", "elements", "seen"]
+    "elements_detected": ["list", "of", "key", "elements", "seen"],
+    "target_text": "Exact button/link text to click if action == click_element, otherwise empty string"
 }}
 """
             
@@ -885,6 +894,56 @@ Return ONLY a JSON object:
                 "page_type": "unknown",
                 "elements_detected": []
             }
+
+    def _normalize_ai_action(self, page_analysis: Dict[str, Any]) -> str:
+        """Normalize AI action labels and map common consent actions to supported handlers."""
+        raw_action = (page_analysis.get('action') or '').strip()
+        if not raw_action:
+            return ''
+
+        normalized = raw_action.lower()
+
+        consent_actions = {
+            'accept & continue',
+            'accept and continue',
+            'accept all',
+            'accept',
+            'accept cookies',
+            'allow all',
+            'allow cookies',
+            'agree',
+            'agree & continue',
+            'agree and continue',
+            'ok',
+            'okay',
+            'got it'
+        }
+
+        if normalized in consent_actions:
+            logger.info(f"🔁 Normalizing AI action '{raw_action}' to 'navigate_to_next_page' for consent handling")
+            reason = page_analysis.get('reason', '')
+            if reason:
+                page_analysis['reason'] = f"{reason} (auto-mapped consent action)"
+            else:
+                page_analysis['reason'] = "Auto-mapped consent action"
+            return 'navigate_to_next_page'
+
+        click_synonyms = {
+            'click',
+            'click_element',
+            'click button',
+            'click the button',
+            'press button',
+            'press',
+            'confirm',
+            'dismiss',
+            'close popup'
+        }
+
+        if normalized in click_synonyms:
+            return 'click_element'
+
+        return normalized
 
     async def _handle_find_apply_button(self, state: ApplicationState) -> str:
         """Handle finding and clicking apply button."""
@@ -956,6 +1015,76 @@ Return ONLY a JSON object:
             logger.error(f"Form submission failed: {e}")
             state.context['human_intervention_reason'] = f"Form submission error: {str(e)}. Please submit manually."
             return 'human_intervention'
+
+    async def _handle_click_element(self, state: ApplicationState, page_analysis: Dict[str, Any]) -> str:
+        """Click a specific element identified by AI-provided text label."""
+        target_text = (page_analysis.get('target_text') or '').strip()
+        if not target_text:
+            logger.warning("⚠️ AI requested click_element but no target_text was provided")
+            state.context['human_intervention_reason'] = "AI requested clicking an element but did not provide a label to locate."
+            return 'human_intervention'
+
+        logger.info(f"🖱️ Attempting to click element labeled '{target_text}'")
+
+        def _make_variants(text: str) -> List[str]:
+            variants = {text}
+            lowered = text.lower()
+            title = text.title()
+            if lowered != text:
+                variants.add(lowered)
+            if title != text:
+                variants.add(title)
+            if '&' in text:
+                variants.add(text.replace('&', 'and'))
+                variants.add(text.replace('&', ' & '))
+            stripped = text.rstrip('.')
+            if stripped and stripped != text:
+                variants.add(stripped)
+            return [v.strip() for v in variants if v.strip()]
+
+        selector_templates = [
+            'button:has-text("{text}")',
+            'a:has-text("{text}")',
+            'text="{text}"',
+            '[aria-label="{text}"]',
+            '[aria-label*="{text}"]',
+            '[data-automation-id*="{slug}"]'
+        ]
+
+        def _build_selectors(variant: str) -> List[str]:
+            safe_text = variant.replace('"', '\\"')
+            slug = variant.lower().replace(' ', '').replace('&', '')
+            selectors = []
+            for template in selector_templates:
+                selectors.append(template.format(text=safe_text, slug=slug))
+            return selectors
+
+        text_variants = _make_variants(target_text)
+        selectors_to_try: List[str] = []
+        for variant in text_variants:
+            selectors_to_try.extend(_build_selectors(variant))
+
+        last_error: Optional[Exception] = None
+        for selector in selectors_to_try:
+            try:
+                element = await self.page.wait_for_selector(selector, timeout=1500)
+                if not element or not await element.is_visible():
+                    continue
+                await element.click()
+                logger.info(f"✅ Clicked target element via selector: {selector}")
+                if self.action_recorder:
+                    self.action_recorder.record_click(selector, f"AI target: {target_text}", success=True)
+                await self.page.wait_for_timeout(500)
+                return 'ai_guided_navigation'
+            except Exception as click_error:
+                last_error = click_error
+                continue
+
+        logger.warning(f"⚠️ Unable to click element labeled '{target_text}'")
+        if last_error:
+            logger.debug(f"Last click attempt error: {last_error}")
+        state.context['human_intervention_reason'] = f"AI requested clicking '{target_text}' but no matching element was found."
+        return 'human_intervention'
 
     async def _handle_navigation(self, state: ApplicationState, page_analysis: Dict[str, Any]) -> str:
         """Handle navigation to next page based on AI analysis."""

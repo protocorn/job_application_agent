@@ -13,7 +13,8 @@ if sys.platform == 'win32':
 migrations = [
     'migrate_add_projects.py',
     'migrate_add_mimikree_credentials.py',
-    'migrate_add_google_oauth.py'
+    'migrate_add_google_oauth.py',
+    'migrate_add_pattern_learning.py'
 ]
 
 print("=" * 60)

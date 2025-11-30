@@ -617,7 +617,7 @@ class FieldInteractor:
                     (el, expectedLabel) => {
                         // Check label[for=id]
                         if (el.id) {
-                            const labelEl = document.querySelector(\`label[for="\${el.id}"]\`);
+                            const labelEl = document.querySelector(`label[for="${el.id}"]`);
                             if (labelEl) {
                                 const text = labelEl.textContent.trim();
                                 if (text === expectedLabel || text.includes(expectedLabel)) {

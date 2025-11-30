@@ -356,37 +356,40 @@ CRITICAL RULES - CONFIDENCE-BASED APPROACH:
 
 RESPONSE FORMAT:
 Provide one line per field ID with the mapping decision.
+IMPORTANT: For SIMPLE and DROPDOWN mappings, include the profile field name using | PROFILE_FIELD: syntax for pattern learning.
+
+FORMAT: ID: <field_id> -> <ACTION>: <value> | PROFILE_FIELD: <profile_field_name>
 
 EXAMPLES (generalized patterns, replace with actual profile data):
 
-# Basic profile fields
-ID: id:first_name -> SIMPLE: <profile.first_name>
-ID: id:email -> SIMPLE: <profile.email>
-ID: id:phone -> SIMPLE: <profile.phone>
-ID: id:city -> SIMPLE: <profile.city>
+# Basic profile fields (include profile field for pattern learning)
+ID: id:first_name -> SIMPLE: <profile.first_name> | PROFILE_FIELD: first_name
+ID: id:email -> SIMPLE: <profile.email> | PROFILE_FIELD: email
+ID: id:phone -> SIMPLE: <profile.phone> | PROFILE_FIELD: phone
+ID: id:city -> SIMPLE: <profile.city> | PROFILE_FIELD: city
 
 # Fields requiring human input
 ID: id:notice_period -> NEEDS_HUMAN_INPUT: Notice period not specified in profile
 ID: id:salary_expectations -> NEEDS_HUMAN_INPUT: Salary not specified in profile
 ID: id:start_date -> NEEDS_HUMAN_INPUT: Start date preference not provided
 
-# Demographic fields (use profile data confidently)
-ID: id:gender -> DROPDOWN: <profile.gender> (use exact value from profile)
-ID: id:race -> DROPDOWN: <infer from profile.nationality> (e.g., nationality=Indian → Asian)
-ID: id:hispanic -> DROPDOWN: <infer from profile.nationality> (e.g., nationality=Indian → No)
-ID: id:disability -> DROPDOWN: <profile.disability_status or "Prefer not to say">
-ID: id:veteran -> DROPDOWN: <profile.veteran_status or "No" for students/recent grads>
+# Demographic fields (use profile data confidently - include profile field)
+ID: id:gender -> DROPDOWN: <profile.gender> | PROFILE_FIELD: gender
+ID: id:race -> DROPDOWN: <infer from profile.nationality> | PROFILE_FIELD: race_ethnicity
+ID: id:hispanic -> DROPDOWN: <infer from profile.nationality> | PROFILE_FIELD: race_ethnicity
+ID: id:disability -> DROPDOWN: <profile.disability_status or "Prefer not to say"> | PROFILE_FIELD: disability_status
+ID: id:veteran -> DROPDOWN: <profile.veteran_status or "No" for students/recent grads> | PROFILE_FIELD: veteran_status
 
-# Work authorization (use profile fields)
-ID: id:visa_sponsorship -> DROPDOWN: <profile.require_sponsorship> (Yes/No from profile)
-ID: id:work_authorization -> DROPDOWN: <profile.visa_status> (e.g., F-1, H-1B, Green Card, Citizen)
-ID: id:authorized_to_work_us -> DROPDOWN: Yes (if profile has US education/location + visa_status)
+# Work authorization (use profile fields - include profile field)
+ID: id:visa_sponsorship -> DROPDOWN: <profile.require_sponsorship> | PROFILE_FIELD: require_sponsorship
+ID: id:work_authorization -> DROPDOWN: <profile.visa_status> | PROFILE_FIELD: visa_status
+ID: id:authorized_to_work_us -> DROPDOWN: Yes | PROFILE_FIELD: work_authorization
 
-# Education fields
-ID: id:university -> SIMPLE: <profile.education[0].school>
-ID: id:degree -> SIMPLE: <profile.education[0].degree>
-ID: id:major -> SIMPLE: <profile.education[0].field_of_study>
-ID: id:graduation_year -> SIMPLE: <profile.education[0].end_date.year>
+# Education fields (include profile field for pattern learning)
+ID: id:university -> SIMPLE: <profile.education[0].school> | PROFILE_FIELD: education[0].institution
+ID: id:degree -> SIMPLE: <profile.education[0].degree> | PROFILE_FIELD: education[0].degree
+ID: id:major -> SIMPLE: <profile.education[0].field_of_study> | PROFILE_FIELD: education[0].field_of_study
+ID: id:graduation_year -> SIMPLE: <profile.education[0].end_date.year> | PROFILE_FIELD: education[0].graduation_date
 
 # Skills (extract from profile arrays)
 ID: id:skills -> MULTISELECT_SKILLS: <comma_separated from profile.skills>
@@ -436,20 +439,27 @@ YOUR RESPONSE:
                     continue
                 
                 try:
-                    # Parse: "ID: field_id -> ACTION: value"
+                    # Parse: "ID: field_id -> ACTION: value" or "ID: field_id -> ACTION: value | PROFILE_FIELD: field_name"
                     parts = line.split(' -> ')
                     if len(parts) != 2:
                         continue
-                    
+
                     id_part = parts[0].replace('ID:', '').strip()
                     action_part = parts[1].strip()
-                    
+
+                    # Extract profile_field if present (NEW for pattern learning)
+                    profile_field = None
+                    if ' | PROFILE_FIELD:' in action_part:
+                        action_part, profile_field_part = action_part.split(' | PROFILE_FIELD:', 1)
+                        profile_field = profile_field_part.strip()
+                        action_part = action_part.strip()
+
                     # Parse action
                     if ':' in action_part:
                         action_type, action_value = action_part.split(':', 1)
                         action_type = action_type.strip()
                         action_value = action_value.strip()
-                        
+
                         if action_type == 'SIMPLE':
                             # Validate that simple fields have reasonable values
                             validated_value = self._validate_simple_field_value(action_value, field_catalog.get(id_part, {}))
@@ -457,7 +467,8 @@ YOUR RESPONSE:
                                 result[id_part] = {
                                     'type': 'simple',
                                     'value': validated_value,
-                                    'source': 'profile_data'
+                                    'source': 'profile_data',
+                                    'profile_field': profile_field  # NEW - for pattern learning
                                 }
                             else:  # If validation failed, treat as needs human input
                                 result[id_part] = {
@@ -471,7 +482,8 @@ YOUR RESPONSE:
                                 'type': 'dropdown',
                                 'value': action_value,
                                 'source': 'ai_selection',
-                                'label': field_catalog.get(id_part, {}).get('label', '')
+                                'label': field_catalog.get(id_part, {}).get('label', ''),
+                                'profile_field': profile_field  # NEW - for pattern learning
                             }
                         elif action_type == 'MULTISELECT_SKILLS':
                             # Parse comma-separated skills

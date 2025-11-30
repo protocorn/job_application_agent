@@ -12,7 +12,9 @@
       "Bash(git push:*)",
       "Bash(cp:*)",
       "Bash(npm uninstall:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(dir:*)",
+      "Bash(del BatchJobsPage.js)"
     ],
     "deny": [],
     "ask": []

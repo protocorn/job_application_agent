@@ -110,13 +110,43 @@ class ATSDropdownHandlerV2:
 
             # Find options - FRAME AWARE
             # We look for [role="option"] inside the frame's body
+            # IMPORTANT: Greenhouse options might NOT have [role="option"].
+            # Sometimes they are just div or li elements with specific classes.
+            # We should try a few common patterns.
             frame_root = await self._get_frame_root(element)
-            options_locator = frame_root.locator('[role="option"]:visible')
             
+            # Pattern 1: Standard ARIA options
+            options_locator = frame_root.locator('[role="option"]:visible')
             count = await options_locator.count()
             
+            # Pattern 2: Greenhouse specific classes (if ARIA fails)
             if count == 0:
-                logger.warning(f"⚠️ No options appeared after typing - trying full option extraction")
+                options_locator = frame_root.locator('.select__option:visible, .dropdown-option:visible, li:not([role]):visible, [class*="option"]:visible')
+                count = await options_locator.count()
+
+            if count == 0:
+                logger.warning(f"⚠️ No options appeared after typing - attempting click to force load options")
+                
+                # Fallback: Click element to force hydration (common in Greenhouse)
+                try:
+                    await element.click(force=True)
+                    await asyncio.sleep(1.0) # Wait for hydration
+                    
+                    # Re-check options with both patterns
+                    options_locator = frame_root.locator('[role="option"]:visible')
+                    count = await options_locator.count()
+                    
+                    if count == 0:
+                        options_locator = frame_root.locator('.select__option:visible, .dropdown-option:visible, li:not([role]):visible, [class*="option"]:visible')
+                        count = await options_locator.count()
+                    
+                    if count > 0:
+                        logger.info(f"✅ Options appeared after forced click: {count} options")
+                except Exception as e:
+                    logger.warning(f"Click fallback failed: {e}")
+
+            if count == 0:
+                logger.warning(f"⚠️ No options visible even after click fallback - trying full option extraction")
                 # Fallback: try opening full list
                 await self._extract_all_options(element, frame_root) # Just to log/debug
                 return False
@@ -218,13 +248,15 @@ class ATSDropdownHandlerV2:
         logger.debug("  🔍 Extracting ALL options (fallback mode)")
         try:
             # Try to open dropdown if closed
-            await element.click()
+            await element.click(force=True)
             await asyncio.sleep(0.5)
             
-            options = frame_root.locator('[role="option"]')
+            # Try multiple selectors including broader match
+            options = frame_root.locator('[role="option"], .select__option, .dropdown-option, [class*="option"]')
             count = await options.count()
             if count == 0:
                  logger.warning("  ⚠️ No options visible even after opening dropdown")
+                 # Check if options are in a different frame or portal (sometimes they are attached to body)
                  return
             
             texts = []
