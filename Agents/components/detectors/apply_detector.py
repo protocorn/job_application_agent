@@ -3,6 +3,7 @@ from playwright.async_api import Page, Frame, Locator
 from loguru import logger
 
 from components.brains.gemini_button_brain import GeminiButtonBrain
+from components.executors.iframe_helper import IframeHelper
 
 class ApplyDetector:
     """Detects and ranks 'Apply' buttons on a page using patterns and an AI fallback."""
@@ -82,12 +83,45 @@ class ApplyDetector:
             logger.info(f"✅ Found apply button via pattern matching. Reason: {pattern_candidate['reason']}")
             return pattern_candidate
 
-        # 2. If pattern matching fails, fall back to the AI model.
+        # 2. Check for actionable iframes (e.g. Greenhouse, Lever)
+        target_frame = None
+        if hasattr(self.page, "frames"):
+             try:
+                 iframe_helper = IframeHelper(self.page)
+                 target_frame = await iframe_helper.find_actionable_frame()
+                 
+                 if target_frame:
+                     logger.info(f"🔍 Actionable iframe detected: {target_frame.url}. Checking for apply button in iframe...")
+                     # Check patterns in iframe
+                     frame_detector = ApplyDetector(target_frame)
+                     frame_pattern_candidate = await frame_detector._find_best_candidate_by_pattern()
+                     
+                     if frame_pattern_candidate:
+                         logger.info(f"✅ Found apply button in iframe via pattern matching. Reason: {frame_pattern_candidate['reason']}")
+                         frame_pattern_candidate['reason'] = f"Iframe ({target_frame.url}): {frame_pattern_candidate['reason']}"
+                         return frame_pattern_candidate
+             except Exception as e:
+                 logger.warning(f"Failed during iframe analysis: {e}")
+
+        # 3. If pattern matching fails, fall back to the AI model.
         logger.warning("Pattern matching failed. Attempting AI fallback.")
         ai_candidate = await self._find_candidate_by_ai()
         if ai_candidate:
              logger.info(f"✅ Found apply button via AI fallback. Reason: {ai_candidate['reason']}")
              return ai_candidate
+
+        # 4. If AI failed on main page, try AI on the iframe if we found one
+        if target_frame:
+             logger.info("Attempting AI fallback on detected iframe...")
+             try:
+                 frame_detector = ApplyDetector(target_frame)
+                 frame_ai_candidate = await frame_detector._find_candidate_by_ai()
+                 if frame_ai_candidate:
+                     logger.info(f"✅ Found apply button in iframe via AI fallback. Reason: {frame_ai_candidate['reason']}")
+                     frame_ai_candidate['reason'] = f"Iframe AI ({target_frame.url}): {frame_ai_candidate['reason']}"
+                     return frame_ai_candidate
+             except Exception as e:
+                 logger.warning(f"Failed during iframe AI analysis: {e}")
 
         logger.error("❌ No apply button found by any method.")
         return None

@@ -630,6 +630,204 @@ def mark_job_submitted(batch_id, job_id):
         return jsonify({"error": str(e)}), 500
 
 
+@vnc_api.route("/api/vnc/batch-apply-with-preferences", methods=['POST'])
+@require_auth
+def batch_apply_with_preferences():
+    """
+    Start batch job application with resume tailoring preferences
+
+    Request:
+    {
+        "jobs": [
+            {"url": "job_url_1", "tailorResume": true},
+            {"url": "job_url_2", "tailorResume": false},
+            ...
+        ]
+    }
+
+    Response:
+    {
+        "success": true,
+        "batch_id": "batch-uuid",
+        "total_jobs": 3,
+        "jobs": [...]
+    }
+    """
+    try:
+        data = request.json
+        jobs_data = data.get('jobs', [])
+        user_id = request.current_user['id']
+
+        if not jobs_data or not isinstance(jobs_data, list):
+            return jsonify({"error": "jobs must be a non-empty list"}), 400
+
+        if len(jobs_data) > 10:
+            return jsonify({"error": "Maximum 10 jobs per batch"}), 400
+
+        # Extract URLs and preferences
+        job_urls = [job['url'] for job in jobs_data]
+        tailor_preferences = {job['url']: job.get('tailorResume', False) for job in jobs_data}
+
+        logger.info(f"📦 Starting batch VNC apply with preferences for user {user_id}")
+        logger.info(f"   Jobs: {len(job_urls)}")
+        logger.info(f"   Tailoring: {sum(tailor_preferences.values())} jobs")
+
+        # Create batch
+        batch_id = batch_vnc_manager.create_batch(user_id, job_urls)
+        batch = batch_vnc_manager.get_batch(batch_id)
+
+        # Store tailoring preferences in batch
+        batch.tailor_preferences = tailor_preferences
+
+        # Capture request host for WebSocket URL generation (before thread)
+        request_host = request.host
+        is_development = os.getenv('FLASK_ENV') == 'development' or 'localhost' in request_host
+
+        # Start processing in background thread
+        import threading
+
+        def process_batch_sequential():
+            """Process all jobs in the batch sequentially"""
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            try:
+                for idx, job in enumerate(batch.jobs):
+                    try:
+                        logger.info(f"🎯 Processing job {idx + 1}/{len(batch.jobs)}: {job.job_url}")
+
+                        # Check if this job should have resume tailored
+                        should_tailor = tailor_preferences.get(job.job_url, False)
+                        logger.info(f"   Resume tailoring: {'Yes' if should_tailor else 'No'}")
+
+                        # Update status: filling
+                        batch_vnc_manager.update_job_status(
+                            batch_id, job.job_id, 'filling', progress=0
+                        )
+
+                        # Calculate VNC port (5900, 5901, 5902, etc.)
+                        vnc_port = 5900 + idx
+
+                        # Run agent with VNC mode (agent creates VNC internally)
+                        # TODO: Pass should_tailor to agent when resume tailoring is implemented
+                        vnc_info = loop.run_until_complete(
+                            run_links_with_refactored_agent(
+                                links=[job.job_url],
+                                headless=False,  # Visible on virtual display
+                                keep_open=True,  # Keep browser open!
+                                debug=False,
+                                hold_seconds=0,
+                                slow_mo_ms=100,  # Slight slow-mo for visibility
+                                job_id=job.job_id,
+                                jobs_dict={},
+                                session_manager=session_manager,
+                                user_id=user_id,
+                                vnc_mode=True,  # ENABLE VNC!
+                                vnc_port=vnc_port,
+                                tailor_resume=should_tailor  # Pass tailoring preference
+                            )
+                        )
+
+                        # VNC info might be None if agent went through human intervention
+                        # Register session info either way so API can find it
+                        vnc_session_id = job.job_id  # Use job_id as session_id
+                        actual_vnc_port = vnc_port
+
+                        # CRITICAL: Register session in vnc_session_manager
+                        # This allows /api/vnc/session/{id} to find it
+                        if vnc_info and vnc_info.get('vnc_enabled'):
+                            logger.info(f"✅ VNC mode active for job {job.job_id}")
+                        else:
+                            logger.warning(f"⚠️ VNC info not returned, but browser should be open")
+
+                        # Register session in both managers for compatibility
+                        # (agent created VNC but didn't register in global manager)
+                        try:
+                            from Agents.components.vnc import vnc_session_manager as vsm
+
+                            # Store minimal session info that API can retrieve
+                            vsm.sessions[vnc_session_id] = {
+                                'session_id': vnc_session_id,
+                                'user_id': user_id,
+                                'job_url': job.job_url,
+                                'vnc_port': actual_vnc_port,
+                                'status': 'active',
+                                'created_at': datetime.now()
+                            }
+
+                            logger.info(f"✅ Registered VNC session {vnc_session_id} in global manager")
+
+                            # CRITICAL: Also register in vnc_stream_proxy for WebSocket routing
+                            ws_port = 6900 + idx  # Calculate websockify port
+                            register_vnc_session(vnc_session_id, actual_vnc_port, ws_port)
+                            logger.info(f"📝 Registered session {vnc_session_id} for WebSocket proxy - VNC:{actual_vnc_port}, WS:{ws_port}")
+
+                        except Exception as e:
+                            logger.warning(f"Could not register in VNC manager: {e}")
+
+                            # Fallback: Register in dev session manager
+                            dev_browser_session.register_session(
+                                session_id=job.job_id,
+                                job_url=job.job_url,
+                                user_id=user_id,
+                                current_url=job.job_url
+                            )
+                            logger.info(f"📝 Registered as dev session: {job.job_id}")
+
+                        # Determine WebSocket URL
+                        ws_protocol = 'ws' if is_development else 'wss'
+
+                        if is_development:
+                            vnc_url = f"{ws_protocol}://localhost:{6900 + idx}"
+                        else:
+                            vnc_url = f"{ws_protocol}://{request_host}/vnc-stream/{vnc_session_id}"
+
+                        # Update status: ready for review
+                        batch_vnc_manager.update_job_status(
+                            batch_id, job.job_id, 'ready_for_review',
+                            progress=100,
+                            vnc_session_id=vnc_session_id,
+                            vnc_port=actual_vnc_port,
+                            vnc_url=vnc_url
+                        )
+
+                        logger.info(f"✅ Job {idx + 1} ready for review: {job.job_url}")
+
+                    except Exception as e:
+                        logger.error(f"❌ Job {idx + 1} failed: {e}")
+                        batch_vnc_manager.update_job_status(
+                            batch_id, job.job_id, 'failed',
+                            error=str(e)
+                        )
+
+                # Mark batch as completed
+                batch.status = 'completed'
+                logger.info(f"✅ Batch {batch_id} processing completed")
+
+            except Exception as e:
+                logger.error(f"Error processing batch {batch_id}: {e}")
+                batch.status = 'failed'
+            finally:
+                loop.close()
+
+        # Start background processing
+        thread = threading.Thread(target=process_batch_sequential, daemon=True)
+        thread.start()
+
+        # Return initial batch status immediately
+        return jsonify({
+            "success": True,
+            "batch_id": batch_id,
+            "total_jobs": len(job_urls),
+            "jobs": batch.to_dict()['jobs'],
+            "message": f"Started processing {len(job_urls)} jobs sequentially"
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error starting batch VNC apply with preferences: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @vnc_api.route("/api/vnc/batch/<batch_id>", methods=['DELETE'])
 @require_auth
 def delete_batch(batch_id):

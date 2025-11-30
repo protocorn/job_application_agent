@@ -47,12 +47,13 @@ logger = logging.getLogger(__name__)
 
 class RefactoredJobAgent:
     """The main class for the refactored job application agent."""
-    def __init__(self, playwright, headless: bool = True, keep_open: bool = False, debug: bool = False, hold_seconds: int = 0, slow_mo_ms: int = 0, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900) -> None:
+    def __init__(self, playwright, headless: bool = True, keep_open: bool = False, debug: bool = False, hold_seconds: int = 0, slow_mo_ms: int = 0, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False) -> None:
         self.playwright = playwright
         
         # VNC mode setup (for cloud streaming)
         self.vnc_mode = vnc_mode and VNC_AVAILABLE
         self.vnc_port = vnc_port
+        self.tailor_resume = tailor_resume
         self.vnc_coordinator = None
         
         if vnc_mode and not VNC_AVAILABLE:
@@ -92,6 +93,9 @@ class RefactoredJobAgent:
         self.application_form_detector = None
         self.page_analyzer = None
         self.iframe_helper = None
+        
+        # Track temporary files for cleanup
+        self.created_files = []
 
     async def _new_page(self) -> Page:
         # VNC MODE: Use virtual display with VNC streaming
@@ -430,6 +434,81 @@ class RefactoredJobAgent:
         if job_context:
             profile['job_context'] = job_context
             logger.info(f"📋 Extracted job context: {job_context.get('company', 'Unknown')} - {job_context.get('title', 'Unknown')}")
+            
+            # --- RESUME TAILORING ---
+            if self.tailor_resume and job_context.get('description'):
+                logger.info("✨ Resume tailoring is ENABLED. Starting tailoring process...")
+                try:
+                    # Get Google Doc URL from profile
+                    resume_url = profile.get('resume_url')
+                    if not resume_url and 'docs.google.com' in profile.get('resume_path', ''):
+                         # In case resume_path is actually the URL (sometimes happens in fallback)
+                         resume_url = profile.get('resume_path')
+                    
+                    if resume_url and 'docs.google.com' in resume_url:
+                        logger.info(f"📄 Tailoring resume from: {resume_url}")
+                        
+                        # Import here to avoid circular dependencies or startup costs
+                        try:
+                            from Agents.resume_tailoring_agent import tailor_resume_and_return_url
+                            
+                            # Run tailoring in a thread to avoid blocking the event loop
+                            # Use asyncio.to_thread for blocking operations
+                            logger.info("⏳ Running systematic tailoring (this may take 30-60 seconds)...")
+                            tailoring_metrics = await asyncio.to_thread(
+                                tailor_resume_and_return_url,
+                                resume_url,
+                                job_context.get('description'),
+                                job_context.get('title', 'Job'),
+                                job_context.get('company', 'Company')
+                            )
+                            
+                            if tailoring_metrics and tailoring_metrics.get('pdf_path'):
+                                new_pdf_path = tailoring_metrics['pdf_path']
+                                logger.info(f"✅ Resume tailored successfully! New PDF: {new_pdf_path}")
+                                
+                                # Make it accessible for manual upload if needed
+                                try:
+                                    import shutil
+                                    # Create a convenient folder on Desktop if it exists, otherwise standard temp
+                                    user_home = os.path.expanduser("~")
+                                    desktop_path = os.path.join(user_home, "Desktop")
+                                    
+                                    # Fallback to temp if Desktop doesn't exist (e.g. headless server)
+                                    target_dir = os.path.join(desktop_path, "Current_Job_Resume") if os.path.exists(desktop_path) else os.path.join(user_home, "Downloads", "Current_Job_Resume")
+                                    os.makedirs(target_dir, exist_ok=True)
+                                    
+                                    # Create a user-friendly filename
+                                    safe_company = "".join([c for c in job_context.get('company', 'Company') if c.isalnum() or c in (' ', '_', '-')]).strip()
+                                    dest_filename = f"Resume_for_{safe_company}.pdf"
+                                    dest_path = os.path.join(target_dir, dest_filename)
+                                    
+                                    shutil.copy2(new_pdf_path, dest_path)
+                                    logger.info(f"📂 Copied tailored resume to accessible location: {dest_path}")
+                                    
+                                    # Track both for cleanup
+                                    self.created_files.append(new_pdf_path)
+                                    self.created_files.append(dest_path)
+                                    
+                                    # Update profile to use the ACCESSIBLE path for upload interactions
+                                    profile['resume_path'] = dest_path
+                                except Exception as copy_error:
+                                    logger.warning(f"Failed to copy resume to user folder: {copy_error}")
+                                    # Fallback to original temp path
+                                    profile['resume_path'] = new_pdf_path
+                                    self.created_files.append(new_pdf_path)
+
+                                profile['tailoring_metrics'] = tailoring_metrics
+                            else:
+                                logger.error("❌ Tailoring failed to produce a PDF path")
+                        except ImportError:
+                            logger.error("❌ Could not import resume_tailoring_agent. Is it in the python path?")
+                    else:
+                        logger.warning("⚠️ Cannot tailor resume: No Google Docs URL found in profile")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Error during resume tailoring: {e}", exc_info=True)
+            # ------------------------
 
         state.update_context({'url': self.page.url, 'profile': profile})
         return 'ai_guided_navigation'
@@ -501,7 +580,7 @@ class RefactoredJobAgent:
                         if await element.is_visible():
                             text = await element.inner_text()
                             if text and len(text.strip()) > 50:  # Substantial description
-                                job_context['description'] = text.strip()[:1000]  # Limit length
+                                job_context['description'] = text.strip()[:5000]  # Limit length (increased for tailoring)
                                 break
                     except:
                         continue
@@ -2614,36 +2693,44 @@ def _load_profile_data(user_id=None):
         logger.warning("🔄 Using fallback profile data...")
         return fallback_profile
 
-async def run_links_with_refactored_agent(links: list[str], headless: bool, keep_open: bool, debug: bool, hold_seconds: int, slow_mo_ms: int, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900):
+async def run_links_with_refactored_agent(links: list[str], headless: bool, keep_open: bool, debug: bool, hold_seconds: int, slow_mo_ms: int, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False):
     """
     Run job application agent with optional VNC streaming
-    
+
     Args:
         vnc_mode: If True, runs browser on virtual display with VNC streaming
         vnc_port: Port for VNC server (default 5900)
-    
+        tailor_resume: If True, resume will be tailored for this job (future feature)
+
     Returns:
         Dict with VNC session info if vnc_mode=True, otherwise None
     """
     p = await async_playwright().start()
     vnc_session_info = None
-    
+
+    # Log resume tailoring preference
+    if tailor_resume:
+        logger.info("✨ Resume tailoring enabled for this job application")
+    else:
+        logger.info("📄 Using standard resume (no tailoring)")
+
     try:
         agent = RefactoredJobAgent(
-            p, 
-            headless=headless, 
-            keep_open=keep_open, 
-            debug=debug, 
-            hold_seconds=hold_seconds, 
-            slow_mo_ms=slow_mo_ms, 
-            job_id=job_id, 
-            jobs_dict=jobs_dict, 
-            session_manager=session_manager, 
+            p,
+            headless=headless,
+            keep_open=keep_open,
+            debug=debug,
+            hold_seconds=hold_seconds,
+            slow_mo_ms=slow_mo_ms,
+            job_id=job_id,
+            jobs_dict=jobs_dict,
+            session_manager=session_manager,
             user_id=user_id,
             vnc_mode=vnc_mode,
-            vnc_port=vnc_port
+            vnc_port=vnc_port,
+            tailor_resume=tailor_resume
         )
-        
+
         for link in links:
             await agent.process_link(link)
         
@@ -2670,6 +2757,17 @@ async def run_links_with_refactored_agent(links: list[str], headless: bool, keep
             keep_open or
             debug
         )
+        
+        # Cleanup temporary files unless keeping open for human
+        if not should_keep_open and hasattr(agent, 'created_files'):
+            import os
+            for file_path in agent.created_files:
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        logger.debug(f"🧹 Cleaned up temporary file: {file_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup file {file_path}: {e}")
 
         if not should_keep_open:
             await p.stop()
