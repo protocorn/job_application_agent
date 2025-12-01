@@ -1,0 +1,112 @@
+# Cron Job Example for Orphaned Process Cleanup
+#
+# This file contains example crontab entries for scheduling the orphaned process cleanup script.
+#
+# To install:
+# 1. Edit your crontab: crontab -e
+# 2. Add one of the entries below
+# 3. Save and exit
+#
+# Note: Make sure the script has execute permissions:
+#   chmod +x cleanup_orphaned_processes.py
+
+# ============================================================================
+# OPTION 1: Run every hour (recommended for production)
+# ============================================================================
+# This runs at the top of every hour and cleans processes older than 24 hours
+0 * * * * cd /path/to/Job_Application_Agent && /usr/bin/python3 cleanup_orphaned_processes.py --max-age 24 >> logs/cleanup.log 2>&1
+
+# ============================================================================
+# OPTION 2: Run every 6 hours (lighter load)
+# ============================================================================
+# This runs at midnight, 6am, noon, and 6pm
+0 0,6,12,18 * * * cd /path/to/Job_Application_Agent && /usr/bin/python3 cleanup_orphaned_processes.py --max-age 24 >> logs/cleanup.log 2>&1
+
+# ============================================================================
+# OPTION 3: Run daily at 2 AM (minimal load)
+# ============================================================================
+# This runs once per day during off-peak hours
+0 2 * * * cd /path/to/Job_Application_Agent && /usr/bin/python3 cleanup_orphaned_processes.py --max-age 48 >> logs/cleanup.log 2>&1
+
+# ============================================================================
+# OPTION 4: Aggressive cleanup (every 30 minutes, 6 hour threshold)
+# ============================================================================
+# For development or high-traffic environments
+*/30 * * * * cd /path/to/Job_Application_Agent && /usr/bin/python3 cleanup_orphaned_processes.py --max-age 6 >> logs/cleanup.log 2>&1
+
+# ============================================================================
+# Manual Testing
+# ============================================================================
+# Before setting up cron, test the script manually:
+#
+# Dry run (shows what would be cleaned):
+#   python3 cleanup_orphaned_processes.py --dry-run
+#
+# Clean processes older than 24 hours:
+#   python3 cleanup_orphaned_processes.py --max-age 24
+#
+# Force clean all matching processes immediately:
+#   python3 cleanup_orphaned_processes.py --force
+#
+
+# ============================================================================
+# Systemd Timer Alternative (for systems using systemd)
+# ============================================================================
+# If your system uses systemd instead of cron, create these files:
+#
+# /etc/systemd/system/vnc-cleanup.service:
+# ---
+# [Unit]
+# Description=Clean up orphaned VNC processes
+# After=network.target
+#
+# [Service]
+# Type=oneshot
+# User=your-app-user
+# WorkingDirectory=/path/to/Job_Application_Agent
+# ExecStart=/usr/bin/python3 cleanup_orphaned_processes.py --max-age 24
+# StandardOutput=append:/path/to/Job_Application_Agent/logs/cleanup.log
+# StandardError=append:/path/to/Job_Application_Agent/logs/cleanup.log
+# ---
+#
+# /etc/systemd/system/vnc-cleanup.timer:
+# ---
+# [Unit]
+# Description=Run VNC cleanup hourly
+#
+# [Timer]
+# OnCalendar=hourly
+# Persistent=true
+#
+# [Install]
+# WantedBy=timers.target
+# ---
+#
+# Enable and start:
+#   sudo systemctl enable vnc-cleanup.timer
+#   sudo systemctl start vnc-cleanup.timer
+#   sudo systemctl status vnc-cleanup.timer
+#
+
+# ============================================================================
+# Railway Deployment Notes
+# ============================================================================
+# Railway doesn't support cron jobs natively. For Railway, you have two options:
+#
+# 1. Use a external cron service like cron-job.org or EasyCron to hit an API endpoint
+#    that triggers the cleanup script
+#
+# 2. Add an internal scheduler using APScheduler in your Flask app:
+#
+#    from apscheduler.schedulers.background import BackgroundScheduler
+#    import subprocess
+#
+#    scheduler = BackgroundScheduler()
+#    scheduler.add_job(
+#        func=lambda: subprocess.run(['python3', 'cleanup_orphaned_processes.py']),
+#        trigger='interval',
+#        hours=1
+#    )
+#    scheduler.start()
+#
+# 3. Create a separate worker dyno/service that runs the cleanup script on a schedule

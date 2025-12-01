@@ -26,7 +26,7 @@ async def simulate_ai_mapping_and_recording():
     recorder = PatternRecorder()
 
     # Simulate AI successfully mapping fields
-    print("\n📝 Simulating AI mapping 10 fields...")
+    print("\n[AI] Simulating AI mapping 10 fields...")
 
     fields_mapped = [
         ("First Name", "first_name", "text_input"),
@@ -42,7 +42,7 @@ async def simulate_ai_mapping_and_recording():
     ]
 
     for i, (label, profile_field, category) in enumerate(fields_mapped, 1):
-        print(f"  {i}. AI maps '{label}' → {profile_field}")
+        print(f"  {i}. AI maps '{label}' -> {profile_field}")
         success = await recorder.record_pattern(
             field_label=label,
             profile_field=profile_field,
@@ -51,13 +51,13 @@ async def simulate_ai_mapping_and_recording():
             user_id=None
         )
         if not success:
-            print(f"     ❌ Failed to record pattern")
+            print(f"     [FAIL] Failed to record pattern")
 
-    print(f"\n✅ Recorded {len(fields_mapped)} patterns from AI mappings")
+    print(f"\n[OK] Recorded {len(fields_mapped)} patterns from AI mappings")
 
     # Get stats
     stats = recorder.get_pattern_stats()
-    print(f"\n📊 Pattern Database Stats:")
+    print(f"\n[STATS] Pattern Database Stats:")
     print(f"   Total patterns: {stats.get('total_patterns', 0)}")
     print(f"   High confidence (0.85+): {stats.get('high_confidence_patterns', 0)}")
     print(f"   Average confidence: {stats.get('average_confidence', 0):.2f}")
@@ -89,7 +89,7 @@ async def simulate_pattern_retrieval():
     }
 
     # Simulate encountering the same fields in a different application
-    print("\n🔍 Encountering fields in second application...")
+    print("\n[SEARCH] Encountering fields in second application...")
 
     fields_encountered = [
         ("First Name", "text_input"),
@@ -114,21 +114,21 @@ async def simulate_pattern_retrieval():
         if pattern:
             # Pattern found! No AI call needed
             value = mapper.get_profile_value(profile, pattern.profile_field)
-            print(f"  {i}. ✅ '{label}'")
-            print(f"      → Learned pattern: {pattern.profile_field} = '{value}'")
-            print(f"      → Confidence: {pattern.confidence_score:.2f}, Occurrences: {pattern.occurrence_count}")
-            print(f"      💰 Saved 1 AI API call!")
+            print(f"  {i}. [OK] '{label}'")
+            print(f"      -> Learned pattern: {pattern.profile_field} = '{value}'")
+            print(f"      -> Confidence: {pattern.confidence_score:.2f}, Occurrences: {pattern.occurrence_count}")
+            print(f"      [SAVED] Saved 1 AI API call!")
             learned_pattern_hits += 1
             ai_calls_saved += 1
         else:
             # No pattern found, would need AI
-            print(f"  {i}. ⚠️  '{label}' - No learned pattern, would call AI")
+            print(f"  {i}. [WARN] '{label}' - No learned pattern, would call AI")
 
-    print(f"\n📊 Results:")
+    print(f"\n[STATS] Results:")
     print(f"   Total fields: {len(fields_encountered)}")
     print(f"   Learned patterns used: {learned_pattern_hits}")
     print(f"   AI calls that would be needed: {len(fields_encountered) - learned_pattern_hits}")
-    print(f"   💡 AI call reduction: {(ai_calls_saved / len(fields_encountered)) * 100:.1f}%")
+    print(f"   [INFO] AI call reduction: {(ai_calls_saved / len(fields_encountered)) * 100:.1f}%")
 
     return ai_calls_saved, len(fields_encountered)
 
@@ -145,7 +145,7 @@ async def simulate_pattern_evolution():
     mapper = LearnedPatternsMapper()
 
     # Simulate multiple applications using and reinforcing patterns
-    print("\n📈 Simulating 5 more applications using learned patterns...")
+    print("\n[SIMULATE] Simulating 5 more applications using learned patterns...")
 
     for app_num in range(1, 6):
         print(f"\n  Application {app_num}:")
@@ -161,10 +161,10 @@ async def simulate_pattern_evolution():
             # Record successful reuse (boosts confidence and occurrence count)
             await recorder.record_pattern(label, profile_field, category, success=True)
 
-    print("\n✅ Simulated 5 applications with pattern reuse")
+    print("\n[OK] Simulated 5 applications with pattern reuse")
 
     # Check evolved patterns
-    print("\n📊 Checking pattern evolution...")
+    print("\n[STATS] Checking pattern evolution...")
     for label, category in [("Email Address", "email_input"), ("Phone Number", "tel_input")]:
         pattern = mapper.map_field(label, category, {})
         if pattern:
@@ -183,7 +183,7 @@ async def test_privacy_filter():
 
     recorder = PatternRecorder()
 
-    print("\n🔒 Testing privacy exclusion filter...")
+    print("\n[PRIVACY] Testing privacy exclusion filter...")
 
     sensitive_fields = [
         ("What is your Social Security Number?", "ssn", "text_input"),
@@ -197,12 +197,12 @@ async def test_privacy_filter():
     for label, profile_field, category in sensitive_fields:
         success = await recorder.record_pattern(label, profile_field, category, success=True)
         if not success:
-            print(f"  ✅ Correctly filtered: '{label}'")
+            print(f"  [OK] Correctly filtered: '{label}'")
             correctly_filtered += 1
         else:
-            print(f"  ❌ SECURITY ISSUE: '{label}' was not filtered!")
+            print(f"  [FAIL] SECURITY ISSUE: '{label}' was not filtered!")
 
-    print(f"\n📊 Privacy Filter Results:")
+    print(f"\n[STATS] Privacy Filter Results:")
     print(f"   Sensitive fields tested: {len(sensitive_fields)}")
     print(f"   Correctly filtered: {correctly_filtered}")
     print(f"   Filter effectiveness: {(correctly_filtered / len(sensitive_fields)) * 100:.0f}%")
@@ -223,11 +223,11 @@ async def test_fuzzy_matching():
     profile = {"email": "test@example.com"}
 
     # Record pattern with one label
-    print("\n📝 Recording pattern: 'Email Address' → email")
+    print("\n[AI] Recording pattern: 'Email Address' -> email")
     await recorder.record_pattern("Email Address", "email", "email_input", success=True)
 
     # Try to find with variations
-    print("\n🔍 Testing fuzzy matching with label variations...")
+    print("\n[SEARCH] Testing fuzzy matching with label variations...")
 
     variations = [
         "Email Address",        # Exact match
@@ -241,12 +241,12 @@ async def test_fuzzy_matching():
     for variation in variations:
         pattern = mapper.map_field(variation, "email_input", profile)
         if pattern:
-            print(f"  ✅ '{variation}' → matched to {pattern.profile_field}")
+            print(f"  [OK] '{variation}' -> matched to {pattern.profile_field}")
             matches_found += 1
         else:
-            print(f"  ❌ '{variation}' → no match")
+            print(f"  [FAIL] '{variation}' -> no match")
 
-    print(f"\n📊 Fuzzy Matching Results:")
+    print(f"\n[STATS] Fuzzy Matching Results:")
     print(f"   Variations tested: {len(variations)}")
     print(f"   Successful matches: {matches_found}")
     print(f"   Match rate: {(matches_found / len(variations)) * 100:.0f}%")
@@ -254,7 +254,7 @@ async def test_fuzzy_matching():
 
 async def main():
     """Run all simulations."""
-    print("\n🧪 PATTERN LEARNING SYSTEM - END-TO-END TEST")
+    print("\n[TEST] PATTERN LEARNING SYSTEM - END-TO-END TEST")
     print("="*70)
     print("\nThis test simulates the complete pattern learning workflow:")
     print("  1. First application: AI learns and records patterns")
@@ -281,24 +281,24 @@ async def main():
 
         # Final summary
         print("\n" + "="*70)
-        print("✅ END-TO-END TEST COMPLETED")
+        print("[OK] END-TO-END TEST COMPLETED")
         print("="*70)
 
-        print(f"\n📊 Summary:")
+        print(f"\n[STATS] Summary:")
         print(f"   Patterns recorded in first application: {patterns_recorded}")
         print(f"   AI calls saved in second application: {ai_calls_saved}/{total_fields}")
         print(f"   AI call reduction: {(ai_calls_saved / total_fields) * 100:.1f}%")
-        print(f"   Privacy filter: {'✅ Working' if privacy_ok else '❌ FAILED'}")
+        print(f"   Privacy filter: {'[OK] Working' if privacy_ok else '[FAIL] FAILED'}")
 
-        print(f"\n💡 Expected Production Results:")
+        print(f"\n[INFO] Expected Production Results:")
         print(f"   Day 1 (with seed data): 20-30% AI reduction")
         print(f"   After 50 applications: 40-50% AI reduction")
         print(f"   At maturity: 60-70% AI reduction")
 
-        print(f"\n📝 Next Steps:")
+        print(f"\n[INFO] Next Steps:")
         print(f"   1. Run migration: python migrate_add_pattern_learning.py")
         print(f"   2. Use agent normally - learning is automatic")
-        print(f"   3. Monitor logs for: '💡 AI call reduction: XX%'")
+        print(f"   3. Monitor logs for: '[INFO] AI call reduction: XX%'")
         print(f"   4. Check database: SELECT * FROM field_label_patterns;")
 
     except Exception as e:

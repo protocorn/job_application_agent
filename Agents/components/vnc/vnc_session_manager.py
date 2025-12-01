@@ -74,13 +74,15 @@ class VNCSessionManager:
                 logger.error("No available VNC ports")
                 return None
             
-            logger.info(f"🆕 Creating VNC session {session_id} on port {vnc_port}")
-            
-            # Create VNC coordinator
+            logger.info(f"🆕 Creating VNC session {session_id} on port {vnc_port} for user {user_id}")
+
+            # Create VNC coordinator with user and session IDs for file isolation
             coordinator = BrowserVNCCoordinator(
                 display_width=1920,
                 display_height=1080,
-                vnc_port=vnc_port
+                vnc_port=vnc_port,
+                user_id=user_id,
+                session_id=session_id
             )
             
             # Start VNC environment

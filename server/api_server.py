@@ -98,20 +98,56 @@ except ImportError as e:
     
 # ============= END VNC SETUP =============
 
+# ============= SENTRY ERROR TRACKING =============
+# Initialize Sentry for production error tracking
+SENTRY_ENABLED = False
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.flask import FlaskIntegration
+
+    sentry_dsn = os.getenv('SENTRY_DSN')
+    sentry_environment = os.getenv('FLASK_ENV', 'development')
+
+    if sentry_dsn:
+        sentry_sdk.init(
+            dsn=sentry_dsn,
+            integrations=[FlaskIntegration()],
+            environment=sentry_environment,
+            traces_sample_rate=0.1,  # 10% of transactions for performance monitoring
+            profiles_sample_rate=0.1,  # 10% for profiling
+            # Filter out health check endpoints from traces
+            before_send_transaction=lambda event, hint: None if event.get('transaction', '').startswith('/health') or event.get('transaction', '').startswith('/ready') else event,
+        )
+        SENTRY_ENABLED = True
+        logging.info(f"✅ Sentry error tracking initialized (environment: {sentry_environment})")
+    else:
+        logging.info("⚠️ Sentry DSN not configured - error tracking disabled")
+
+except ImportError:
+    logging.info("⚠️ Sentry SDK not installed - error tracking disabled")
+    logging.info("   Install with: pip install sentry-sdk[flask]")
+
+# ============= END SENTRY SETUP =============
+
 # Configure CORS for development and production
 # Default includes multiple localhost ports for development and Vercel production
 default_origins = 'http://localhost:3000,http://localhost:3001,http://localhost:5173,https://job-agent-frontend-two.vercel.app'
 allowed_origins_str = os.getenv('CORS_ORIGINS', default_origins)
 
-# Parse allowed origins - add regex pattern for all Vercel deployments
+# Parse allowed origins
 allowed_origins = [origin.strip() for origin in allowed_origins_str.split(',')]
 
-# Add wildcard pattern for all Vercel apps if any .vercel.app domain is present
-if any('.vercel.app' in origin for origin in allowed_origins):
-    # flask-cors supports regex patterns for origins
+# PRODUCTION SECURITY: Only add Vercel wildcard pattern in development mode
+# In production, all allowed origins must be explicitly listed in CORS_ORIGINS env var
+flask_env = os.getenv('FLASK_ENV', 'development')
+if flask_env == 'development' and any('.vercel.app' in origin for origin in allowed_origins):
+    # flask-cors supports regex patterns for origins (development only)
     allowed_origins.append(r'https://.*\.vercel\.app')
+    logging.info("⚠️ CORS: Vercel wildcard pattern enabled (development mode)")
+else:
+    logging.info(f"✅ CORS: Production mode - only explicit origins allowed: {len(allowed_origins)} origins")
 
-# Apply CORS with expanded origins list (supports regex for Vercel)
+# Apply CORS with expanded origins list (supports regex for Vercel in dev only)
 CORS(app, origins=allowed_origins, supports_credentials=True)
 
 # Apply security headers to all responses
@@ -630,6 +666,78 @@ def extract_pdf_text(file_obj) -> str:
     except Exception as e:
         logging.error(f"Error extracting PDF text: {e}")
         raise ValueError(f"Failed to extract text from PDF: {str(e)}")
+
+
+# ============= HEALTH CHECK ENDPOINTS =============
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Basic health check endpoint - returns 200 if server is running"""
+    return jsonify({
+        "status": "healthy",
+        "timestamp": time.time(),
+        "vnc_enabled": VNC_ENABLED,
+        "sentry_enabled": SENTRY_ENABLED
+    }), 200
+
+
+@app.route('/ready', methods=['GET'])
+def readiness_check():
+    """
+    Readiness check endpoint - verifies all dependencies are working
+    Returns 200 if ready, 503 if not ready
+    """
+    checks = {}
+    all_ready = True
+
+    # Check database connection
+    try:
+        from database_config import engine
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        checks["database"] = {"status": "ready", "message": "Connected"}
+    except Exception as e:
+        checks["database"] = {"status": "not_ready", "error": str(e)}
+        all_ready = False
+
+    # Check Redis connection
+    try:
+        from rate_limiter import redis_client
+        redis_client.ping()
+        checks["redis"] = {"status": "ready", "message": "Connected"}
+    except Exception as e:
+        checks["redis"] = {"status": "not_ready", "error": str(e)}
+        all_ready = False
+
+    # Check VNC capacity if enabled
+    if VNC_ENABLED:
+        try:
+            from vnc_api_endpoints import vnc_session_manager
+            available_slots = vnc_session_manager.max_sessions - len(vnc_session_manager.sessions)
+            checks["vnc_capacity"] = {
+                "status": "ready" if available_slots > 0 else "at_capacity",
+                "available_slots": available_slots,
+                "max_sessions": vnc_session_manager.max_sessions
+            }
+            if available_slots == 0:
+                all_ready = False
+        except Exception as e:
+            checks["vnc_capacity"] = {"status": "error", "error": str(e)}
+            all_ready = False
+    else:
+        checks["vnc_capacity"] = {"status": "disabled", "message": "VNC not enabled"}
+
+    response = {
+        "status": "ready" if all_ready else "not_ready",
+        "timestamp": time.time(),
+        "checks": checks
+    }
+
+    return jsonify(response), 200 if all_ready else 503
+
+
+# ============= END HEALTH CHECK ENDPOINTS =============
 
 
 @app.route("/api/profile", methods=["GET"])
@@ -3963,14 +4071,57 @@ if __name__ == "__main__":
     # Set up file logging for API server with DEBUG level to capture everything
     log_file = setup_file_logging(log_level=logging.DEBUG, console_logging=True)
     logging.info(f"API Server starting. Logs will be saved to: {log_file}")
-    
+
     # Initialize production infrastructure
     try:
         initialize_production_infrastructure()
     except Exception as e:
         logging.error(f"Failed to initialize production infrastructure: {e}")
         sys.exit(1)
-    
+
+    # ============= GRACEFUL SHUTDOWN HANDLERS =============
+    import signal
+
+    def graceful_shutdown(signum, frame):
+        """Handle graceful shutdown on SIGTERM or SIGINT"""
+        signal_name = 'SIGTERM' if signum == signal.SIGTERM else 'SIGINT'
+        logging.info(f"🛑 Received {signal_name}, initiating graceful shutdown...")
+
+        try:
+            # Stop job queue worker
+            logging.info("Stopping job queue worker...")
+            job_queue.stop_worker()
+            logging.info("✓ Job queue worker stopped")
+        except Exception as e:
+            logging.error(f"Error stopping job queue: {e}")
+
+        try:
+            # Close any active VNC sessions
+            if VNC_ENABLED:
+                logging.info("Closing active VNC sessions...")
+                from vnc_api_endpoints import vnc_session_manager
+                import asyncio
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                for session_id in list(vnc_session_manager.sessions.keys()):
+                    try:
+                        loop.run_until_complete(vnc_session_manager.end_session(session_id))
+                    except Exception as e:
+                        logging.error(f"Error closing VNC session {session_id}: {e}")
+                logging.info("✓ VNC sessions closed")
+        except Exception as e:
+            logging.error(f"Error closing VNC sessions: {e}")
+
+        logging.info("✅ Graceful shutdown complete")
+        sys.exit(0)
+
+    # Register signal handlers for graceful shutdown
+    signal.signal(signal.SIGTERM, graceful_shutdown)
+    signal.signal(signal.SIGINT, graceful_shutdown)
+    logging.info("✅ Graceful shutdown handlers registered (SIGTERM, SIGINT)")
+
+    # ============= END GRACEFUL SHUTDOWN HANDLERS =============
+
     # Check if we're in development or production mode
     import os
     is_development = os.getenv('FLASK_ENV') == 'development'

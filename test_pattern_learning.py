@@ -21,7 +21,7 @@ async def test_pattern_recording():
     recorder = PatternRecorder()
 
     # Test 1: Record a new pattern
-    print("\n1. Recording new pattern: 'Have you served in military?' → veteran_status")
+    print("\n1. Recording new pattern: 'Have you served in military?' -> veteran_status")
     success = await recorder.record_pattern(
         field_label="Have you served in the military?",
         profile_field="veteran_status",
@@ -29,7 +29,7 @@ async def test_pattern_recording():
         success=True,
         user_id=None
     )
-    print(f"   Result: {'✅ Success' if success else '❌ Failed'}")
+    print(f"   Result: {'[OK] Success' if success else '[FAIL] Failed'}")
 
     # Test 2: Update existing pattern (should increment occurrence_count)
     print("\n2. Recording same pattern again (should update)")
@@ -40,7 +40,7 @@ async def test_pattern_recording():
         success=True,
         user_id=None
     )
-    print(f"   Result: {'✅ Success' if success else '❌ Failed'}")
+    print(f"   Result: {'[OK] Success' if success else '[FAIL] Failed'}")
 
     # Test 3: Record a failure (should reduce confidence)
     print("\n3. Recording failure for same pattern")
@@ -51,7 +51,7 @@ async def test_pattern_recording():
         success=False,
         user_id=None
     )
-    print(f"   Result: {'✅ Success' if success else '❌ Failed'}")
+    print(f"   Result: {'[OK] Success' if success else '[FAIL] Failed'}")
 
     # Test 4: Privacy filter test
     print("\n4. Testing privacy filter (should skip)")
@@ -62,7 +62,7 @@ async def test_pattern_recording():
         success=True,
         user_id=None
     )
-    print(f"   Result: {'✅ Correctly skipped' if not success else '❌ Should have been skipped!'}")
+    print(f"   Result: {'[OK] Correctly skipped' if not success else '[FAIL] Should have been skipped!'}")
 
     # Get stats
     print("\n5. Getting pattern statistics")
@@ -95,12 +95,12 @@ async def test_pattern_retrieval():
         profile=profile
     )
     if pattern:
-        print(f"   ✅ Found pattern:")
+        print(f"   [OK] Found pattern:")
         print(f"      Profile field: {pattern.profile_field}")
         print(f"      Confidence: {pattern.confidence_score:.2f}")
         print(f"      Occurrences: {pattern.occurrence_count}")
     else:
-        print(f"   ❌ No pattern found")
+        print(f"   [FAIL] No pattern found")
 
     # Test 2: Variation with different punctuation
     print("\n2. Testing label variation: 'Have you served in military'")
@@ -110,9 +110,9 @@ async def test_pattern_retrieval():
         profile=profile
     )
     if pattern:
-        print(f"   ✅ Found pattern: {pattern.profile_field}")
+        print(f"   [OK] Found pattern: {pattern.profile_field}")
     else:
-        print(f"   ❌ No pattern found")
+        print(f"   [FAIL] No pattern found")
 
     # Test 3: Fuzzy match (if pg_trgm is enabled)
     print("\n3. Testing fuzzy match: 'military service'")
@@ -122,9 +122,9 @@ async def test_pattern_retrieval():
         profile=profile
     )
     if pattern:
-        print(f"   ✅ Found fuzzy pattern: {pattern.profile_field} (confidence: {pattern.confidence_score:.2f})")
+        print(f"   [OK] Found fuzzy pattern: {pattern.profile_field} (confidence: {pattern.confidence_score:.2f})")
     else:
-        print(f"   ℹ️ No fuzzy match (may need pg_trgm extension or higher similarity)")
+        print(f"   [INFO] No fuzzy match (may need pg_trgm extension or higher similarity)")
 
     # Test 4: Get value from profile
     print("\n4. Testing profile value extraction")
@@ -142,7 +142,7 @@ async def test_pattern_retrieval():
 
 
 async def test_full_workflow():
-    """Test complete workflow: record → retrieve → use."""
+    """Test complete workflow: record -> retrieve -> use."""
     print("\n" + "="*60)
     print("TEST 3: Full Workflow Simulation")
     print("="*60)
@@ -159,11 +159,11 @@ async def test_full_workflow():
 
     # Simulate AI learning from first application
     print("\n1. Simulating first application (AI learns)")
-    print("   AI fills 'Email Address' → email")
+    print("   AI fills 'Email Address' -> email")
     await recorder.record_pattern("Email Address", "email", "email_input", True)
-    print("   AI fills 'Phone Number' → phone")
+    print("   AI fills 'Phone Number' -> phone")
     await recorder.record_pattern("Phone Number", "phone", "tel_input", True)
-    print("   ✅ Patterns recorded")
+    print("   [OK] Patterns recorded")
 
     # Simulate second application (using learned patterns)
     print("\n2. Simulating second application (using learned patterns)")
@@ -172,14 +172,14 @@ async def test_full_workflow():
     pattern = mapper.map_field("Email Address", "email_input", profile)
     if pattern:
         value = mapper.get_profile_value(profile, pattern.profile_field)
-        print(f"   ✅ Used learned pattern: {pattern.profile_field} = '{value}'")
+        print(f"   [OK] Used learned pattern: {pattern.profile_field} = '{value}'")
         print(f"      (Saved 1 AI API call!)")
 
     print("   Looking up 'Phone Number'...")
     pattern = mapper.map_field("Phone Number", "tel_input", profile)
     if pattern:
         value = mapper.get_profile_value(profile, pattern.profile_field)
-        print(f"   ✅ Used learned pattern: {pattern.profile_field} = '{value}'")
+        print(f"   [OK] Used learned pattern: {pattern.profile_field} = '{value}'")
         print(f"      (Saved 1 AI API call!)")
 
     # Update with success
@@ -197,7 +197,7 @@ async def test_full_workflow():
 
 async def main():
     """Run all tests."""
-    print("\n🧪 PATTERN LEARNING SYSTEM - TEST SUITE")
+    print("\n[TEST] PATTERN LEARNING SYSTEM - TEST SUITE")
     print("="*60)
 
     try:
@@ -211,7 +211,7 @@ async def main():
         await test_full_workflow()
 
         print("\n" + "="*60)
-        print("✅ ALL TESTS COMPLETED")
+        print("[OK] ALL TESTS COMPLETED")
         print("="*60)
         print("\nNotes:")
         print("- Check database for recorded patterns")

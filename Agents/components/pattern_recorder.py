@@ -139,9 +139,10 @@ class PatternRecorder:
             if existing:
                 # Update existing pattern
                 pattern_id = existing[0]
-                new_success_count = existing[1] + (1 if success else 0)
-                new_failure_count = existing[2] + (0 if success else 1)
-                new_occurrence_count = existing[3] + 1
+                # Handle NULL values from database
+                new_success_count = (existing[1] or 0) + (1 if success else 0)
+                new_failure_count = (existing[2] or 0) + (0 if success else 1)
+                new_occurrence_count = (existing[3] or 0) + 1
                 new_confidence = self._calculate_confidence(
                     new_success_count,
                     new_failure_count,
@@ -259,9 +260,10 @@ class PatternRecorder:
             if existing:
                 # Update
                 pattern_id = existing[0]
-                new_success_count = existing[1] + (1 if success else 0)
-                new_failure_count = existing[2] + (0 if success else 1)
-                new_occurrence_count = existing[3] + 1
+                # Handle NULL values from database
+                new_success_count = (existing[1] or 0) + (1 if success else 0)
+                new_failure_count = (existing[2] or 0) + (0 if success else 1)
+                new_occurrence_count = (existing[3] or 0) + 1
                 new_confidence = self._calculate_confidence(
                     new_success_count,
                     new_failure_count,

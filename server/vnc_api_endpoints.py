@@ -387,6 +387,8 @@ def batch_apply_with_vnc():
         "jobs": [...]
     }
     """
+
+    
     try:
         data = request.json
         job_urls = data.get('jobUrls', [])
@@ -873,8 +875,111 @@ def delete_batch(batch_id):
             "success": True,
             "message": "Batch and all VNC sessions closed"
         }), 200
-        
+
     except Exception as e:
         logger.error(f"Error deleting batch: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@vnc_api.route("/api/vnc/dashboard", methods=['GET'])
+@require_auth
+def get_vnc_dashboard():
+    """
+    Get unified dashboard data with all user's batch jobs
+
+    Returns all jobs from all batches in a flat list for easy filtering/sorting
+
+    Response:
+    {
+        "success": true,
+        "total_applications": 25,
+        "statistics": {
+            "queued": 5,
+            "filling": 2,
+            "ready_for_review": 3,
+            "completed": 10,
+            "failed": 5
+        },
+        "applications": [
+            {
+                "job_id": "uuid",
+                "batch_id": "uuid",
+                "job_url": "https://...",
+                "status": "queued|filling|ready_for_review|completed|failed",
+                "progress": 0-100,
+                "vnc_session_id": "uuid",
+                "vnc_url": "wss://...",
+                "error": "error message if any",
+                "started_at": "ISO datetime",
+                "completed_at": "ISO datetime",
+                "submitted_by_user_at": "ISO datetime"
+            }
+        ],
+        "batches": [
+            {
+                "batch_id": "uuid",
+                "created_at": "ISO datetime",
+                "status": "processing|completed",
+                "total_jobs": 5,
+                "completed_jobs": 2
+            }
+        ]
+    }
+    """
+    try:
+        user_id = request.current_user['id']
+
+        # Get all batches for this user
+        user_batches = batch_vnc_manager.get_user_batches(user_id)
+
+        # Collect all jobs from all batches
+        all_applications = []
+        statistics = {
+            'queued': 0,
+            'filling': 0,
+            'ready_for_review': 0,
+            'completed': 0,
+            'failed': 0
+        }
+
+        batch_summaries = []
+
+        for batch in user_batches:
+            # Add batch summary
+            batch_summaries.append({
+                'batch_id': batch.batch_id,
+                'created_at': batch.created_at.isoformat(),
+                'status': batch.status,
+                'total_jobs': len(batch.jobs),
+                'completed_jobs': sum(1 for job in batch.jobs if job.status == 'completed'),
+                'ready_for_review': sum(1 for job in batch.jobs if job.status == 'ready_for_review'),
+                'filling_jobs': sum(1 for job in batch.jobs if job.status == 'filling'),
+                'failed_jobs': sum(1 for job in batch.jobs if job.status == 'failed')
+            })
+
+            # Collect all jobs
+            for job in batch.jobs:
+                all_applications.append(job.to_dict())
+
+                # Update statistics
+                if job.status in statistics:
+                    statistics[job.status] += 1
+
+        # Sort applications by created date (most recent first)
+        all_applications.sort(
+            key=lambda x: x.get('started_at') or x.get('job_id'),
+            reverse=True
+        )
+
+        return jsonify({
+            'success': True,
+            'total_applications': len(all_applications),
+            'statistics': statistics,
+            'applications': all_applications,
+            'batches': batch_summaries
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting VNC dashboard: {e}")
         return jsonify({"error": str(e)}), 500
 

@@ -21,26 +21,32 @@ logger = logging.getLogger(__name__)
 
 class BrowserVNCCoordinator:
     """Coordinates VNC streaming for browser automation"""
-    
-    def __init__(self, 
+
+    def __init__(self,
                  display_width: int = 1920,
                  display_height: int = 1080,
                  vnc_port: int = 5900,
-                 vnc_password: Optional[str] = None):
+                 vnc_password: Optional[str] = None,
+                 user_id: Optional[str] = None,
+                 session_id: Optional[str] = None):
         """
         Initialize coordinator
-        
+
         Args:
             display_width: Virtual display width
             display_height: Virtual display height
             vnc_port: VNC server port
             vnc_password: Optional VNC password for security
+            user_id: User ID for file isolation
+            session_id: Session ID for file isolation
         """
         self.display_width = display_width
         self.display_height = display_height
         self.vnc_port = vnc_port
         self.vnc_password = vnc_password
-        
+        self.user_id = user_id
+        self.session_id = session_id
+
         self.virtual_display = None
         self.window_manager_process = None # Track Window Manager
         self.vnc_server = None
@@ -49,7 +55,34 @@ class BrowserVNCCoordinator:
         self.playwright = None
         self.browser = None
         self.page = None
-        
+        self.session_dir = None  # Will be created for user-specific file isolation
+
+    def _create_session_directory(self) -> str:
+        """
+        Create isolated session directory for user files (e.g., resume downloads).
+
+        Security:
+        - Each user gets their own directory: /tmp/vnc_sessions/{user_id}/{session_id}
+        - Permissions set to 0o700 (owner read/write/execute only)
+        - Prevents other users from accessing files
+
+        Returns:
+            Path to created session directory
+        """
+        import os
+
+        if not self.user_id or not self.session_id:
+            # Fallback to session-only directory if user_id not provided
+            session_dir = f"/tmp/vnc_sessions/anonymous/{self.session_id or 'default'}"
+        else:
+            session_dir = f"/tmp/vnc_sessions/{self.user_id}/{self.session_id}"
+
+        # Create directory with restrictive permissions (owner only)
+        os.makedirs(session_dir, mode=0o700, exist_ok=True)
+
+        logger.info(f"📁 Created isolated session directory: {session_dir}")
+        return session_dir
+
     async def start(self) -> bool:
         """
         Start all components (display, VNC, browser)
@@ -141,10 +174,14 @@ class BrowserVNCCoordinator:
                 logger.warning(f"Could not start websockify: {e}")
                 self.websockify_process = None
             
-            # Step 3: Start Playwright with visible browser on virtual display
+            # Step 3: Create user-specific session directory for file isolation
+            logger.info("📁 Creating isolated session directory...")
+            self.session_dir = self._create_session_directory()
+
+            # Step 4: Start Playwright with visible browser on virtual display
             logger.info("🌐 Starting Playwright browser on virtual display...")
             self.playwright = await async_playwright().start()
-            
+
             # Launch browser on the virtual display (headless=False!)
             self.browser = await self.playwright.chromium.launch(
                 headless=False,  # Visible browser on virtual display!
@@ -159,24 +196,28 @@ class BrowserVNCCoordinator:
                     # However, Playwright doesn't have a strict "sandbox file system" flag easily accessible
                     # without using Docker containers per session.
                     # Best mitigation: Run browser as a non-privileged user (which Railway does by default).
-                    
+
                     # Hiding the "Chrome is being controlled by automated test software" infobar
                     # might help make it look less like a debug tool, but doesn't secure files.
                     '--disable-infobars',
-                    
+
                     # Kiosk mode forces full screen and removes window chrome (address bar, etc)
                     # making it harder to navigate away or open settings/file managers via UI
                     '--kiosk',
                 ]
             )
-            
-            # Create browser context with fixed viewport
+
+            # Create browser context with fixed viewport and user-specific downloads directory
             context = await self.browser.new_context(
-                viewport={'width': self.display_width, 'height': self.display_height}
+                viewport={'width': self.display_width, 'height': self.display_height},
+                accept_downloads=True,
+                downloads_path=self.session_dir  # Isolate downloads per user/session
             )
-            
+
             # Create page
             self.page = await context.new_page()
+
+            logger.info(f"✅ Session files will be isolated to: {self.session_dir}")
             
             logger.info("✅ VNC-enabled browser environment started successfully")
             logger.info(f"📺 Display: {self.virtual_display.display}")
@@ -191,18 +232,28 @@ class BrowserVNCCoordinator:
             await self.stop()
             return False
     
-    async def cleanup_session_files(self, session_id: str):
-        """Cleanup session-specific files"""
+    async def cleanup_session_files(self, session_id: str = None):
+        """
+        Cleanup session-specific files.
+
+        Args:
+            session_id: Optional legacy parameter (kept for compatibility)
+        """
         try:
             import shutil
             import os
-            
-            # Cleanup temp directory for this session
-            session_dir = f"/tmp/session_{session_id}"
-            if os.path.exists(session_dir):
-                shutil.rmtree(session_dir)
-                logger.info(f"🧹 Cleaned up session files: {session_dir}")
-                
+
+            # Use instance session_dir if available, otherwise fall back to legacy path
+            if self.session_dir and os.path.exists(self.session_dir):
+                shutil.rmtree(self.session_dir)
+                logger.info(f"🧹 Cleaned up isolated session directory: {self.session_dir}")
+            elif session_id:
+                # Legacy cleanup for old-style session directories
+                session_dir = f"/tmp/session_{session_id}"
+                if os.path.exists(session_dir):
+                    shutil.rmtree(session_dir)
+                    logger.info(f"🧹 Cleaned up legacy session files: {session_dir}")
+
         except Exception as e:
             logger.error(f"Error cleaning up session files: {e}")
 
