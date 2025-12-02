@@ -782,7 +782,7 @@ def batch_apply_with_preferences():
                         else:
                             # VNC failed to start - mark job as error
                             logger.error(f"❌ VNC failed to start for job {job.job_id}")
-                            manager.update_job_status(batch_id, idx, 'error', error="VNC environment failed to start")
+                            batch_vnc_manager.update_job_status(batch_id, job.job_id, 'error', error="VNC environment failed to start")
                             continue  # Skip to next job
 
                     except Exception as e:
