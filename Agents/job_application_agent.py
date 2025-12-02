@@ -2884,6 +2884,10 @@ async def run_links_with_refactored_agent(links: list[str], headless: bool, keep
             # Don't close browser or Playwright - they stay alive for VNC streaming
             # The API endpoint will handle cleanup when user is done
             
+            # Ensure we return the VNC info even if we are in finally block
+            if vnc_session_info is None:
+                vnc_session_info = agent.get_vnc_session_info()
+            
             return vnc_session_info  # Return VNC info to API
         
         # STANDARD MODE: Regular cleanup

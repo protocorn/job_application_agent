@@ -818,6 +818,18 @@ def batch_apply_with_preferences():
                             )
                         )
 
+                        # CRITICAL FIX: Check if vnc_info is returned correctly
+                        # If agent finishes but doesn't return info (e.g. exception handled internally),
+                        # we need to construct it manually if the coordinator exists.
+                        
+                        if not vnc_info and job.vnc_session_id:
+                            # Try to reconstruct from active sessions if missing
+                            # This handles cases where agent returns None but session is active
+                            from Agents.components.vnc import vnc_session_manager as vsm
+                            if job.vnc_session_id in vsm.sessions:
+                                vnc_info = {'vnc_enabled': True}
+                                logger.info(f"⚠️ Reconstructed VNC info for job {job.job_id}")
+
                         # Only register VNC session if it actually started successfully
                         if vnc_info and vnc_info.get('vnc_enabled'):
                             vnc_session_id = job.job_id  # Use job_id as session_id
