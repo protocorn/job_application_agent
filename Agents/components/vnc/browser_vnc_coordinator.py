@@ -32,15 +32,6 @@ class BrowserVNCCoordinator:
                  resume_path: Optional[str] = None):
         """
         Initialize coordinator
-
-        Args:
-            display_width: Virtual display width
-            display_height: Virtual display height
-            vnc_port: VNC server port
-            vnc_password: Optional VNC password for security
-            user_id: User ID for file isolation
-            session_id: Session ID for file isolation
-            resume_path: Path to resume file to inject (optional)
         """
         self.display_width = display_width
         self.display_height = display_height
@@ -51,14 +42,18 @@ class BrowserVNCCoordinator:
         self.resume_path = resume_path
 
         self.virtual_display = None
-        self.window_manager_process = None # Track Window Manager
+        self.window_manager_process = None
         self.vnc_server = None
         self.websockify_process = None
-        self.ws_port = 6900 + (vnc_port - 5900)  # Calculate websockify port
+        self.ws_port = 6900 + (vnc_port - 5900)
+        # Calculate CDP port for WebSocket connection (offsets from 9222)
+        self.cdp_port = 9222 + (vnc_port - 5900)
+        
         self.playwright = None
         self.browser = None
         self.page = None
-        self.session_dir = None  # Will be created for user-specific file isolation
+        self.session_dir = None
+        self.browser_process = None  # To track the sudo process
 
     def _create_session_directory(self) -> str:
         """
@@ -185,79 +180,128 @@ class BrowserVNCCoordinator:
             if self.resume_path:
                 try:
                     logger.info(f"📄 Injecting resume from {self.resume_path}...")
-                    # Update target path to be inside the session directory instead of restricted_user home
-                    # since we are temporarily reverting the restricted_user launch.
-                    target_path = f"{self.session_dir}/resume.pdf"
+                    # Target the Desktop of the restricted user
+                    target_path = "/home/restricted_user/Desktop/resume.pdf"
                     
-                    # Copy file
-                    await self.inject_file(self.resume_path, target_path)
+                    # Copy file (we are root/app so we can write there)
+                    import shutil
+                    shutil.copy2(self.resume_path, target_path)
                     
-                    # No need to chown if we are running as the same user
-                    # subprocess.run(["chown", "restricted_user:restricted_user", target_path], check=True)
+                    # Set ownership to restricted_user
+                    subprocess.run(["chown", "restricted_user:restricted_user", target_path], check=True)
                     logger.info(f"✅ Resume injected to {target_path}")
                 except Exception as e:
                     logger.error(f"Failed to inject resume: {e}")
 
-            # Step 4: Start Playwright with visible browser on virtual display
-            logger.info("🌐 Starting Playwright browser on virtual display...")
+            # Step 4: Start Browser as Restricted User via CDP
+            logger.info("🌐 Starting Browser as restricted_user (CDP mode)...")
             self.playwright = await async_playwright().start()
 
-            # Launch browser on the virtual display (headless=False!)
-            # SECURE LAUNCH: Use wrapper script to run as restricted_user
-            # NOTE: We can't use remote debugging pipe with sudo wrapper because the pipes
-            # are file descriptors owned by the parent process, and sudo closes them or 
-            # they are not accessible to the child process.
-            # INSTEAD: We will let Playwright manage the process but we can't easily 
-            # wrap the executable with sudo if we want Playwright to control it via pipes.
+            # Prepare user data directory for the restricted user
+            # We need a unique profile dir that restricted_user can write to
+            user_data_dir = f"/tmp/chrome_profile_{self.session_id or 'default'}_{self.cdp_port}"
             
-            # ALTERNATIVE APPROACH:
-            # We use 'args' to try to enforce sandbox if possible, but since we are in Docker
-            # we already rely on container isolation.
-            # To get user isolation inside the container, we have to run the *entire* agent 
-            # as the restricted user, OR we accept that Playwright runs as the app user 
-            # but we use a custom executable wrapper that somehow preserves pipes (very hard).
+            # Create and chown the profile dir
+            import os
+            if not os.path.exists(user_data_dir):
+                os.makedirs(user_data_dir, mode=0o700)
+            subprocess.run(["chown", "-R", "restricted_user:restricted_user", user_data_dir], check=True)
+
+            # Construct command to launch chromium via sudo
+            # We use the system chromium
+            browser_cmd = [
+                "sudo", "-u", "restricted_user",
+                "/usr/bin/chromium",
+                f"--remote-debugging-port={self.cdp_port}",
+                f"--user-data-dir={user_data_dir}",
+                "--no-sandbox", # Often needed in Docker
+                "--disable-gpu",
+                "--disable-dev-shm-usage",
+                "--disable-setuid-sandbox",
+                "--disable-infobars",
+                "--kiosk",
+                "--start-maximized",
+                "--no-first-run",
+                "--no-default-browser-check",
+                f"--download.default_directory=/home/restricted_user/Desktop",
+                "about:blank"
+            ]
+
+            logger.info(f"🚀 Launching browser process: {' '.join(browser_cmd)}")
             
-            # FIXED APPROACH FOR SUDO:
-            # Playwright connects via pipes. If we use sudo, we break the pipes.
-            # We must use a WebSocket connection instead of pipes if we want to launch remotely?
-            # Or we try to run chromium directly without the wrapper but with setuid? No.
-            
-            # WORKAROUND:
-            # We will use the wrapper but we have to ensure Playwright can talk to it.
-            # Playwright launches the browser and expects to talk to it via Stdio.
-            # 'sudo' might be prompting for password (we fixed that with NOPASSWD).
-            # But 'sudo' might not pass stdin/stdout correctly for the Chrome DevTools Protocol.
-            
-            # Let's try adding -E to sudo to preserve env, and ensure we don't close fds?
-            # Actually, Playwright uses --remote-debugging-pipe. 
-            # Chromium writes to fd 3 and 4. Sudo might not pass these.
-            
-            # If we remove --remote-debugging-pipe from args, Playwright might fall back to WebSocket?
-            # No, Playwright *injects* that arg.
-            
-            # REVERTING WRAPPER STRATEGY TEMPORARILY to restore functionality
-            # while we devise a better isolation strategy (e.g. running the whole worker as restricted user).
-            
-            # For now, we will run as the main user but rely on the resume isolation 
-            # and file permissions we set up.
-            # The restricted_user strategy is cleaner but requires more complex Playwright setup (CDP over WS).
-            
-            logger.warning("⚠️ Reverting to standard browser launch (root/app user) to fix pipe error.")
-            logger.warning("   File isolation is still active via custom directory.")
-            
-            self.browser = await self.playwright.chromium.launch(
-                headless=False,  # Visible browser on virtual display!
-                # executable_path='/usr/local/bin/browser_launcher.sh',  # REMOVED due to pipe error
-                args=[
-                    '--disable-dev-shm-usage',
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-gpu',
-                    '--disable-infobars',
-                    '--kiosk',
-                    f'--download.default_directory={self.session_dir}', # Isolate downloads to session dir
-                ]
+            # Launch process
+            self.browser_process = subprocess.Popen(
+                browser_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
             )
+
+            # Wait for CDP port to be ready
+            import time
+            import requests
+            
+            max_retries = 20
+            ready = False
+            for i in range(max_retries):
+                try:
+                    # Check if port is listening by trying to get version
+                    requests.get(f"http://localhost:{self.cdp_port}/json/version", timeout=0.5)
+                    ready = True
+                    logger.info(f"✅ Browser CDP port {self.cdp_port} is ready")
+                    break
+                except:
+                    if self.browser_process.poll() is not None:
+                        _, stderr = self.browser_process.communicate()
+                        logger.error(f"❌ Browser process exited early: {stderr}")
+                        return False
+                    time.sleep(0.5)
+            
+            if not ready:
+                logger.error("❌ Timeout waiting for browser CDP port")
+                return False
+
+            # Connect Playwright to the running browser
+            logger.info(f"🔌 Connecting Playwright to CDP port {self.cdp_port}...")
+            self.browser = await self.playwright.chromium.connect_over_cdp(
+                f"http://localhost:{self.cdp_port}"
+            )
+
+            # Create browser context (CDP connects to the browser, we need a context)
+            # Note: When connecting over CDP, we use the existing browser context or create a new one.
+            # connect_over_cdp gives us a Browser instance.
+            
+            # In CDP mode, the contexts are managed on the browser side.
+            # We can just get the default context or create one.
+            # Let's verify if we have contexts.
+            if len(self.browser.contexts) > 0:
+                context = self.browser.contexts[0]
+            else:
+                context = await self.browser.new_context()
+
+            # Get or create page
+            if len(context.pages) > 0:
+                self.page = context.pages[0]
+            else:
+                self.page = await context.new_page()
+
+            # Set viewport size (needed because we didn't launch with specific viewport in args)
+            await self.page.set_viewport_size({"width": self.display_width, "height": self.display_height})
+
+            logger.info(f"✅ Session files will be isolated to: /home/restricted_user/Desktop")
+            
+            logger.info("✅ VNC-enabled browser environment started successfully")
+            logger.info(f"📺 Display: {self.virtual_display.display}")
+            logger.info(f"🖥️ VNC Port: {self.vnc_port}")
+            logger.info(f"🔌 WebSocket Port: {self.ws_port}")
+            logger.info(f"🌐 Browser: Ready (PID: {self.browser_process.pid})")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to start VNC environment: {e}")
+            await self.stop()
+            return False
 
             # Create browser context with fixed viewport and user-specific downloads directory
             context = await self.browser.new_context(
@@ -320,9 +364,25 @@ class BrowserVNCCoordinator:
             if self.browser:
                 try:
                     await self.browser.close()
-                    logger.info("✓ Browser closed")
+                    logger.info("✓ Browser disconnected")
                 except Exception as e:
-                    logger.debug(f"Error closing browser: {e}")
+                    logger.debug(f"Error disconnecting browser: {e}")
+
+            # Stop browser process (sudo)
+            if self.browser_process:
+                try:
+                    # Since we used sudo, normal terminate might not kill the child
+                    # We need to use sudo kill
+                    cmd = ["sudo", "kill", str(self.browser_process.pid)]
+                    subprocess.run(cmd, check=False)
+                    self.browser_process.wait(timeout=2)
+                    logger.info("✓ Browser process killed")
+                except Exception as e:
+                    logger.debug(f"Error killing browser process: {e}")
+                    try:
+                        self.browser_process.kill()
+                    except:
+                        pass
             
             # Stop Playwright
             if self.playwright:
