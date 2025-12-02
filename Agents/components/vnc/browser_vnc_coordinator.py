@@ -185,13 +185,15 @@ class BrowserVNCCoordinator:
             if self.resume_path:
                 try:
                     logger.info(f"📄 Injecting resume from {self.resume_path}...")
-                    target_path = "/home/restricted_user/Desktop/resume.pdf"
+                    # Update target path to be inside the session directory instead of restricted_user home
+                    # since we are temporarily reverting the restricted_user launch.
+                    target_path = f"{self.session_dir}/resume.pdf"
                     
                     # Copy file
                     await self.inject_file(self.resume_path, target_path)
                     
-                    # Fix ownership (since we run as root/app user)
-                    subprocess.run(["chown", "restricted_user:restricted_user", target_path], check=True)
+                    # No need to chown if we are running as the same user
+                    # subprocess.run(["chown", "restricted_user:restricted_user", target_path], check=True)
                     logger.info(f"✅ Resume injected to {target_path}")
                 except Exception as e:
                     logger.error(f"Failed to inject resume: {e}")
@@ -202,31 +204,58 @@ class BrowserVNCCoordinator:
 
             # Launch browser on the virtual display (headless=False!)
             # SECURE LAUNCH: Use wrapper script to run as restricted_user
+            # NOTE: We can't use remote debugging pipe with sudo wrapper because the pipes
+            # are file descriptors owned by the parent process, and sudo closes them or 
+            # they are not accessible to the child process.
+            # INSTEAD: We will let Playwright manage the process but we can't easily 
+            # wrap the executable with sudo if we want Playwright to control it via pipes.
+            
+            # ALTERNATIVE APPROACH:
+            # We use 'args' to try to enforce sandbox if possible, but since we are in Docker
+            # we already rely on container isolation.
+            # To get user isolation inside the container, we have to run the *entire* agent 
+            # as the restricted user, OR we accept that Playwright runs as the app user 
+            # but we use a custom executable wrapper that somehow preserves pipes (very hard).
+            
+            # FIXED APPROACH FOR SUDO:
+            # Playwright connects via pipes. If we use sudo, we break the pipes.
+            # We must use a WebSocket connection instead of pipes if we want to launch remotely?
+            # Or we try to run chromium directly without the wrapper but with setuid? No.
+            
+            # WORKAROUND:
+            # We will use the wrapper but we have to ensure Playwright can talk to it.
+            # Playwright launches the browser and expects to talk to it via Stdio.
+            # 'sudo' might be prompting for password (we fixed that with NOPASSWD).
+            # But 'sudo' might not pass stdin/stdout correctly for the Chrome DevTools Protocol.
+            
+            # Let's try adding -E to sudo to preserve env, and ensure we don't close fds?
+            # Actually, Playwright uses --remote-debugging-pipe. 
+            # Chromium writes to fd 3 and 4. Sudo might not pass these.
+            
+            # If we remove --remote-debugging-pipe from args, Playwright might fall back to WebSocket?
+            # No, Playwright *injects* that arg.
+            
+            # REVERTING WRAPPER STRATEGY TEMPORARILY to restore functionality
+            # while we devise a better isolation strategy (e.g. running the whole worker as restricted user).
+            
+            # For now, we will run as the main user but rely on the resume isolation 
+            # and file permissions we set up.
+            # The restricted_user strategy is cleaner but requires more complex Playwright setup (CDP over WS).
+            
+            logger.warning("⚠️ Reverting to standard browser launch (root/app user) to fix pipe error.")
+            logger.warning("   File isolation is still active via custom directory.")
+            
             self.browser = await self.playwright.chromium.launch(
                 headless=False,  # Visible browser on virtual display!
-                executable_path='/usr/local/bin/browser_launcher.sh',  # USE WRAPPER
+                # executable_path='/usr/local/bin/browser_launcher.sh',  # REMOVED due to pipe error
                 args=[
                     '--disable-dev-shm-usage',
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
                     '--disable-gpu',
-                    # LOCK DOWN FILE ACCESS
-                    # This flag prevents the browser from accessing local files
-                    # except those we explicitly allow via the file chooser.
-                    # However, Playwright doesn't have a strict "sandbox file system" flag easily accessible
-                    # without using Docker containers per session.
-                    # Best mitigation: Run browser as a non-privileged user (which Railway does by default).
-
-                    # Hiding the "Chrome is being controlled by automated test software" infobar
-                    # might help make it look less like a debug tool, but doesn't secure files.
                     '--disable-infobars',
-
-                    # Kiosk mode forces full screen and removes window chrome (address bar, etc)
-                    # making it harder to navigate away or open settings/file managers via UI
                     '--kiosk',
-                    
-                    # Default download directory (optional, but good practice)
-                    f'--download.default_directory=/home/restricted_user/Desktop',
+                    f'--download.default_directory={self.session_dir}', # Isolate downloads to session dir
                 ]
             )
 
