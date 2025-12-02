@@ -578,9 +578,27 @@ def batch_apply_with_vnc():
                         else:
                             vnc_url = f"{ws_protocol}://{request_host}/vnc-stream/{vnc_session_id}"
                         
+                        # Update status based on agent result
+                        # If session has status 'intervention', we map it to 'ready_for_review' 
+                        # so the user sees the "Open Browser" option.
+                        
+                        final_status = 'ready_for_review' # Default success state
+                        
+                        # Check if session is in intervention mode
+                        try:
+                            from Agents.components.vnc import vnc_session_manager as vsm
+                            if vnc_session_id in vsm.sessions:
+                                session = vsm.sessions[vnc_session_id]
+                                if session.get('status') == 'intervention':
+                                    logger.info(f"⚠️ Job {job.job_id} requires intervention - marking ready for review")
+                                    # We keep it as ready_for_review for the frontend to show the button,
+                                    # but we might want to flag it differently in future.
+                        except:
+                            pass
+
                         # Update status: ready for review
                         batch_vnc_manager.update_job_status(
-                            batch_id, job.job_id, 'ready_for_review',
+                            batch_id, job.job_id, final_status,
                             progress=100,
                             vnc_session_id=vnc_session_id,
                             vnc_port=actual_vnc_port,

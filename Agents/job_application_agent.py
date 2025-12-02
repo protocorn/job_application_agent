@@ -2453,6 +2453,26 @@ IMPORTANT:
         # Update job status and log the intervention need
         self._update_job_and_session_status('intervention', f"🚨 Human intervention required: {reason}")
         
+        # CRITICAL: Register VNC session IMMEDIATELY before any blocking operations
+        # This ensures the user can connect via VNC even if the subsequent steps (like saving state) hang or take time.
+        if self.vnc_mode and self.vnc_coordinator:
+            try:
+                from components.vnc import vnc_session_manager as vsm
+                vnc_info = self.get_vnc_session_info()
+                if vnc_info and self.job_id:
+                     # Register/Update session info
+                     vsm.sessions[self.job_id] = {
+                        'session_id': self.job_id,
+                        'user_id': self.user_id,
+                        'job_url': self.page.url,
+                        'vnc_port': self.vnc_port,
+                        'status': 'intervention', # Special status for intervention
+                        'created_at': time.time()
+                    }
+                     logger.info(f"✅ Registered VNC session {self.job_id} for intervention (PRE-FREEZE)")
+            except Exception as vnc_reg_err:
+                logger.warning(f"Failed to register VNC session for intervention: {vnc_reg_err}")
+
         try:
             # SAVE ACTION RECORDER before human intervention
             if self.session_manager and self.current_session and self.action_recorder:
@@ -2473,11 +2493,16 @@ IMPORTANT:
                     if hasattr(self.form_filler, 'completion_tracker'):
                         completion_tracker = self.form_filler.completion_tracker
 
-                    success = await self.session_manager.freeze_session(
-                        self.current_session.session_id,
-                        self.page,
-                        completion_tracker
+                    # Use wait_for to prevent hanging indefinitely
+                    success = await asyncio.wait_for(
+                        self.session_manager.freeze_session(
+                            self.current_session.session_id,
+                            self.page,
+                            completion_tracker
+                        ),
+                        timeout=15.0 # 15 second timeout for freeze
                     )
+                    
                     if success:
                         logger.info(f"Session {self.current_session.session_id} frozen before human intervention")
                         self._log_to_jobs("info", f"💾 Session saved before human review!")
@@ -2485,6 +2510,8 @@ IMPORTANT:
                         self._session_already_frozen = True
                     else:
                         logger.warning(f"Failed to freeze session {self.current_session.session_id} before intervention")
+                except asyncio.TimeoutError:
+                    logger.error("TIMEOUT freezing session before intervention - proceeding anyway")
                 except Exception as freeze_error:
                     logger.error(f"Error freezing session before intervention: {freeze_error}")
             
@@ -2507,27 +2534,6 @@ IMPORTANT:
                     self.current_session.session_id, 
                     status="needs_attention"
                 )
-                
-            # CRITICAL: If VNC mode, register the session so the user can connect
-            # The job status is updated to 'intervention' but we need to ensure 
-            # the VNC info is available for the 'needs_attention' status in batch manager.
-            if self.vnc_mode and self.vnc_coordinator:
-                try:
-                    from components.vnc import vnc_session_manager as vsm
-                    vnc_info = self.get_vnc_session_info()
-                    if vnc_info and self.job_id:
-                         # Register/Update session info
-                         vsm.sessions[self.job_id] = {
-                            'session_id': self.job_id,
-                            'user_id': self.user_id,
-                            'job_url': self.page.url,
-                            'vnc_port': self.vnc_port,
-                            'status': 'intervention', # Special status for intervention
-                            'created_at': time.time()
-                        }
-                         logger.info(f"✅ Registered VNC session {self.job_id} for intervention")
-                except Exception as vnc_reg_err:
-                    logger.warning(f"Failed to register VNC session for intervention: {vnc_reg_err}")
             
             # Check if we should wait for user input in debug mode
             if self.debug:
