@@ -210,8 +210,10 @@ class BrowserVNCCoordinator:
             # Create browser context with fixed viewport and user-specific downloads directory
             context = await self.browser.new_context(
                 viewport={'width': self.display_width, 'height': self.display_height},
-                accept_downloads=True,
-                downloads_path=self.session_dir  # Isolate downloads per user/session
+                accept_downloads=True
+                # Note: downloads_path is not available in all Playwright versions
+                # Downloads will be saved to the default temp directory
+                # For better isolation, consider using context.set_default_download_path() if available
             )
 
             # Create page

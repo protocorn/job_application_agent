@@ -730,70 +730,60 @@ def batch_apply_with_preferences():
                             )
                         )
 
-                        # VNC info might be None if agent went through human intervention
-                        # Register session info either way so API can find it
-                        vnc_session_id = job.job_id  # Use job_id as session_id
-                        actual_vnc_port = vnc_port
-
-                        # CRITICAL: Register session in vnc_session_manager
-                        # This allows /api/vnc/session/{id} to find it
+                        # Only register VNC session if it actually started successfully
                         if vnc_info and vnc_info.get('vnc_enabled'):
+                            vnc_session_id = job.job_id  # Use job_id as session_id
+                            actual_vnc_port = vnc_port
+
                             logger.info(f"✅ VNC mode active for job {job.job_id}")
-                        else:
-                            logger.warning(f"⚠️ VNC info not returned, but browser should be open")
 
-                        # Register session in both managers for compatibility
-                        # (agent created VNC but didn't register in global manager)
-                        try:
-                            from Agents.components.vnc import vnc_session_manager as vsm
+                            # CRITICAL: Register session in vnc_session_manager
+                            # This allows /api/vnc/session/{id} to find it
+                            try:
+                                from Agents.components.vnc import vnc_session_manager as vsm
 
-                            # Store minimal session info that API can retrieve
-                            vsm.sessions[vnc_session_id] = {
-                                'session_id': vnc_session_id,
-                                'user_id': user_id,
-                                'job_url': job.job_url,
-                                'vnc_port': actual_vnc_port,
-                                'status': 'active',
-                                'created_at': datetime.now()
-                            }
+                                # Store minimal session info that API can retrieve
+                                vsm.sessions[vnc_session_id] = {
+                                    'session_id': vnc_session_id,
+                                    'user_id': user_id,
+                                    'job_url': job.job_url,
+                                    'vnc_port': actual_vnc_port,
+                                    'status': 'active',
+                                    'created_at': datetime.now()
+                                }
 
-                            logger.info(f"✅ Registered VNC session {vnc_session_id} in global manager")
+                                logger.info(f"✅ Registered VNC session {vnc_session_id} in global manager")
 
-                            # CRITICAL: Also register in vnc_stream_proxy for WebSocket routing
-                            ws_port = 6900 + idx  # Calculate websockify port
-                            register_vnc_session(vnc_session_id, actual_vnc_port, ws_port)
-                            logger.info(f"📝 Registered session {vnc_session_id} for WebSocket proxy - VNC:{actual_vnc_port}, WS:{ws_port}")
+                                # CRITICAL: Also register in vnc_stream_proxy for WebSocket routing
+                                ws_port = 6900 + idx  # Calculate websockify port
+                                register_vnc_session(vnc_session_id, actual_vnc_port, ws_port)
+                                logger.info(f"📝 Registered session {vnc_session_id} for WebSocket proxy - VNC:{actual_vnc_port}, WS:{ws_port}")
 
-                        except Exception as e:
-                            logger.warning(f"Could not register in VNC manager: {e}")
+                            except Exception as e:
+                                logger.warning(f"Could not register in VNC manager: {e}")
+                            # Determine WebSocket URL
+                            ws_protocol = 'ws' if is_development else 'wss'
 
-                            # Fallback: Register in dev session manager
-                            dev_browser_session.register_session(
-                                session_id=job.job_id,
-                                job_url=job.job_url,
-                                user_id=user_id,
-                                current_url=job.job_url
+                            if is_development:
+                                vnc_url = f"{ws_protocol}://localhost:{6900 + idx}"
+                            else:
+                                vnc_url = f"{ws_protocol}://{request_host}/vnc-stream/{vnc_session_id}"
+
+                            # Update status: ready for review
+                            batch_vnc_manager.update_job_status(
+                                batch_id, job.job_id, 'ready_for_review',
+                                progress=100,
+                                vnc_session_id=vnc_session_id,
+                                vnc_port=actual_vnc_port,
+                                vnc_url=vnc_url
                             )
-                            logger.info(f"📝 Registered as dev session: {job.job_id}")
 
-                        # Determine WebSocket URL
-                        ws_protocol = 'ws' if is_development else 'wss'
-
-                        if is_development:
-                            vnc_url = f"{ws_protocol}://localhost:{6900 + idx}"
+                            logger.info(f"✅ Job {idx + 1} ready for review: {job.job_url}")
                         else:
-                            vnc_url = f"{ws_protocol}://{request_host}/vnc-stream/{vnc_session_id}"
-
-                        # Update status: ready for review
-                        batch_vnc_manager.update_job_status(
-                            batch_id, job.job_id, 'ready_for_review',
-                            progress=100,
-                            vnc_session_id=vnc_session_id,
-                            vnc_port=actual_vnc_port,
-                            vnc_url=vnc_url
-                        )
-
-                        logger.info(f"✅ Job {idx + 1} ready for review: {job.job_url}")
+                            # VNC failed to start - mark job as error
+                            logger.error(f"❌ VNC failed to start for job {job.job_id}")
+                            manager.update_job_status(batch_id, idx, 'error', error="VNC environment failed to start")
+                            continue  # Skip to next job
 
                     except Exception as e:
                         logger.error(f"❌ Job {idx + 1} failed: {e}")
