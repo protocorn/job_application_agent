@@ -47,13 +47,14 @@ logger = logging.getLogger(__name__)
 
 class RefactoredJobAgent:
     """The main class for the refactored job application agent."""
-    def __init__(self, playwright, headless: bool = True, keep_open: bool = False, debug: bool = False, hold_seconds: int = 0, slow_mo_ms: int = 0, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False) -> None:
+    def __init__(self, playwright, headless: bool = True, keep_open: bool = False, debug: bool = False, hold_seconds: int = 0, slow_mo_ms: int = 0, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False, resume_path: str = None) -> None:
         self.playwright = playwright
         
         # VNC mode setup (for cloud streaming)
         self.vnc_mode = vnc_mode and VNC_AVAILABLE
         self.vnc_port = vnc_port
         self.tailor_resume = tailor_resume
+        self.resume_path = resume_path
         self.vnc_coordinator = None
         
         if vnc_mode and not VNC_AVAILABLE:
@@ -106,7 +107,10 @@ class RefactoredJobAgent:
             self.vnc_coordinator = BrowserVNCCoordinator(
                 display_width=1920,
                 display_height=1080,
-                vnc_port=self.vnc_port
+                vnc_port=self.vnc_port,
+                user_id=self.user_id,
+                session_id=self.job_id,
+                resume_path=self.resume_path
             )
             
             # Start VNC environment (display + VNC server + browser)
@@ -2822,7 +2826,7 @@ def _load_profile_data(user_id=None):
         logger.warning("🔄 Using fallback profile data...")
         return fallback_profile
 
-async def run_links_with_refactored_agent(links: list[str], headless: bool, keep_open: bool, debug: bool, hold_seconds: int, slow_mo_ms: int, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False):
+async def run_links_with_refactored_agent(links: list[str], headless: bool, keep_open: bool, debug: bool, hold_seconds: int, slow_mo_ms: int, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False, resume_path: str = None):
     """
     Run job application agent with optional VNC streaming
 
@@ -2830,6 +2834,7 @@ async def run_links_with_refactored_agent(links: list[str], headless: bool, keep
         vnc_mode: If True, runs browser on virtual display with VNC streaming
         vnc_port: Port for VNC server (default 5900)
         tailor_resume: If True, resume will be tailored for this job (future feature)
+        resume_path: Path to resume file to inject (optional)
 
     Returns:
         Dict with VNC session info if vnc_mode=True, otherwise None
@@ -2857,7 +2862,8 @@ async def run_links_with_refactored_agent(links: list[str], headless: bool, keep
             user_id=user_id,
             vnc_mode=vnc_mode,
             vnc_port=vnc_port,
-            tailor_resume=tailor_resume
+            tailor_resume=tailor_resume,
+            resume_path=resume_path
         )
 
         for link in links:

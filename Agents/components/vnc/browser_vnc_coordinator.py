@@ -28,7 +28,8 @@ class BrowserVNCCoordinator:
                  vnc_port: int = 5900,
                  vnc_password: Optional[str] = None,
                  user_id: Optional[str] = None,
-                 session_id: Optional[str] = None):
+                 session_id: Optional[str] = None,
+                 resume_path: Optional[str] = None):
         """
         Initialize coordinator
 
@@ -39,6 +40,7 @@ class BrowserVNCCoordinator:
             vnc_password: Optional VNC password for security
             user_id: User ID for file isolation
             session_id: Session ID for file isolation
+            resume_path: Path to resume file to inject (optional)
         """
         self.display_width = display_width
         self.display_height = display_height
@@ -46,6 +48,7 @@ class BrowserVNCCoordinator:
         self.vnc_password = vnc_password
         self.user_id = user_id
         self.session_id = session_id
+        self.resume_path = resume_path
 
         self.virtual_display = None
         self.window_manager_process = None # Track Window Manager
@@ -178,13 +181,30 @@ class BrowserVNCCoordinator:
             logger.info("📁 Creating isolated session directory...")
             self.session_dir = self._create_session_directory()
 
+            # Step 3.5: Inject resume if provided
+            if self.resume_path:
+                try:
+                    logger.info(f"📄 Injecting resume from {self.resume_path}...")
+                    target_path = "/home/restricted_user/Desktop/resume.pdf"
+                    
+                    # Copy file
+                    await self.inject_file(self.resume_path, target_path)
+                    
+                    # Fix ownership (since we run as root/app user)
+                    subprocess.run(["chown", "restricted_user:restricted_user", target_path], check=True)
+                    logger.info(f"✅ Resume injected to {target_path}")
+                except Exception as e:
+                    logger.error(f"Failed to inject resume: {e}")
+
             # Step 4: Start Playwright with visible browser on virtual display
             logger.info("🌐 Starting Playwright browser on virtual display...")
             self.playwright = await async_playwright().start()
 
             # Launch browser on the virtual display (headless=False!)
+            # SECURE LAUNCH: Use wrapper script to run as restricted_user
             self.browser = await self.playwright.chromium.launch(
                 headless=False,  # Visible browser on virtual display!
+                executable_path='/usr/local/bin/browser_launcher.sh',  # USE WRAPPER
                 args=[
                     '--disable-dev-shm-usage',
                     '--no-sandbox',
@@ -204,6 +224,9 @@ class BrowserVNCCoordinator:
                     # Kiosk mode forces full screen and removes window chrome (address bar, etc)
                     # making it harder to navigate away or open settings/file managers via UI
                     '--kiosk',
+                    
+                    # Default download directory (optional, but good practice)
+                    f'--download.default_directory=/home/restricted_user/Desktop',
                 ]
             )
 

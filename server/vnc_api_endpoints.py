@@ -22,8 +22,52 @@ from auth import require_auth
 from batch_vnc_manager import batch_vnc_manager
 from dev_browser_session import dev_browser_session
 from vnc_stream_proxy import register_vnc_session, unregister_vnc_session
+from profile_service import ProfileService
+import tempfile
+import requests
+import os
 
 logger = logging.getLogger(__name__)
+
+# Helper to download resume
+def _download_resume_to_temp(resume_url):
+    """Download resume from URL to a temporary file"""
+    try:
+        if not resume_url:
+            return None
+        
+        # Basic validation
+        if not resume_url.startswith('http'):
+            return None
+            
+        # Handle Google Docs export
+        if "docs.google.com/document/d/" in resume_url:
+            try:
+                doc_id = resume_url.split("/d/")[1].split("/")[0]
+                resume_url = f"https://docs.google.com/document/d/{doc_id}/export?format=pdf"
+                logger.info(f"Converted Google Doc URL to PDF export: {resume_url}")
+            except:
+                pass
+            
+        logger.info(f"Downloading resume from {resume_url}...")
+        response = requests.get(resume_url, timeout=15)
+        
+        if response.status_code == 200:
+            # Create temp file
+            # We don't delete immediately; agent needs to read it.
+            # OS /tmp cleaning or restart will handle it eventually.
+            # In a better implementation, we'd track and delete.
+            fd, path = tempfile.mkstemp(suffix='.pdf', prefix='resume_')
+            with os.fdopen(fd, 'wb') as f:
+                f.write(response.content)
+            logger.info(f"Resume downloaded to {path}")
+            return path
+        else:
+            logger.error(f"Failed to download resume: {response.status_code}")
+            return None
+    except Exception as e:
+        logger.error(f"Error downloading resume: {e}")
+        return None
 
 # Create Blueprint
 vnc_api = Blueprint('vnc_api', __name__)
@@ -69,13 +113,28 @@ def apply_job_with_vnc():
     try:
         data = request.json
         job_url = data.get('jobUrl')
+        # Get resume URL from request or profile
+        resume_url = data.get('resumeUrl')
         user_id = request.current_user['id']
         
         if not job_url:
             return jsonify({"error": "jobUrl is required"}), 400
+            
+        # If resume not provided, fetch from profile
+        if not resume_url:
+            try:
+                profile = ProfileService.get_profile(user_id)
+                if profile:
+                    resume_url = profile.get('resume_url')
+            except Exception as e:
+                logger.warning(f"Could not fetch profile for user {user_id}: {e}")
+        
+        # Download resume to temp file for injection
+        resume_path = _download_resume_to_temp(resume_url)
         
         logger.info(f"🎬 Starting VNC job application for user {user_id}")
         logger.info(f"   Job URL: {job_url}")
+        logger.info(f"   Resume: {resume_path if resume_path else 'None'}")
         
         # Generate session ID
         import uuid
@@ -107,7 +166,8 @@ def apply_job_with_vnc():
                         session_manager=session_manager,
                         user_id=user_id,
                         vnc_mode=True,  # ENABLE VNC!
-                        vnc_port=5900 + len(vnc_session_manager.sessions)  # Auto-assign port
+                        vnc_port=5900 + len(vnc_session_manager.sessions),  # Auto-assign port
+                        resume_path=resume_path  # Pass resume path
                     )
                 )
                 
@@ -403,6 +463,19 @@ def batch_apply_with_vnc():
         logger.info(f"📦 Starting batch VNC apply for user {user_id}")
         logger.info(f"   Jobs: {len(job_urls)}")
         
+        # Get resume from profile (batch mode doesn't take resumeUrl)
+        resume_url = None
+        try:
+            profile = ProfileService.get_profile(user_id)
+            if profile:
+                resume_url = profile.get('resume_url')
+        except Exception as e:
+            logger.warning(f"Could not fetch profile for user {user_id}: {e}")
+            
+        # Download resume to temp file
+        resume_path = _download_resume_to_temp(resume_url)
+        logger.info(f"   Resume: {resume_path if resume_path else 'None'}")
+        
         # Create batch
         batch_id = batch_vnc_manager.create_batch(user_id, job_urls)
         batch = batch_vnc_manager.get_batch(batch_id)
@@ -446,7 +519,8 @@ def batch_apply_with_vnc():
                                 session_manager=session_manager,
                                 user_id=user_id,
                                 vnc_mode=True,  # ENABLE VNC!
-                                vnc_port=vnc_port
+                                vnc_port=vnc_port,
+                                resume_path=resume_path  # Pass resume path
                             )
                         )
                         
@@ -674,6 +748,19 @@ def batch_apply_with_preferences():
         logger.info(f"   Jobs: {len(job_urls)}")
         logger.info(f"   Tailoring: {sum(tailor_preferences.values())} jobs")
 
+        # Get resume from profile (batch mode doesn't take resumeUrl)
+        resume_url = None
+        try:
+            profile = ProfileService.get_profile(user_id)
+            if profile:
+                resume_url = profile.get('resume_url')
+        except Exception as e:
+            logger.warning(f"Could not fetch profile for user {user_id}: {e}")
+            
+        # Download resume to temp file
+        resume_path = _download_resume_to_temp(resume_url)
+        logger.info(f"   Resume: {resume_path if resume_path else 'None'}")
+
         # Create batch
         batch_id = batch_vnc_manager.create_batch(user_id, job_urls)
         batch = batch_vnc_manager.get_batch(batch_id)
@@ -726,7 +813,8 @@ def batch_apply_with_preferences():
                                 user_id=user_id,
                                 vnc_mode=True,  # ENABLE VNC!
                                 vnc_port=vnc_port,
-                                tailor_resume=should_tailor  # Pass tailoring preference
+                                tailor_resume=should_tailor,  # Pass tailoring preference
+                                resume_path=resume_path  # Pass resume path
                             )
                         )
 

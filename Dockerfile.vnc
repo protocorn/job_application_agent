@@ -52,6 +52,32 @@ COPY requirements_vnc.txt .
 RUN pip install --no-cache-dir -r requirements_production.txt
 RUN pip install --no-cache-dir -r requirements_vnc.txt
 
+# Install sudo and create restricted user for browser isolation
+RUN apt-get update && apt-get install -y sudo && rm -rf /var/lib/apt/lists/*
+
+# Create restricted user
+RUN useradd -m -d /home/restricted_user -s /bin/bash restricted_user
+
+# Set up Desktop directory for file picker convenience
+RUN mkdir -p /home/restricted_user/Desktop && \
+    chown -R restricted_user:restricted_user /home/restricted_user
+
+# Allow root to run browser as restricted_user without password
+RUN echo "root ALL=(restricted_user) NOPASSWD: ALL" >> /etc/sudoers
+
+# Create browser launcher wrapper
+RUN echo '#!/bin/bash\n\
+sudo -u restricted_user /usr/bin/chromium "$@"\n\
+' > /usr/local/bin/browser_launcher.sh && \
+    chmod +x /usr/local/bin/browser_launcher.sh
+
+# Restrict /app access (source code protection)
+# We make /app executable by others (so they can traverse if needed, though mostly not)
+# but NOT readable.
+# However, the python process runs as root in /app.
+# The restricted_user needs NO access to /app.
+RUN chmod 700 /app
+
 # Install Playwright browsers
 RUN playwright install chromium
 RUN playwright install-deps chromium
