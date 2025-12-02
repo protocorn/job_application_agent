@@ -2507,6 +2507,27 @@ IMPORTANT:
                     self.current_session.session_id, 
                     status="needs_attention"
                 )
+                
+            # CRITICAL: If VNC mode, register the session so the user can connect
+            # The job status is updated to 'intervention' but we need to ensure 
+            # the VNC info is available for the 'needs_attention' status in batch manager.
+            if self.vnc_mode and self.vnc_coordinator:
+                try:
+                    from components.vnc import vnc_session_manager as vsm
+                    vnc_info = self.get_vnc_session_info()
+                    if vnc_info and self.job_id:
+                         # Register/Update session info
+                         vsm.sessions[self.job_id] = {
+                            'session_id': self.job_id,
+                            'user_id': self.user_id,
+                            'job_url': self.page.url,
+                            'vnc_port': self.vnc_port,
+                            'status': 'intervention', # Special status for intervention
+                            'created_at': time.time()
+                        }
+                         logger.info(f"✅ Registered VNC session {self.job_id} for intervention")
+                except Exception as vnc_reg_err:
+                    logger.warning(f"Failed to register VNC session for intervention: {vnc_reg_err}")
             
             # Check if we should wait for user input in debug mode
             if self.debug:
