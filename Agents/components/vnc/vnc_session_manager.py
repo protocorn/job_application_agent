@@ -50,15 +50,16 @@ class VNCSessionManager:
         if port in self.port_allocations:
             self.port_allocations.remove(port)
     
-    async def create_session(self, session_id: str, job_url: str, user_id: str) -> Optional[Dict[str, Any]]:
+    async def create_session(self, session_id: str, job_url: str, user_id: str, resume_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Create a new VNC browser session
-        
+
         Args:
             session_id: Unique session identifier
             job_url: Job application URL
             user_id: User who owns this session
-            
+            resume_path: Optional path to user's resume PDF
+
         Returns:
             Dict with VNC session info or None if failed
         """
@@ -67,22 +68,26 @@ class VNCSessionManager:
             if len(self.sessions) >= self.max_sessions:
                 logger.error(f"Max VNC sessions reached ({self.max_sessions})")
                 return None
-            
+
             # Allocate port
             vnc_port = self._allocate_port()
             if not vnc_port:
                 logger.error("No available VNC ports")
                 return None
-            
+
             logger.info(f"🆕 Creating VNC session {session_id} on port {vnc_port} for user {user_id}")
+            logger.info(f"📍 Job URL: {job_url}")
 
             # Create VNC coordinator with user and session IDs for file isolation
+            # Pass job_url to enable app mode and tab restrictions
             coordinator = BrowserVNCCoordinator(
                 display_width=1920,
                 display_height=1080,
                 vnc_port=vnc_port,
                 user_id=user_id,
-                session_id=session_id
+                session_id=session_id,
+                resume_path=resume_path,
+                job_url=job_url  # IMPORTANT: This enables app mode and security restrictions
             )
             
             # Start VNC environment

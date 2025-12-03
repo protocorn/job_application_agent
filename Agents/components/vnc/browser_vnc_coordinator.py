@@ -30,9 +30,13 @@ class BrowserVNCCoordinator:
                  vnc_password: Optional[str] = None,
                  user_id: Optional[str] = None,
                  session_id: Optional[str] = None,
-                 resume_path: Optional[str] = None):
+                 resume_path: Optional[str] = None,
+                 job_url: Optional[str] = None):
         """
         Initialize coordinator
+
+        Args:
+            job_url: If provided, browser will launch in app mode restricted to this URL
         """
         self.display_width = display_width
         self.display_height = display_height
@@ -41,6 +45,7 @@ class BrowserVNCCoordinator:
         self.user_id = user_id
         self.session_id = session_id
         self.resume_path = resume_path
+        self.job_url = job_url
 
         self.virtual_display = None
         self.window_manager_process = None
@@ -49,7 +54,7 @@ class BrowserVNCCoordinator:
         self.ws_port = 6900 + (vnc_port - 5900)
         # Calculate CDP port for WebSocket connection (offsets from 9222)
         self.cdp_port = 9222 + (vnc_port - 5900)
-        
+
         self.playwright = None
         self.browser = None
         self.page = None
@@ -57,6 +62,7 @@ class BrowserVNCCoordinator:
         self.browser_process = None  # To track the sudo process
         self.firejail_home = None
         self.private_desktop = None
+        self.allowed_domains = []  # Whitelist for navigation
 
     def _create_session_directory(self) -> str:
         """
@@ -230,6 +236,19 @@ class BrowserVNCCoordinator:
                 os.makedirs(user_data_dir, mode=0o700)
             subprocess.run(["chown", "-R", "restricted_user:restricted_user", user_data_dir], check=True)
 
+            # Determine start URL and mode
+            # If job_url is provided, use app mode for maximum security
+            # App mode removes all browser UI (tabs, address bar, etc.)
+            start_url = self.job_url if self.job_url else "about:blank"
+
+            # Extract allowed domain from job_url for navigation restriction
+            if self.job_url:
+                from urllib.parse import urlparse
+                parsed = urlparse(self.job_url)
+                base_domain = f"{parsed.scheme}://{parsed.netloc}"
+                self.allowed_domains = [base_domain]
+                logger.info(f"🔒 Browser restricted to domain: {base_domain}")
+
             # Construct command to launch chromium via sudo + firejail sandbox
             browser_cmd = [
                 "sudo", "-u", "restricted_user",
@@ -251,13 +270,27 @@ class BrowserVNCCoordinator:
                 "--disable-dev-shm-usage",
                 "--disable-setuid-sandbox",
                 "--disable-infobars",
-                "--kiosk",
-                "--start-maximized",
                 "--no-first-run",
                 "--no-default-browser-check",
                 f"--download.default_directory={os.path.join(self.firejail_home, 'Desktop')}",
-                "about:blank"
             ]
+
+            # Add app mode or kiosk mode based on whether job_url is provided
+            if self.job_url:
+                # App mode: No tabs, no address bar, just the app
+                browser_cmd.extend([
+                    f"--app={start_url}",
+                    "--start-maximized",
+                ])
+                logger.info(f"🔐 Launching browser in APP MODE (tab-restricted) for: {start_url}")
+            else:
+                # Kiosk mode: For general browsing (backward compatibility)
+                browser_cmd.extend([
+                    "--kiosk",
+                    "--start-maximized",
+                    start_url
+                ])
+                logger.info(f"🌐 Launching browser in KIOSK MODE for: {start_url}")
 
             logger.info(f"🚀 Launching browser process: {' '.join(browser_cmd)}")
             
@@ -319,14 +352,18 @@ class BrowserVNCCoordinator:
             # Set viewport size (needed because we didn't launch with specific viewport in args)
             await self.page.set_viewport_size({"width": self.display_width, "height": self.display_height})
 
+            # Inject security controls if job_url is provided
+            if self.job_url:
+                await self._inject_security_controls()
+
             logger.info(f"✅ Session files will be isolated to: /home/restricted_user/Desktop")
-            
+
             logger.info("✅ VNC-enabled browser environment started successfully")
             logger.info(f"📺 Display: {self.virtual_display.display}")
             logger.info(f"🖥️ VNC Port: {self.vnc_port}")
             logger.info(f"🔌 WebSocket Port: {self.ws_port}")
             logger.info(f"🌐 Browser: Ready (PID: {self.browser_process.pid})")
-            
+
             return True
             
         except Exception as e:
@@ -361,6 +398,98 @@ class BrowserVNCCoordinator:
             await self.stop()
             return False
     
+    async def _inject_security_controls(self):
+        """
+        Inject JavaScript to block tab operations and monitor navigation
+        """
+        try:
+            logger.info("🔐 Injecting security controls...")
+
+            # Inject script to block tab-related keyboard shortcuts
+            await self.page.evaluate("""
+                () => {
+                    console.log('🔒 Security controls activated');
+
+                    // Block tab-related keyboard shortcuts
+                    document.addEventListener('keydown', (e) => {
+                        // Block Ctrl+T (new tab)
+                        if (e.ctrlKey && e.key === 't') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            console.warn('🚫 New tab blocked');
+                            return false;
+                        }
+
+                        // Block Ctrl+Tab (switch tabs)
+                        if (e.ctrlKey && e.key === 'Tab') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            console.warn('🚫 Tab switch blocked');
+                            return false;
+                        }
+
+                        // Block Ctrl+W (close tab)
+                        if (e.ctrlKey && e.key === 'w') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            console.warn('🚫 Close tab blocked');
+                            return false;
+                        }
+
+                        // Block Ctrl+Shift+T (reopen closed tab)
+                        if (e.ctrlKey && e.shiftKey && e.key === 't') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            console.warn('🚫 Reopen tab blocked');
+                            return false;
+                        }
+
+                        // Block Ctrl+N (new window)
+                        if (e.ctrlKey && e.key === 'n') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            console.warn('🚫 New window blocked');
+                            return false;
+                        }
+
+                        // Block F12 (dev tools - optional, uncomment if needed)
+                        // if (e.key === 'F12') {
+                        //     e.preventDefault();
+                        //     e.stopPropagation();
+                        //     console.warn('🚫 DevTools blocked');
+                        //     return false;
+                        // }
+                    }, true);
+
+                    // Add visual indicator that session is restricted
+                    const indicator = document.createElement('div');
+                    indicator.id = 'security-indicator';
+                    indicator.innerHTML = '🔒 Secure Job Application Session';
+                    indicator.style.cssText = `
+                        position: fixed;
+                        top: 0;
+                        right: 0;
+                        background: #4CAF50;
+                        color: white;
+                        padding: 8px 16px;
+                        font-family: Arial, sans-serif;
+                        font-size: 12px;
+                        z-index: 999999;
+                        border-bottom-left-radius: 4px;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                    `;
+                    document.body.appendChild(indicator);
+
+                    console.log('✅ Security controls injected successfully');
+                }
+            """)
+
+            logger.info("✅ Security controls injected successfully")
+
+        except Exception as e:
+            logger.error(f"Failed to inject security controls: {e}")
+            # Non-critical, continue anyway
+
     async def cleanup_session_files(self, session_id: str = None):
         """
         Cleanup session-specific files.

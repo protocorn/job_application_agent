@@ -47,20 +47,21 @@ logger = logging.getLogger(__name__)
 
 class RefactoredJobAgent:
     """The main class for the refactored job application agent."""
-    def __init__(self, playwright, headless: bool = True, keep_open: bool = False, debug: bool = False, hold_seconds: int = 0, slow_mo_ms: int = 0, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False, resume_path: str = None) -> None:
+    def __init__(self, playwright, headless: bool = True, keep_open: bool = False, debug: bool = False, hold_seconds: int = 0, slow_mo_ms: int = 0, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False, resume_path: str = None, job_url: str = None) -> None:
         self.playwright = playwright
-        
+
         # VNC mode setup (for cloud streaming)
         self.vnc_mode = vnc_mode and VNC_AVAILABLE
         self.vnc_port = vnc_port
         self.tailor_resume = tailor_resume
         self.resume_path = resume_path
+        self.job_url = job_url  # Store job URL for VNC app mode
         self.vnc_coordinator = None
-        
+
         if vnc_mode and not VNC_AVAILABLE:
             logger.warning("VNC mode requested but VNC components not available - falling back to standard mode")
             self.vnc_mode = False
-        
+
         # VNC mode requires non-headless browser (on virtual display)
         if self.vnc_mode:
             headless = False  # Browser must be visible (on virtual display)
@@ -104,13 +105,15 @@ class RefactoredJobAgent:
             logger.info("🖥️ Starting browser with VNC streaming...")
             
             # Create VNC coordinator
+            # Pass job_url to enable app mode and tab restrictions
             self.vnc_coordinator = BrowserVNCCoordinator(
                 display_width=1920,
                 display_height=1080,
                 vnc_port=self.vnc_port,
                 user_id=self.user_id,
                 session_id=self.job_id,
-                resume_path=self.resume_path
+                resume_path=self.resume_path,
+                job_url=self.job_url  # IMPORTANT: Enables app mode if job_url is provided
             )
             
             # Start VNC environment (display + VNC server + browser)
@@ -2876,6 +2879,9 @@ async def run_links_with_refactored_agent(links: list[str], headless: bool, keep
         logger.info("📄 Using standard resume (no tailoring)")
 
     try:
+        # Extract job URL for VNC app mode (use first link)
+        job_url = links[0] if links and vnc_mode else None
+
         agent = RefactoredJobAgent(
             p,
             headless=headless,
@@ -2890,7 +2896,8 @@ async def run_links_with_refactored_agent(links: list[str], headless: bool, keep
             vnc_mode=vnc_mode,
             vnc_port=vnc_port,
             tailor_resume=tailor_resume,
-            resume_path=resume_path
+            resume_path=resume_path,
+            job_url=job_url  # Pass job URL for app mode and tab restrictions
         )
 
         for link in links:
