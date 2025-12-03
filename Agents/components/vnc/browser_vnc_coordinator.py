@@ -70,7 +70,6 @@ class BrowserVNCCoordinator:
         Returns:
             Path to created session directory
         """
-        import os
 
         if not self.user_id or not self.session_id:
             # Fallback to session-only directory if user_id not provided
@@ -217,7 +216,6 @@ class BrowserVNCCoordinator:
             user_data_dir = f"/tmp/chrome_profile_{self.session_id or 'default'}_{self.cdp_port}"
             
             # Create and chown the profile dir
-            import os
             if not os.path.exists(user_data_dir):
                 os.makedirs(user_data_dir, mode=0o700)
             subprocess.run(["chown", "-R", "restricted_user:restricted_user", user_data_dir], check=True)
@@ -261,7 +259,6 @@ class BrowserVNCCoordinator:
             )
 
             # Wait for CDP port to be ready
-            import time
             import requests
             
             max_retries = 20
@@ -362,7 +359,6 @@ class BrowserVNCCoordinator:
         """
         try:
             import shutil
-            import os
 
             # Use instance session_dir if available, otherwise fall back to legacy path
             if self.session_dir and os.path.exists(self.session_dir):
@@ -431,7 +427,6 @@ class BrowserVNCCoordinator:
             # Stop Window Manager
             if self.window_manager_process:
                 try:
-                    import os
                     import signal
                     os.killpg(os.getpgid(self.window_manager_process.pid), signal.SIGTERM)
                     logger.info("✓ Window Manager stopped")
