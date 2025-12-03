@@ -181,8 +181,18 @@ class BrowserVNCCoordinator:
             # Prepare private home for sandboxed browser (Firejail)
             self.firejail_home = os.path.join(self.session_dir, "sandbox_home")
             self.private_desktop = os.path.join(self.firejail_home, "Desktop")
-            os.makedirs(self.private_desktop, mode=0o700, exist_ok=True)
+            self.mask_app_dir = os.path.join(self.firejail_home, "mask_app")
+
+            for path in (self.private_desktop, self.mask_app_dir):
+                os.makedirs(path, mode=0o700, exist_ok=True)
+
             subprocess.run(["chown", "-R", "restricted_user:restricted_user", self.firejail_home], check=True)
+
+            # Populate the masked /app directory with a README so users know why it's empty
+            mask_readme = os.path.join(self.mask_app_dir, "README.txt")
+            with open(mask_readme, "w", encoding="utf-8") as f:
+                f.write("⚠️ Access to /app is restricted inside this sandbox.\n")
+            subprocess.run(["chown", "restricted_user:restricted_user", mask_readme], check=True)
 
             # If no resume provided, drop a README to explain
             if not self.resume_path:
@@ -232,6 +242,7 @@ class BrowserVNCCoordinator:
                 "--private-tmp",
                 "--blacklist=/app",
                 "--blacklist=/home/restricted_user",
+                f"--bind={self.mask_app_dir},/app",
                 "/usr/bin/chromium",
                 f"--remote-debugging-port={self.cdp_port}",
                 f"--user-data-dir={user_data_dir}",
