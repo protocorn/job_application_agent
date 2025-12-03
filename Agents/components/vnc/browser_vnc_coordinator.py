@@ -10,6 +10,7 @@ import asyncio
 import subprocess
 import time
 import sys
+import os
 from typing import Optional
 from playwright.async_api import Browser, Page, async_playwright
 
@@ -54,6 +55,8 @@ class BrowserVNCCoordinator:
         self.page = None
         self.session_dir = None
         self.browser_process = None  # To track the sudo process
+        self.firejail_home = None
+        self.private_desktop = None
 
     def _create_session_directory(self) -> str:
         """
@@ -176,12 +179,24 @@ class BrowserVNCCoordinator:
             logger.info("📁 Creating isolated session directory...")
             self.session_dir = self._create_session_directory()
 
+            # Prepare private home for sandboxed browser (Firejail)
+            self.firejail_home = os.path.join(self.session_dir, "sandbox_home")
+            self.private_desktop = os.path.join(self.firejail_home, "Desktop")
+            os.makedirs(self.private_desktop, mode=0o700, exist_ok=True)
+            subprocess.run(["chown", "-R", "restricted_user:restricted_user", self.firejail_home], check=True)
+
+            # If no resume provided, drop a README to explain
+            if not self.resume_path:
+                placeholder = os.path.join(self.private_desktop, "README.txt")
+                with open(placeholder, "w", encoding="utf-8") as f:
+                    f.write("Upload your resume from here. Placeholders only – please provide your file.\n")
+                subprocess.run(["chown", "restricted_user:restricted_user", placeholder], check=True)
+
             # Step 3.5: Inject resume if provided
             if self.resume_path:
                 try:
                     logger.info(f"📄 Injecting resume from {self.resume_path}...")
-                    # Target the Desktop of the restricted user
-                    target_path = "/home/restricted_user/Desktop/resume.pdf"
+                    target_path = os.path.join(self.private_desktop, "resume.pdf")
                     
                     # Copy file (we are root/app so we can write there)
                     import shutil
@@ -207,14 +222,22 @@ class BrowserVNCCoordinator:
                 os.makedirs(user_data_dir, mode=0o700)
             subprocess.run(["chown", "-R", "restricted_user:restricted_user", user_data_dir], check=True)
 
-            # Construct command to launch chromium via sudo
-            # We use the system chromium
+            # Construct command to launch chromium via sudo + firejail sandbox
             browser_cmd = [
                 "sudo", "-u", "restricted_user",
+                "firejail",
+                "--quiet",
+                "--x11=inherit",
+                "--dbus-user=none",
+                f"--private={self.firejail_home}",
+                "--private-dev",
+                "--private-tmp",
+                "--blacklist=/app",
+                "--blacklist=/home/restricted_user",
                 "/usr/bin/chromium",
                 f"--remote-debugging-port={self.cdp_port}",
                 f"--user-data-dir={user_data_dir}",
-                "--no-sandbox", # Often needed in Docker
+                "--no-sandbox",
                 "--disable-gpu",
                 "--disable-dev-shm-usage",
                 "--disable-setuid-sandbox",
@@ -223,7 +246,7 @@ class BrowserVNCCoordinator:
                 "--start-maximized",
                 "--no-first-run",
                 "--no-default-browser-check",
-                f"--download.default_directory=/home/restricted_user/Desktop",
+                f"--download.default_directory={os.path.join(self.firejail_home, 'Desktop')}",
                 "about:blank"
             ]
 
