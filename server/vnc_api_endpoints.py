@@ -526,6 +526,15 @@ def batch_apply_with_vnc():
                         
                         # VNC info might be None if agent went through human intervention
                         # Register session info either way so API can find it
+                        # Ensure VNC actually started; otherwise mark error and continue
+                        if not vnc_info or not vnc_info.get('vnc_enabled'):
+                            logger.error(f"❌ VNC failed to start for job {job.job_id}")
+                            batch_vnc_manager.update_job_status(
+                                batch_id, job.job_id, 'error',
+                                error="VNC environment failed to start"
+                            )
+                            continue  # Skip to next job
+
                         vnc_session_id = job.job_id  # Use job_id as session_id
                         actual_vnc_port = vnc_port
                         
@@ -903,11 +912,6 @@ def batch_apply_with_preferences():
                         )
 
                         logger.info(f"✅ Job {idx + 1} ready for review: {job.job_url}")
-                        else:
-                            # VNC failed to start - mark job as error
-                            logger.error(f"❌ VNC failed to start for job {job.job_id}")
-                            batch_vnc_manager.update_job_status(batch_id, job.job_id, 'error', error="VNC environment failed to start")
-                            continue  # Skip to next job
 
                     except Exception as e:
                         logger.error(f"❌ Job {idx + 1} failed: {e}")
