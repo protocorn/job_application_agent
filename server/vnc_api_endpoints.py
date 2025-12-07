@@ -513,6 +513,7 @@ def batch_apply_with_vnc():
                         logger.info(f"📡 Allocated VNC port {vnc_port} for job {idx + 1}")
                         
                         # Run agent with VNC mode (agent creates VNC internally)
+                        logger.info(f"🤖 Starting agent for job {job.job_id}...")
                         vnc_info = loop.run_until_complete(
                             run_links_with_refactored_agent(
                                 links=[job.job_url],
@@ -530,14 +531,18 @@ def batch_apply_with_vnc():
                                 resume_path=resume_path  # Pass resume path
                             )
                         )
-                        
+
+                        logger.info(f"🔍 Agent completed for job {job.job_id}")
+                        logger.info(f"   VNC info returned: {vnc_info}")
+
                         # VNC info might be None if agent went through human intervention
                         # Register session info either way so API can find it
                         # Ensure VNC actually started; otherwise mark error and continue
                         if not vnc_info or not vnc_info.get('vnc_enabled'):
                             logger.error(f"❌ VNC failed to start for job {job.job_id}")
+                            logger.error(f"   vnc_info: {vnc_info}")
                             batch_vnc_manager.update_job_status(
-                                batch_id, job.job_id, 'error',
+                                batch_id, job.job_id, 'failed',
                                 error="VNC environment failed to start"
                             )
                             continue  # Skip to next job
@@ -615,6 +620,11 @@ def batch_apply_with_vnc():
                             pass
 
                         # Update status: ready for review
+                        logger.info(f"📝 Updating job {job.job_id} status to: {final_status}")
+                        logger.info(f"   VNC session ID: {vnc_session_id}")
+                        logger.info(f"   VNC port: {actual_vnc_port}")
+                        logger.info(f"   VNC URL: {vnc_url}")
+
                         batch_vnc_manager.update_job_status(
                             batch_id, job.job_id, final_status,
                             progress=100,
@@ -622,11 +632,19 @@ def batch_apply_with_vnc():
                             vnc_port=actual_vnc_port,
                             vnc_url=vnc_url
                         )
-                        
-                        logger.info(f"✅ Job {idx + 1} ready for review: {job.job_url}")
-                        
+
+                        # Verify the update worked
+                        updated_job = batch_vnc_manager.get_batch(batch_id).get_job(job.job_id)
+                        logger.info(f"✅ Job {idx + 1} status updated to: {updated_job.status}")
+                        logger.info(f"   Job details: vnc_port={updated_job.vnc_port}, vnc_url={updated_job.vnc_url}")
+
                     except Exception as e:
-                        logger.error(f"❌ Job {idx + 1} failed: {e}")
+                        logger.error(f"❌ Job {idx + 1} failed with exception: {e}")
+                        logger.error(f"   Job ID: {job.job_id}")
+                        logger.error(f"   Job URL: {job.job_url}")
+                        import traceback
+                        logger.error(f"   Traceback:\n{traceback.format_exc()}")
+
                         batch_vnc_manager.update_job_status(
                             batch_id, job.job_id, 'failed',
                             error=str(e)
