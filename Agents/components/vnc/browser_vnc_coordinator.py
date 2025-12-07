@@ -100,10 +100,16 @@ class BrowserVNCCoordinator:
             logger.info("🚀 Starting VNC-enabled browser environment")
             
             # Step 1: Start virtual display
-            logger.info("📺 Starting virtual display...")
+            # CRITICAL: Calculate unique display number based on VNC port
+            # Each VNC session MUST have its own display to isolate browser windows
+            # VNC port 5900 → Display :99, VNC port 5901 → Display :100, etc.
+            display_num = 99 + (self.vnc_port - 5900)
+            logger.info(f"📺 Starting virtual display :{display_num} for VNC port {self.vnc_port}...")
+
             self.virtual_display = VirtualDisplayManager(
                 width=self.display_width,
-                height=self.display_height
+                height=self.display_height,
+                display_num=display_num  # CRITICAL: Unique display per session
             )
             
             if not self.virtual_display.start():
@@ -358,11 +364,17 @@ class BrowserVNCCoordinator:
 
             logger.info(f"✅ Session files will be isolated to: /home/restricted_user/Desktop")
 
+            logger.info("=" * 80)
             logger.info("✅ VNC-enabled browser environment started successfully")
             logger.info(f"📺 Display: {self.virtual_display.display}")
             logger.info(f"🖥️ VNC Port: {self.vnc_port}")
             logger.info(f"🔌 WebSocket Port: {self.ws_port}")
-            logger.info(f"🌐 Browser: Ready (PID: {self.browser_process.pid})")
+            logger.info(f"🌐 Browser PID: {self.browser_process.pid}")
+            logger.info(f"🔗 Job URL: {self.job_url}")
+            logger.info(f"🆔 Session ID: {self.session_id}")
+            logger.info(f"👤 User ID: {self.user_id}")
+            logger.info(f"🔐 Mode: {'APP MODE (tab-restricted)' if self.job_url else 'KIOSK MODE'}")
+            logger.info("=" * 80)
 
             return True
             

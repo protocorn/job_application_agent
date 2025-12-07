@@ -495,15 +495,22 @@ def batch_apply_with_vnc():
             try:
                 for idx, job in enumerate(batch.jobs):
                     try:
-                        logger.info(f"🎯 Processing job {idx + 1}/{len(batch.jobs)}: {job.job_url}")
-                        
+                        logger.info("=" * 80)
+                        logger.info(f"🎯 Processing job {idx + 1}/{len(batch.jobs)}")
+                        logger.info(f"   Job ID: {job.job_id}")
+                        logger.info(f"   Job URL: {job.job_url}")
+                        logger.info(f"   Batch ID: {batch_id}")
+                        logger.info("=" * 80)
+
                         # Update status: filling
                         batch_vnc_manager.update_job_status(
                             batch_id, job.job_id, 'filling', progress=0
                         )
-                        
+
                         # Calculate VNC port (5900, 5901, 5902, etc.)
+                        # Each job gets its own port for isolation
                         vnc_port = 5900 + idx
+                        logger.info(f"📡 Allocated VNC port {vnc_port} for job {idx + 1}")
                         
                         # Run agent with VNC mode (agent creates VNC internally)
                         vnc_info = loop.run_until_complete(
@@ -537,39 +544,41 @@ def batch_apply_with_vnc():
 
                         vnc_session_id = job.job_id  # Use job_id as session_id
                         actual_vnc_port = vnc_port
-                        
-                        # CRITICAL: Register session in vnc_session_manager
-                        # This allows /api/vnc/session/{id} to find it
+
+                        # Verify VNC session was registered by agent
                         if vnc_info and vnc_info.get('vnc_enabled'):
                             logger.info(f"✅ VNC mode active for job {job.job_id}")
                         else:
                             logger.warning(f"⚠️ VNC info not returned, but browser should be open")
-                        
-                        # Register session in both managers for compatibility
-                        # (agent created VNC but didn't register in global manager)
+
+                        # Agent already registered the session in vnc_session_manager with coordinator reference
+                        # We just need to register for WebSocket proxy routing
                         try:
                             from Agents.components.vnc import vnc_session_manager as vsm
-                            
-                            # Store minimal session info that API can retrieve
-                            vsm.sessions[vnc_session_id] = {
-                                'session_id': vnc_session_id,
-                                'user_id': user_id,
-                                'job_url': job.job_url,
-                                'vnc_port': actual_vnc_port,
-                                'status': 'active',
-                                'created_at': datetime.now()
-                            }
-                            
-                            logger.info(f"✅ Registered VNC session {vnc_session_id} in global manager")
-                            
-                            # CRITICAL: Also register in vnc_stream_proxy for WebSocket routing
+
+                            # Verify session was registered by agent
+                            if vnc_session_id in vsm.sessions:
+                                logger.info(f"✅ Session {vnc_session_id} already registered by agent with coordinator")
+                            else:
+                                logger.warning(f"⚠️ Session {vnc_session_id} NOT found in manager - agent may have failed")
+                                # Fallback registration (without coordinator)
+                                vsm.sessions[vnc_session_id] = {
+                                    'session_id': vnc_session_id,
+                                    'user_id': user_id,
+                                    'job_url': job.job_url,
+                                    'vnc_port': actual_vnc_port,
+                                    'status': 'active',
+                                    'created_at': datetime.now()
+                                }
+
+                            # CRITICAL: Register in vnc_stream_proxy for WebSocket routing
                             ws_port = 6900 + idx  # Calculate websockify port
                             register_vnc_session(vnc_session_id, actual_vnc_port, ws_port)
                             logger.info(f"📝 Registered session {vnc_session_id} for WebSocket proxy - VNC:{actual_vnc_port}, WS:{ws_port}")
-                            
+
                         except Exception as e:
-                            logger.warning(f"Could not register in VNC manager: {e}")
-                            
+                            logger.error(f"❌ Failed to verify/register VNC session: {e}")
+
                             # Fallback: Register in dev session manager
                             dev_browser_session.register_session(
                                 session_id=job.job_id,

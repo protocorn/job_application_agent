@@ -2907,7 +2907,24 @@ async def run_links_with_refactored_agent(links: list[str], headless: bool, keep
         if vnc_mode and agent.vnc_coordinator:
             vnc_session_info = agent.get_vnc_session_info()
             logger.info(f"📺 VNC session info: {vnc_session_info}")
-        
+
+            # CRITICAL: Register coordinator in global VNC session manager
+            # This allows the API to access the coordinator after agent finishes
+            if VNC_AVAILABLE and job_id:
+                from Agents.components.vnc import vnc_session_manager
+                from datetime import datetime
+                vnc_session_manager.sessions[job_id] = {
+                    'session_id': job_id,
+                    'user_id': user_id,
+                    'job_url': job_url,
+                    'vnc_port': vnc_port,
+                    'coordinator': agent.vnc_coordinator,  # Store actual coordinator reference!
+                    'page': agent.page,  # Store page reference
+                    'status': 'active',
+                    'created_at': datetime.now()
+                }
+                logger.info(f"✅ Registered coordinator for session {job_id} in global manager")
+
     finally:
         # VNC MODE: Keep browser alive for user interaction via VNC
         if vnc_mode and hasattr(agent, 'vnc_coordinator') and agent.vnc_coordinator:
