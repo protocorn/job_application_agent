@@ -2538,8 +2538,16 @@ IMPORTANT:
                     status="needs_attention"
                 )
             
+            # VNC MODE: In VNC mode, don't wait - return immediately so batch processing can continue
+            if self.vnc_mode:
+                logger.info("🖥️ VNC mode: Ending state machine for user intervention")
+                logger.info("   Browser will stay alive for user to complete manually")
+                self._log_to_jobs("info", "✅ Ready for review! Click 'Review & Submit' to access browser.")
+                # Return None to end state machine, agent will return vnc_info to API
+                return None
+
             # Check if we should wait for user input in debug mode
-            if self.debug:
+            elif self.debug:
                 logger.info("🔍 --debug flag detected: waiting for user to complete manual steps...")
                 self._log_to_jobs("info", "🐛 Debug mode: Complete manual steps, then press Enter to continue")
 
@@ -2928,17 +2936,21 @@ async def run_links_with_refactored_agent(links: list[str], headless: bool, keep
     finally:
         # VNC MODE: Keep browser alive for user interaction via VNC
         if vnc_mode and hasattr(agent, 'vnc_coordinator') and agent.vnc_coordinator:
-            logger.info("🖥️ VNC mode - browser will stay alive for user interaction")
+            logger.info("=" * 80)
+            logger.info("🖥️ VNC mode - browser will stay alive for user intervention")
             logger.info(f"📺 VNC accessible on port {vnc_port}")
             logger.info("⚠️ Browser will remain open until explicitly closed via API")
-            
+
             # Don't close browser or Playwright - they stay alive for VNC streaming
             # The API endpoint will handle cleanup when user is done
-            
+
             # Ensure we return the VNC info even if we are in finally block
             if vnc_session_info is None:
                 vnc_session_info = agent.get_vnc_session_info()
-            
+                logger.info(f"📺 Generated VNC session info in finally block")
+
+            logger.info(f"🔄 Returning VNC info to API: {vnc_session_info}")
+            logger.info("=" * 80)
             return vnc_session_info  # Return VNC info to API
         
         # STANDARD MODE: Regular cleanup

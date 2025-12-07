@@ -634,9 +634,16 @@ def batch_apply_with_vnc():
                         )
 
                         # Verify the update worked
-                        updated_job = batch_vnc_manager.get_batch(batch_id).get_job(job.job_id)
-                        logger.info(f"✅ Job {idx + 1} status updated to: {updated_job.status}")
-                        logger.info(f"   Job details: vnc_port={updated_job.vnc_port}, vnc_url={updated_job.vnc_url}")
+                        updated_batch = batch_vnc_manager.get_batch(batch_id)
+                        if updated_batch:
+                            updated_job = updated_batch.get_job(job.job_id)
+                            if updated_job:
+                                logger.info(f"✅ Job {idx + 1} status updated to: {updated_job.status}")
+                                logger.info(f"   Job details: vnc_port={updated_job.vnc_port}, vnc_url={updated_job.vnc_url}")
+                            else:
+                                logger.warning(f"⚠️ Could not verify job {job.job_id} - job not found in batch")
+                        else:
+                            logger.warning(f"⚠️ Could not verify job update - batch {batch_id} not found")
 
                     except Exception as e:
                         logger.error(f"❌ Job {idx + 1} failed with exception: {e}")
