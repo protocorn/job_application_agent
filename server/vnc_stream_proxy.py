@@ -13,8 +13,15 @@ from typing import Dict, Optional
 import socket
 import threading
 import struct
+import time
 
 logger = logging.getLogger(__name__)
+
+# Configuration constants
+SOCKET_BUFFER_SIZE = 16384  # Increased buffer for better throughput
+SOCKET_TIMEOUT = 30.0  # Socket timeout in seconds
+MAX_RETRY_ATTEMPTS = 3  # Max retries for VNC connection
+RETRY_DELAY = 2.0  # Delay between retries in seconds
 
 # Track active VNC sessions and their ports
 # session_id -> {'vnc_port': int, 'ws_port': int}
@@ -84,80 +91,137 @@ def setup_vnc_websocket_routes(app):
             logger.info(f"📡 Proxying directly to VNC server on localhost:{vnc_port}")
             logger.info(f"🔍 DEBUG - Session {session_id} -> VNC port {vnc_port}, WS port {ws_port}")
 
-            # Connect to local VNC server
-            try:
-                vnc_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                # Set socket options for better stability
-                vnc_socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-                vnc_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                vnc_socket.connect(('localhost', vnc_port))
-                logger.info(f"✅ Connected to VNC server for session {session_id}")
-
-                # Proxy data between client WebSocket and VNC server
-                def forward_to_vnc():
-                    """Forward data from client to VNC"""
-                    try:
-                        while True:
-                            data = ws.receive()
-                            if data is None:
-                                logger.debug(f"Session {session_id}: Client closed connection")
-                                break
-                            if isinstance(data, str):
-                                data = data.encode()
-                            vnc_socket.sendall(data)
-                    except Exception as e:
-                        logger.warning(f"Session {session_id}: Client → VNC forwarding ended: {e}")
-                    finally:
+            # Connect to local VNC server with retry logic
+            vnc_socket = None
+            last_error = None
+            
+            for attempt in range(MAX_RETRY_ATTEMPTS):
+                try:
+                    vnc_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    
+                    # Set socket options for better stability and performance
+                    vnc_socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                    vnc_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                    vnc_socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, SOCKET_BUFFER_SIZE)
+                    vnc_socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, SOCKET_BUFFER_SIZE)
+                    vnc_socket.settimeout(SOCKET_TIMEOUT)
+                    
+                    # Connect to VNC server
+                    vnc_socket.connect(('localhost', vnc_port))
+                    logger.info(f"✅ Connected to VNC server for session {session_id} (attempt {attempt + 1})")
+                    break  # Success!
+                    
+                except (ConnectionRefusedError, OSError, socket.timeout) as e:
+                    last_error = e
+                    logger.warning(f"⚠️ Connection attempt {attempt + 1}/{MAX_RETRY_ATTEMPTS} failed: {e}")
+                    
+                    if vnc_socket:
                         try:
                             vnc_socket.close()
                         except:
                             pass
+                        vnc_socket = None
+                    
+                    if attempt < MAX_RETRY_ATTEMPTS - 1:
+                        time.sleep(RETRY_DELAY)
+                    else:
+                        logger.error(f"❌ Failed to connect to VNC server after {MAX_RETRY_ATTEMPTS} attempts")
+                        try:
+                            ws.close(1011, "VNC server not available")
+                        except:
+                            pass
+                        return
+            
+            if not vnc_socket:
+                logger.error(f"❌ Could not establish VNC connection for session {session_id}")
+                try:
+                    ws.close(1011, str(last_error))
+                except:
+                    pass
+                return
+
+            # Connection successful - start proxying with proper error handling
+            try:
+                # Shared state for coordinating shutdown
+                shutdown_event = threading.Event()
+                
+                def forward_to_vnc():
+                    """Forward data from client to VNC with error handling"""
+                    try:
+                        while not shutdown_event.is_set():
+                            try:
+                                data = ws.receive()
+                                if data is None:
+                                    logger.debug(f"Session {session_id}: Client closed connection")
+                                    break
+                                if isinstance(data, str):
+                                    data = data.encode()
+                                vnc_socket.sendall(data)
+                            except Exception as e:
+                                if not shutdown_event.is_set():
+                                    logger.warning(f"Session {session_id}: Error receiving from client: {e}")
+                                break
+                    except Exception as e:
+                        logger.warning(f"Session {session_id}: Client → VNC forwarding ended: {e}")
+                    finally:
+                        shutdown_event.set()  # Signal the other thread to stop
+                        try:
+                            vnc_socket.shutdown(socket.SHUT_WR)
+                        except:
+                            pass
 
                 def forward_to_client():
-                    """Forward data from VNC to client"""
+                    """Forward data from VNC to client with error handling"""
                     try:
-                        while True:
-                            data = vnc_socket.recv(8192)  # Increased buffer size
-                            if not data:
-                                logger.debug(f"Session {session_id}: VNC server closed connection")
-                                break
-                            # Send binary data explicitly
+                        while not shutdown_event.is_set():
                             try:
+                                vnc_socket.settimeout(1.0)  # Check shutdown_event periodically
+                                data = vnc_socket.recv(SOCKET_BUFFER_SIZE)
+                                if not data:
+                                    logger.debug(f"Session {session_id}: VNC server closed connection")
+                                    break
+                                # Send binary data explicitly
                                 ws.send(bytes(data))
-                            except Exception as send_err:
-                                logger.error(f"Session {session_id}: Failed to send data to client: {send_err}")
+                            except socket.timeout:
+                                continue  # Check shutdown_event and retry
+                            except Exception as e:
+                                if not shutdown_event.is_set():
+                                    logger.warning(f"Session {session_id}: Error sending to client: {e}")
                                 break
                     except Exception as e:
                         logger.warning(f"Session {session_id}: VNC → Client forwarding ended: {e}")
                     finally:
+                        shutdown_event.set()  # Signal the other thread to stop
                         try:
                             ws.close()
                         except:
                             pass
 
                 # Start forwarding threads
-                client_thread = threading.Thread(target=forward_to_vnc, daemon=True)
-                vnc_thread = threading.Thread(target=forward_to_client, daemon=True)
+                client_thread = threading.Thread(target=forward_to_vnc, name=f"VNC-Client-{session_id}", daemon=True)
+                vnc_thread = threading.Thread(target=forward_to_client, name=f"VNC-Server-{session_id}", daemon=True)
 
                 client_thread.start()
                 vnc_thread.start()
 
-                # Wait for threads to complete
-                client_thread.join()
-                vnc_thread.join()
+                # Wait for threads to complete with timeout
+                client_thread.join(timeout=300)  # 5 minute max
+                vnc_thread.join(timeout=5)  # Quick cleanup
 
                 logger.info(f"🔌 VNC WebSocket closed for session {session_id}")
 
-            except ConnectionRefusedError:
-                logger.error(f"❌ Could not connect to VNC server on port {vnc_port}")
-                try:
-                    ws.close(1011, "VNC server not available")  # Use numeric code instead of reason kwarg
-                except:
-                    pass
             except Exception as e:
                 logger.error(f"❌ Error in VNC proxy: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+            finally:
+                # Ensure cleanup
                 try:
-                    ws.close(1011, str(e))  # Use numeric code instead of reason kwarg
+                    vnc_socket.close()
+                except:
+                    pass
+                try:
+                    ws.close()
                 except:
                     pass
 

@@ -98,6 +98,25 @@ except ImportError as e:
     
 # ============= END VNC SETUP =============
 
+# ============= RESOURCE MANAGEMENT & MONITORING SETUP =============
+# Initialize resource manager, connection pool, and health monitor
+try:
+    from system_initializer import initialize_system, shutdown_system, get_system_status, report_error
+    
+    # Initialize all resource management components
+    initialize_system()
+    logging.info("✅ Resource management and monitoring initialized")
+    
+except ImportError as e:
+    logging.warning(f"⚠️ Resource management not available: {e}")
+    logging.info("   System will run without advanced resource management")
+except Exception as e:
+    logging.error(f"❌ Failed to initialize resource management: {e}")
+    import traceback
+    logging.error(traceback.format_exc())
+
+# ============= END RESOURCE MANAGEMENT SETUP =============
+
 # ============= SENTRY ERROR TRACKING =============
 # Initialize Sentry for production error tracking
 SENTRY_ENABLED = False
@@ -3189,12 +3208,45 @@ def root():
 @app.route("/api/health", methods=['GET'])
 @app.route("/health", methods=['GET'])
 def health():
-    """Detailed health check endpoint"""
-    return jsonify({
+    """Detailed health check endpoint with resource monitoring"""
+    health_data = {
         "status": "ok",
         "vnc_enabled": VNC_ENABLED if 'VNC_ENABLED' in globals() else False,
         "timestamp": time.time()
-    })
+    }
+    
+    # Add system resource status if available
+    try:
+        from system_initializer import get_system_status
+        system_status = get_system_status()
+        
+        if system_status.get('initialized'):
+            health_data['resource_management'] = {
+                'enabled': True,
+                'resource_manager': system_status.get('resource_manager', {}),
+                'connection_pool': system_status.get('connection_pool', {}),
+                'health_status': system_status.get('health', {}).get('current_status', 'unknown')
+            }
+    except Exception as e:
+        logging.debug(f"Resource management status not available: {e}")
+    
+    return jsonify(health_data)
+
+
+@app.route("/api/system/status", methods=['GET'])
+@require_auth
+def system_status():
+    """Comprehensive system status endpoint (requires authentication)"""
+    try:
+        from system_initializer import get_system_status
+        status = get_system_status()
+        return jsonify(status), 200
+    except Exception as e:
+        logging.error(f"Error getting system status: {e}")
+        return jsonify({
+            "error": str(e),
+            "message": "System status unavailable"
+        }), 500
 
 # Session Management API Routes
 

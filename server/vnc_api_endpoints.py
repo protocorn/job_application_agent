@@ -23,11 +23,23 @@ from batch_vnc_manager import batch_vnc_manager
 from dev_browser_session import dev_browser_session
 from vnc_stream_proxy import register_vnc_session, unregister_vnc_session
 from profile_service import ProfileService
+from resource_manager import get_resource_manager, RetryConfig
 import tempfile
 import requests
 import os
 
 logger = logging.getLogger(__name__)
+
+# Get global resource manager for thread pool and retry logic
+resource_manager = get_resource_manager()
+
+# Import error reporting
+try:
+    from system_initializer import report_error
+except ImportError:
+    # Fallback if system initializer not available
+    def report_error(error_type, error_message, session_id=None, recoverable=True):
+        logger.warning(f"Error reporting not available: {error_type} - {error_message}")
 
 # WORKAROUND: Dummy job URL to absorb the last-job status update bug
 # This hidden job ensures all user jobs complete properly
@@ -144,48 +156,51 @@ def apply_job_with_vnc():
         import uuid
         session_id = str(uuid.uuid4())
         
-        # Start the job application in background with VNC
-        import threading
-        
+        # Start the job application in background with VNC using resource manager
         def run_agent_async():
-            """Run agent in background thread"""
+            """Run agent in background thread with proper resource management"""
             try:
-                # Create new event loop for this thread
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                
-                logger.info(f"🤖 Starting agent with VNC for session {session_id}")
-                
-                # Run agent with VNC mode enabled
-                vnc_info = loop.run_until_complete(
-                    run_links_with_refactored_agent(
-                        links=[job_url],
-                        headless=False,  # Must be False for VNC
-                        keep_open=True,  # Keep browser open for user
-                        debug=False,
-                        hold_seconds=0,
-                        slow_mo_ms=0,
-                        job_id=session_id,
-                        jobs_dict={},
-                        session_manager=session_manager,
-                        user_id=user_id,
-                        vnc_mode=True,  # ENABLE VNC!
-                        vnc_port=5900 + len(vnc_session_manager.sessions),  # Auto-assign port
-                        resume_path=resume_path  # Pass resume path
+                # Use managed event loop for automatic cleanup
+                with resource_manager.managed_event_loop() as loop:
+                    logger.info(f"🤖 Starting agent with VNC for session {session_id}")
+                    
+                    # Run agent with VNC mode enabled
+                    vnc_info = loop.run_until_complete(
+                        run_links_with_refactored_agent(
+                            links=[job_url],
+                            headless=False,  # Must be False for VNC
+                            keep_open=True,  # Keep browser open for user
+                            debug=False,
+                            hold_seconds=0,
+                            slow_mo_ms=0,
+                            job_id=session_id,
+                            jobs_dict={},
+                            session_manager=session_manager,
+                            user_id=user_id,
+                            vnc_mode=True,  # ENABLE VNC!
+                            vnc_port=5900 + len(vnc_session_manager.sessions),  # Auto-assign port
+                            resume_path=resume_path  # Pass resume path
+                        )
                     )
-                )
-                
-                logger.info(f"✅ Agent completed for session {session_id}")
-                logger.info(f"   VNC info: {vnc_info}")
+                    
+                    logger.info(f"✅ Agent completed for session {session_id}")
+                    logger.info(f"   VNC info: {vnc_info}")
                 
             except Exception as e:
-                logger.error(f"Error in agent thread: {e}")
-            finally:
-                loop.close()
+                logger.error(f"❌ Error in agent thread: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                
+                # Report error to health monitor
+                error_type = "connection_closed" if "closed" in str(e).lower() else "agent_error"
+                report_error(error_type, str(e), session_id, recoverable=True)
         
-        # Start agent in background thread
-        thread = threading.Thread(target=run_agent_async, daemon=True)
-        thread.start()
+        # Submit to thread pool instead of creating unlimited threads
+        future = resource_manager.submit_task(run_agent_async)
+        
+        # Log resource usage
+        stats = resource_manager.get_stats()
+        logger.info(f"📊 Resource usage: {stats['active_threads']}/{stats['max_workers']} threads active")
         
         # Wait a bit for VNC to initialize
         import time
@@ -488,53 +503,56 @@ def batch_apply_with_vnc():
         request_host = request.host
         is_development = os.getenv('FLASK_ENV') == 'development' or 'localhost' in request_host
         
-        # Start processing in background thread
-        import threading
-        
+        # Start processing in background thread using resource manager
         def process_batch_sequential():
-            """Process all jobs in the batch sequentially"""
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
+            """Process all jobs in the batch sequentially with proper resource management"""
             try:
-                for idx, job in enumerate(batch.jobs):
-                    try:
-                        logger.info("=" * 80)
-                        logger.info(f"🎯 Processing job {idx + 1}/{len(batch.jobs)}")
-                        logger.info(f"   Job ID: {job.job_id}")
-                        logger.info(f"   Job URL: {job.job_url}")
-                        logger.info(f"   Batch ID: {batch_id}")
-                        logger.info("=" * 80)
+                # Use managed event loop for automatic cleanup
+                with resource_manager.managed_event_loop() as loop:
+                    for idx, job in enumerate(batch.jobs):
+                        try:
+                            logger.info("=" * 80)
+                            logger.info(f"🎯 Processing job {idx + 1}/{len(batch.jobs)}")
+                            logger.info(f"   Job ID: {job.job_id}")
+                            logger.info(f"   Job URL: {job.job_url}")
+                            logger.info(f"   Batch ID: {batch_id}")
+                            logger.info("=" * 80)
 
-                        # Update status: filling
-                        batch_vnc_manager.update_job_status(
-                            batch_id, job.job_id, 'filling', progress=0
-                        )
-
-                        # Calculate VNC port (5900, 5901, 5902, etc.)
-                        # Each job gets its own port for isolation
-                        vnc_port = 5900 + idx
-                        logger.info(f"📡 Allocated VNC port {vnc_port} for job {idx + 1}")
-                        
-                        # Run agent with VNC mode (agent creates VNC internally)
-                        logger.info(f"🤖 Starting agent for job {job.job_id}...")
-                        vnc_info = loop.run_until_complete(
-                            run_links_with_refactored_agent(
-                                links=[job.job_url],
-                                headless=False,  # Visible on virtual display
-                                keep_open=True,  # Keep browser open!
-                                debug=False,
-                                hold_seconds=0,
-                                slow_mo_ms=100,  # Slight slow-mo for visibility
-                                job_id=job.job_id,
-                                jobs_dict={},
-                                session_manager=session_manager,
-                                user_id=user_id,
-                                vnc_mode=True,  # ENABLE VNC!
-                                vnc_port=vnc_port,
-                                resume_path=resume_path  # Pass resume path
+                            # Update status: filling
+                            batch_vnc_manager.update_job_status(
+                                batch_id, job.job_id, 'filling', progress=0
                             )
-                        )
+
+                            # Calculate VNC port (5900, 5901, 5902, etc.)
+                            # Each job gets its own port for isolation
+                            vnc_port = 5900 + idx
+                            logger.info(f"📡 Allocated VNC port {vnc_port} for job {idx + 1}")
+                            
+                            # Run agent with VNC mode (agent creates VNC internally)
+                            # Wrap in retry handler for connection resilience
+                            logger.info(f"🤖 Starting agent for job {job.job_id}...")
+                            
+                            async def run_job_with_retry():
+                                """Run job with automatic retry on connection failures"""
+                                return await run_links_with_refactored_agent(
+                                    links=[job.job_url],
+                                    headless=False,  # Visible on virtual display
+                                    keep_open=True,  # Keep browser open!
+                                    debug=False,
+                                    hold_seconds=0,
+                                    slow_mo_ms=100,  # Slight slow-mo for visibility
+                                    job_id=job.job_id,
+                                    jobs_dict={},
+                                    session_manager=session_manager,
+                                    user_id=user_id,
+                                    vnc_mode=True,  # ENABLE VNC!
+                                    vnc_port=vnc_port,
+                                    resume_path=resume_path  # Pass resume path
+                                )
+                            
+                            vnc_info = loop.run_until_complete(
+                                resource_manager.retry_handler.execute_async(run_job_with_retry)
+                            )
 
                         logger.info(f"🔍 Agent completed for job {job.job_id}")
                         logger.info(f"   VNC info returned: {vnc_info}")
@@ -651,40 +669,47 @@ def batch_apply_with_vnc():
                             logger.warning(f"⚠️ Could not verify job update - batch {batch_id} not found")
 
                     except Exception as e:
-                        logger.error(f"❌ Job {idx + 1} failed with exception: {e}")
-                        logger.error(f"   Job ID: {job.job_id}")
-                        logger.error(f"   Job URL: {job.job_url}")
-                        import traceback
-                        logger.error(f"   Traceback:\n{traceback.format_exc()}")
+                            logger.error(f"❌ Job {idx + 1} failed with exception: {e}")
+                            logger.error(f"   Job ID: {job.job_id}")
+                            logger.error(f"   Job URL: {job.job_url}")
+                            import traceback
+                            logger.error(f"   Traceback:\n{traceback.format_exc()}")
 
-                        batch_vnc_manager.update_job_status(
-                            batch_id, job.job_id, 'failed',
-                            error=str(e)
-                        )
-                
-                # Mark batch as completed - get fresh reference from manager!
-                with batch_vnc_manager._lock:
-                    fresh_batch = batch_vnc_manager.get_batch(batch_id)
-                    if fresh_batch:
-                        fresh_batch.status = 'completed'
-                        batch_vnc_manager._save_batch_to_redis(fresh_batch)
-                        logger.info(f"✅ Batch {batch_id} processing completed and persisted")
-                    else:
-                        logger.error(f"❌ Could not find batch {batch_id} to mark complete")
+                            # Report error to health monitor
+                            error_type = "connection_closed" if "closed" in str(e).lower() else "batch_job_error"
+                            report_error(error_type, str(e), job.job_id, recoverable=True)
+
+                            batch_vnc_manager.update_job_status(
+                                batch_id, job.job_id, 'failed',
+                                error=str(e)
+                            )
+                    
+                    # Mark batch as completed - get fresh reference from manager!
+                    with batch_vnc_manager._lock:
+                        fresh_batch = batch_vnc_manager.get_batch(batch_id)
+                        if fresh_batch:
+                            fresh_batch.status = 'completed'
+                            batch_vnc_manager._save_batch_to_redis(fresh_batch)
+                            logger.info(f"✅ Batch {batch_id} processing completed and persisted")
+                        else:
+                            logger.error(f"❌ Could not find batch {batch_id} to mark complete")
                 
             except Exception as e:
-                logger.error(f"Error processing batch {batch_id}: {e}")
+                logger.error(f"❌ Error processing batch {batch_id}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 with batch_vnc_manager._lock:
                     fresh_batch = batch_vnc_manager.get_batch(batch_id)
                     if fresh_batch:
                         fresh_batch.status = 'failed'
                         batch_vnc_manager._save_batch_to_redis(fresh_batch)
-            finally:
-                loop.close()
         
-        # Start background processing
-        thread = threading.Thread(target=process_batch_sequential, daemon=True)
-        thread.start()
+        # Submit to thread pool instead of creating unlimited threads
+        future = resource_manager.submit_task(process_batch_sequential)
+        
+        # Log resource usage
+        stats = resource_manager.get_stats()
+        logger.info(f"📊 Resource usage: {stats['active_threads']}/{stats['max_workers']} threads active")
         
         # Return initial batch status immediately
         return jsonify({
@@ -734,19 +759,8 @@ def get_batch_status(batch_id):
         
         # Filter out dummy job from response
         batch_dict = batch.to_dict()
-        original_jobs = batch_dict['jobs']
-        filtered_jobs = [job for job in original_jobs if job['job_url'] != DUMMY_JOB_URL]
-        
-        batch_dict['jobs'] = filtered_jobs
-        batch_dict['total_jobs'] = len(filtered_jobs)
-        
-        # Recalculate job counts excluding dummy
-        batch_dict['completed_jobs'] = sum(1 for job in filtered_jobs if job['status'] == 'completed')
-        batch_dict['ready_for_review'] = sum(1 for job in filtered_jobs if job['status'] == 'ready_for_review')
-        batch_dict['filling_jobs'] = sum(1 for job in filtered_jobs if job['status'] == 'filling')
-        batch_dict['failed_jobs'] = sum(1 for job in filtered_jobs if job['status'] == 'failed')
-        
-        logger.debug(f"Filtered batch response: {len(original_jobs)} total jobs -> {len(filtered_jobs)} visible jobs")
+        batch_dict['jobs'] = [job for job in batch_dict['jobs'] if job['job_url'] != DUMMY_JOB_URL]
+        batch_dict['total_jobs'] = len(batch_dict['jobs'])
         
         return jsonify(batch_dict), 200
         
@@ -874,66 +888,66 @@ def batch_apply_with_preferences():
         request_host = request.host
         is_development = os.getenv('FLASK_ENV') == 'development' or 'localhost' in request_host
 
-        # Start processing in background thread
-        import threading
-
+        # Start processing in background thread using resource manager
         def process_batch_sequential():
-            """Process all jobs in the batch sequentially"""
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
+            """Process all jobs in the batch sequentially with proper resource management"""
             try:
-                for idx, job in enumerate(batch.jobs):
-                    try:
-                        # Skip dummy job - just mark it as completed
-                        if job.job_url == DUMMY_JOB_URL:
-                            logger.info(f"🎯 Skipping dummy job {idx + 1}/{len(batch.jobs)}")
+                # Use managed event loop for automatic cleanup
+                with resource_manager.managed_event_loop() as loop:
+                    for idx, job in enumerate(batch.jobs):
+                        try:
+                            # Skip dummy job - just mark it as completed
+                            if job.job_url == DUMMY_JOB_URL:
+                                logger.info(f"🎯 Skipping dummy job {idx + 1}/{len(batch.jobs)}")
+                                batch_vnc_manager.update_job_status(
+                                    batch_id, job.job_id, 'completed',
+                                    progress=100
+                                )
+                                continue
+                            
+                            # Add delay between jobs to prevent resource exhaustion
+                            if idx > 0:
+                                logger.info(f"⏳ Waiting 5 seconds before starting next job...")
+                                import time
+                                time.sleep(5)
+                            
+                            logger.info(f"🎯 Processing job {idx + 1}/{len(batch.jobs)}: {job.job_url}")
+
+                            # Check if this job should have resume tailored
+                            should_tailor = tailor_preferences.get(job.job_url, False)
+                            logger.info(f"   Resume tailoring: {'Yes' if should_tailor else 'No'}")
+
+                            # Update status: filling
                             batch_vnc_manager.update_job_status(
-                                batch_id, job.job_id, 'completed',
-                                progress=100
+                                batch_id, job.job_id, 'filling', progress=0
                             )
-                            continue
-                        
-                        # THREAD SAFETY: Add small delay between jobs to prevent thread exhaustion
-                        if idx > 0:
-                            logger.info(f"⏳ Waiting 5 seconds before starting next job...")
-                            import time
-                            time.sleep(5)
-                        
-                        logger.info(f"🎯 Processing job {idx + 1}/{len(batch.jobs)}: {job.job_url}")
 
-                        # Check if this job should have resume tailored
-                        should_tailor = tailor_preferences.get(job.job_url, False)
-                        logger.info(f"   Resume tailoring: {'Yes' if should_tailor else 'No'}")
+                            # Calculate VNC port (5900, 5901, 5902, etc.)
+                            vnc_port = 5900 + idx
 
-                        # Update status: filling
-                        batch_vnc_manager.update_job_status(
-                            batch_id, job.job_id, 'filling', progress=0
-                        )
-
-                        # Calculate VNC port (5900, 5901, 5902, etc.)
-                        vnc_port = 5900 + idx
-
-                        # Run agent with VNC mode (agent creates VNC internally)
-                        # TODO: Pass should_tailor to agent when resume tailoring is implemented
-                        vnc_info = loop.run_until_complete(
-                            run_links_with_refactored_agent(
-                                links=[job.job_url],
-                                headless=False,  # Visible on virtual display
-                                keep_open=True,  # Keep browser open!
-                                debug=False,
-                                hold_seconds=0,
-                                slow_mo_ms=100,  # Slight slow-mo for visibility
-                                job_id=job.job_id,
-                                jobs_dict={},
-                                session_manager=session_manager,
-                                user_id=user_id,
-                                vnc_mode=True,  # ENABLE VNC!
-                                vnc_port=vnc_port,
-                                tailor_resume=should_tailor,  # Pass tailoring preference
-                                resume_path=resume_path  # Pass resume path
+                            # Run agent with VNC mode with automatic retry on failures
+                            async def run_job_with_retry():
+                                """Run job with automatic retry on connection failures"""
+                                return await run_links_with_refactored_agent(
+                                    links=[job.job_url],
+                                    headless=False,  # Visible on virtual display
+                                    keep_open=True,  # Keep browser open!
+                                    debug=False,
+                                    hold_seconds=0,
+                                    slow_mo_ms=100,  # Slight slow-mo for visibility
+                                    job_id=job.job_id,
+                                    jobs_dict={},
+                                    session_manager=session_manager,
+                                    user_id=user_id,
+                                    vnc_mode=True,  # ENABLE VNC!
+                                    vnc_port=vnc_port,
+                                    tailor_resume=should_tailor,  # Pass tailoring preference
+                                    resume_path=resume_path  # Pass resume path
+                                )
+                            
+                            vnc_info = loop.run_until_complete(
+                                resource_manager.retry_handler.execute_async(run_job_with_retry)
                             )
-                        )
 
                         vnc_session_id = job.job_id  # Use job_id as session_id
                         actual_vnc_port = vnc_port
@@ -1003,36 +1017,46 @@ def batch_apply_with_preferences():
 
                         logger.info(f"✅ Job {idx + 1} ready for review: {job.job_url}")
 
-                    except Exception as e:
-                        logger.error(f"❌ Job {idx + 1} failed: {e}")
-                        batch_vnc_manager.update_job_status(
-                            batch_id, job.job_id, 'failed',
-                            error=str(e)
-                        )
+                        except Exception as e:
+                            logger.error(f"❌ Job {idx + 1} failed after retries: {e}")
+                            import traceback
+                            logger.error(traceback.format_exc())
+                            
+                            # Report error to health monitor
+                            error_type = "connection_closed" if "closed" in str(e).lower() else "batch_job_error"
+                            report_error(error_type, str(e), job.job_id, recoverable=True)
+                            
+                            batch_vnc_manager.update_job_status(
+                                batch_id, job.job_id, 'failed',
+                                error=str(e)
+                            )
 
-                # Mark batch as completed - get fresh reference from manager!
-                with batch_vnc_manager._lock:
-                    fresh_batch = batch_vnc_manager.get_batch(batch_id)
-                    if fresh_batch:
-                        fresh_batch.status = 'completed'
-                        batch_vnc_manager._save_batch_to_redis(fresh_batch)
-                        logger.info(f"✅ Batch {batch_id} processing completed and persisted")
-                    else:
-                        logger.error(f"❌ Could not find batch {batch_id} to mark complete")
+                    # Mark batch as completed - get fresh reference from manager!
+                    with batch_vnc_manager._lock:
+                        fresh_batch = batch_vnc_manager.get_batch(batch_id)
+                        if fresh_batch:
+                            fresh_batch.status = 'completed'
+                            batch_vnc_manager._save_batch_to_redis(fresh_batch)
+                            logger.info(f"✅ Batch {batch_id} processing completed and persisted")
+                        else:
+                            logger.error(f"❌ Could not find batch {batch_id} to mark complete")
 
             except Exception as e:
-                logger.error(f"Error processing batch {batch_id}: {e}")
+                logger.error(f"❌ Error processing batch {batch_id}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 with batch_vnc_manager._lock:
                     fresh_batch = batch_vnc_manager.get_batch(batch_id)
                     if fresh_batch:
                         fresh_batch.status = 'failed'
                         batch_vnc_manager._save_batch_to_redis(fresh_batch)
-            finally:
-                loop.close()
 
-        # Start background processing
-        thread = threading.Thread(target=process_batch_sequential, daemon=True)
-        thread.start()
+        # Submit to thread pool instead of creating unlimited threads
+        future = resource_manager.submit_task(process_batch_sequential)
+        
+        # Log resource usage
+        stats = resource_manager.get_stats()
+        logger.info(f"📊 Resource usage: {stats['active_threads']}/{stats['max_workers']} threads active")
 
         # Return initial batch status immediately
         return jsonify({
