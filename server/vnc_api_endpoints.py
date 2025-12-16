@@ -734,8 +734,19 @@ def get_batch_status(batch_id):
         
         # Filter out dummy job from response
         batch_dict = batch.to_dict()
-        batch_dict['jobs'] = [job for job in batch_dict['jobs'] if job['job_url'] != DUMMY_JOB_URL]
-        batch_dict['total_jobs'] = len(batch_dict['jobs'])
+        original_jobs = batch_dict['jobs']
+        filtered_jobs = [job for job in original_jobs if job['job_url'] != DUMMY_JOB_URL]
+        
+        batch_dict['jobs'] = filtered_jobs
+        batch_dict['total_jobs'] = len(filtered_jobs)
+        
+        # Recalculate job counts excluding dummy
+        batch_dict['completed_jobs'] = sum(1 for job in filtered_jobs if job['status'] == 'completed')
+        batch_dict['ready_for_review'] = sum(1 for job in filtered_jobs if job['status'] == 'ready_for_review')
+        batch_dict['filling_jobs'] = sum(1 for job in filtered_jobs if job['status'] == 'filling')
+        batch_dict['failed_jobs'] = sum(1 for job in filtered_jobs if job['status'] == 'failed')
+        
+        logger.debug(f"Filtered batch response: {len(original_jobs)} total jobs -> {len(filtered_jobs)} visible jobs")
         
         return jsonify(batch_dict), 200
         
