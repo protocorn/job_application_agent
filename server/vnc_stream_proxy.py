@@ -87,6 +87,9 @@ def setup_vnc_websocket_routes(app):
             # Connect to local VNC server
             try:
                 vnc_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                # Set socket options for better stability
+                vnc_socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                vnc_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 vnc_socket.connect(('localhost', vnc_port))
                 logger.info(f"✅ Connected to VNC server for session {session_id}")
 
@@ -97,12 +100,13 @@ def setup_vnc_websocket_routes(app):
                         while True:
                             data = ws.receive()
                             if data is None:
+                                logger.debug(f"Session {session_id}: Client closed connection")
                                 break
                             if isinstance(data, str):
                                 data = data.encode()
                             vnc_socket.sendall(data)
                     except Exception as e:
-                        logger.debug(f"Client → VNC forwarding ended: {e}")
+                        logger.warning(f"Session {session_id}: Client → VNC forwarding ended: {e}")
                     finally:
                         try:
                             vnc_socket.close()
@@ -113,12 +117,18 @@ def setup_vnc_websocket_routes(app):
                     """Forward data from VNC to client"""
                     try:
                         while True:
-                            data = vnc_socket.recv(4096)
+                            data = vnc_socket.recv(8192)  # Increased buffer size
                             if not data:
+                                logger.debug(f"Session {session_id}: VNC server closed connection")
                                 break
-                            ws.send(data)
+                            # Send binary data explicitly
+                            try:
+                                ws.send(bytes(data))
+                            except Exception as send_err:
+                                logger.error(f"Session {session_id}: Failed to send data to client: {send_err}")
+                                break
                     except Exception as e:
-                        logger.debug(f"VNC → Client forwarding ended: {e}")
+                        logger.warning(f"Session {session_id}: VNC → Client forwarding ended: {e}")
                     finally:
                         try:
                             ws.close()
