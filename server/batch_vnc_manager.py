@@ -9,6 +9,7 @@ import logging
 import asyncio
 import time
 import uuid
+import threading
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
@@ -99,58 +100,66 @@ class BatchVNCManager:
     
     def __init__(self):
         self.batches: Dict[str, BatchVNCSession] = {}
+        self._lock = threading.RLock()  # Reentrant lock for thread safety
         
     def create_batch(self, user_id: str, job_urls: List[str]) -> str:
         """Create a new batch session"""
         batch_id = str(uuid.uuid4())
         batch = BatchVNCSession(batch_id, user_id, job_urls)
-        self.batches[batch_id] = batch
+        
+        with self._lock:
+            self.batches[batch_id] = batch
         
         logger.info(f"📦 Created batch {batch_id} with {len(job_urls)} jobs for user {user_id}")
         return batch_id
     
     def get_batch(self, batch_id: str) -> Optional[BatchVNCSession]:
         """Get batch by ID"""
-        return self.batches.get(batch_id)
+        with self._lock:
+            return self.batches.get(batch_id)
     
     def get_user_batches(self, user_id: str) -> List[BatchVNCSession]:
         """Get all batches for a user"""
-        return [batch for batch in self.batches.values() if batch.user_id == user_id]
+        with self._lock:
+            return [batch for batch in self.batches.values() if batch.user_id == user_id]
     
     def update_job_status(self, batch_id: str, job_id: str, status: str, **kwargs):
         """Update status of a specific job in a batch"""
-        batch = self.get_batch(batch_id)
-        if not batch:
-            return False
-        
-        job = batch.get_job(job_id)
-        if not job:
-            return False
-        
-        job.status = status
-        
-        # Update optional fields
-        if 'progress' in kwargs:
-            job.progress = kwargs['progress']
-        if 'vnc_session_id' in kwargs:
-            job.vnc_session_id = kwargs['vnc_session_id']
-        if 'vnc_port' in kwargs:
-            job.vnc_port = kwargs['vnc_port']
-        if 'vnc_url' in kwargs:
-            job.vnc_url = kwargs['vnc_url']
-        if 'error' in kwargs:
-            job.error = kwargs['error']
-        
-        # Update timestamps
-        if status == 'filling' and not job.started_at:
-            job.started_at = datetime.now()
-        elif status in ['ready_for_review', 'failed']:
-            job.completed_at = datetime.now()
-        elif status == 'completed':
-            job.submitted_by_user_at = datetime.now()
-        
-        logger.debug(f"Updated job {job_id} status to {status}")
-        return True
+        with self._lock:
+            batch = self.batches.get(batch_id)
+            if not batch:
+                logger.warning(f"⚠️ Batch {batch_id} not found when updating job {job_id}")
+                return False
+            
+            job = batch.get_job(job_id)
+            if not job:
+                logger.warning(f"⚠️ Job {job_id} not found in batch {batch_id}")
+                return False
+            
+            job.status = status
+            
+            # Update optional fields
+            if 'progress' in kwargs:
+                job.progress = kwargs['progress']
+            if 'vnc_session_id' in kwargs:
+                job.vnc_session_id = kwargs['vnc_session_id']
+            if 'vnc_port' in kwargs:
+                job.vnc_port = kwargs['vnc_port']
+            if 'vnc_url' in kwargs:
+                job.vnc_url = kwargs['vnc_url']
+            if 'error' in kwargs:
+                job.error = kwargs['error']
+            
+            # Update timestamps
+            if status == 'filling' and not job.started_at:
+                job.started_at = datetime.now()
+            elif status in ['ready_for_review', 'failed']:
+                job.completed_at = datetime.now()
+            elif status == 'completed':
+                job.submitted_by_user_at = datetime.now()
+            
+            logger.info(f"✅ Updated job {job_id} status to {status} (progress: {job.progress}%)")
+            return True
     
     def mark_job_submitted(self, batch_id: str, job_id: str) -> bool:
         """Mark job as submitted by user"""
@@ -158,15 +167,16 @@ class BatchVNCManager:
     
     def is_batch_complete(self, batch_id: str) -> bool:
         """Check if all jobs in batch are completed or failed"""
-        batch = self.get_batch(batch_id)
-        if not batch:
-            return False
-        
-        for job in batch.jobs:
-            if job.status not in ['completed', 'failed']:
+        with self._lock:
+            batch = self.batches.get(batch_id)
+            if not batch:
                 return False
-        
-        return True
+            
+            for job in batch.jobs:
+                if job.status not in ['completed', 'failed']:
+                    return False
+            
+            return True
 
 
 # Global batch manager instance
