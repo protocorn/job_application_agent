@@ -554,121 +554,121 @@ def batch_apply_with_vnc():
                                 resource_manager.retry_handler.execute_async(run_job_with_retry)
                             )
 
-                        logger.info(f"🔍 Agent completed for job {job.job_id}")
-                        logger.info(f"   VNC info returned: {vnc_info}")
+                            logger.info(f"🔍 Agent completed for job {job.job_id}")
+                            logger.info(f"   VNC info returned: {vnc_info}")
 
-                        # VNC info might be None if agent went through human intervention
-                        # Register session info either way so API can find it
-                        # Ensure VNC actually started; otherwise mark error and continue
-                        if not vnc_info or not vnc_info.get('vnc_enabled'):
-                            logger.error(f"❌ VNC failed to start for job {job.job_id}")
-                            logger.error(f"   vnc_info: {vnc_info}")
-                            batch_vnc_manager.update_job_status(
-                                batch_id, job.job_id, 'failed',
-                                error="VNC environment failed to start"
-                            )
-                            continue  # Skip to next job
+                            # VNC info might be None if agent went through human intervention
+                            # Register session info either way so API can find it
+                            # Ensure VNC actually started; otherwise mark error and continue
+                            if not vnc_info or not vnc_info.get('vnc_enabled'):
+                                logger.error(f"❌ VNC failed to start for job {job.job_id}")
+                                logger.error(f"   vnc_info: {vnc_info}")
+                                batch_vnc_manager.update_job_status(
+                                    batch_id, job.job_id, 'failed',
+                                    error="VNC environment failed to start"
+                                )
+                                continue  # Skip to next job
 
-                        vnc_session_id = job.job_id  # Use job_id as session_id
-                        actual_vnc_port = vnc_port
+                            vnc_session_id = job.job_id  # Use job_id as session_id
+                            actual_vnc_port = vnc_port
 
-                        # Verify VNC session was registered by agent
-                        if vnc_info and vnc_info.get('vnc_enabled'):
-                            logger.info(f"✅ VNC mode active for job {job.job_id}")
-                        else:
-                            logger.warning(f"⚠️ VNC info not returned, but browser should be open")
-
-                        # Agent already registered the session in vnc_session_manager with coordinator reference
-                        # We just need to register for WebSocket proxy routing
-                        try:
-                            from Agents.components.vnc import vnc_session_manager as vsm
-
-                            # Verify session was registered by agent
-                            if vnc_session_id in vsm.sessions:
-                                logger.info(f"✅ Session {vnc_session_id} already registered by agent with coordinator")
+                            # Verify VNC session was registered by agent
+                            if vnc_info and vnc_info.get('vnc_enabled'):
+                                logger.info(f"✅ VNC mode active for job {job.job_id}")
                             else:
-                                logger.warning(f"⚠️ Session {vnc_session_id} NOT found in manager - agent may have failed")
-                                # Fallback registration (without coordinator)
-                                vsm.sessions[vnc_session_id] = {
-                                    'session_id': vnc_session_id,
-                                    'user_id': user_id,
-                                    'job_url': job.job_url,
-                                    'vnc_port': actual_vnc_port,
-                                    'status': 'active',
-                                    'created_at': datetime.now()
-                                }
+                                logger.warning(f"⚠️ VNC info not returned, but browser should be open")
 
-                            # CRITICAL: Register in vnc_stream_proxy for WebSocket routing
-                            ws_port = 6900 + idx  # Calculate websockify port
-                            register_vnc_session(vnc_session_id, actual_vnc_port, ws_port)
-                            logger.info(f"📝 Registered session {vnc_session_id} for WebSocket proxy - VNC:{actual_vnc_port}, WS:{ws_port}")
-                            logger.info(f"🔍 DEBUG - Job {idx}: session_id={vnc_session_id}, vnc_port={actual_vnc_port}, ws_port={ws_port}")
+                            # Agent already registered the session in vnc_session_manager with coordinator reference
+                            # We just need to register for WebSocket proxy routing
+                            try:
+                                from Agents.components.vnc import vnc_session_manager as vsm
+
+                                # Verify session was registered by agent
+                                if vnc_session_id in vsm.sessions:
+                                    logger.info(f"✅ Session {vnc_session_id} already registered by agent with coordinator")
+                                else:
+                                    logger.warning(f"⚠️ Session {vnc_session_id} NOT found in manager - agent may have failed")
+                                    # Fallback registration (without coordinator)
+                                    vsm.sessions[vnc_session_id] = {
+                                        'session_id': vnc_session_id,
+                                        'user_id': user_id,
+                                        'job_url': job.job_url,
+                                        'vnc_port': actual_vnc_port,
+                                        'status': 'active',
+                                        'created_at': datetime.now()
+                                    }
+
+                                # CRITICAL: Register in vnc_stream_proxy for WebSocket routing
+                                ws_port = 6900 + idx  # Calculate websockify port
+                                register_vnc_session(vnc_session_id, actual_vnc_port, ws_port)
+                                logger.info(f"📝 Registered session {vnc_session_id} for WebSocket proxy - VNC:{actual_vnc_port}, WS:{ws_port}")
+                                logger.info(f"🔍 DEBUG - Job {idx}: session_id={vnc_session_id}, vnc_port={actual_vnc_port}, ws_port={ws_port}")
+
+                            except Exception as e:
+                                logger.error(f"❌ Failed to verify/register VNC session: {e}")
+
+                                # Fallback: Register in dev session manager
+                                dev_browser_session.register_session(
+                                    session_id=job.job_id,
+                                    job_url=job.job_url,
+                                    user_id=user_id,
+                                    current_url=job.job_url
+                                )
+                                logger.info(f"📝 Registered as dev session: {job.job_id}")
+                            
+                            # Determine WebSocket URL
+                            ws_protocol = 'ws' if is_development else 'wss'
+                            
+                            if is_development:
+                                vnc_url = f"{ws_protocol}://localhost:{6900 + idx}"
+                            else:
+                                vnc_url = f"{ws_protocol}://{request_host}/vnc-stream/{vnc_session_id}"
+                            
+                            # Update status based on agent result
+                            # If session has status 'intervention', we map it to 'ready_for_review' 
+                            # so the user sees the "Open Browser" option.
+                            
+                            final_status = 'ready_for_review' # Default success state
+                            
+                            # Check if session is in intervention mode
+                            try:
+                                from Agents.components.vnc import vnc_session_manager as vsm
+                                if vnc_session_id in vsm.sessions:
+                                    session = vsm.sessions[vnc_session_id]
+                                    if session.get('status') == 'intervention':
+                                        logger.info(f"⚠️ Job {job.job_id} requires intervention - marking ready for review")
+                                        # We keep it as ready_for_review for the frontend to show the button,
+                                        # but we might want to flag it differently in future.
+                            except:
+                                pass
+
+                            # Update status: ready for review
+                            logger.info(f"📝 Updating job {job.job_id} status to: {final_status}")
+                            logger.info(f"   VNC session ID: {vnc_session_id}")
+                            logger.info(f"   VNC port: {actual_vnc_port}")
+                            logger.info(f"   VNC URL: {vnc_url}")
+
+                            batch_vnc_manager.update_job_status(
+                                batch_id, job.job_id, final_status,
+                                progress=100,
+                                vnc_session_id=vnc_session_id,
+                                vnc_port=actual_vnc_port,
+                                vnc_url=vnc_url
+                            )
+
+                            # Verify the update worked
+                            updated_batch = batch_vnc_manager.get_batch(batch_id)
+                            if updated_batch:
+                                updated_job = updated_batch.get_job(job.job_id)
+                                if updated_job:
+                                    logger.info(f"✅ Job {idx + 1} status updated to: {updated_job.status}")
+                                    logger.info(f"   Job details: vnc_port={updated_job.vnc_port}, vnc_url={updated_job.vnc_url}")
+                                else:
+                                    logger.warning(f"⚠️ Could not verify job {job.job_id} - job not found in batch")
+                            else:
+                                logger.warning(f"⚠️ Could not verify job update - batch {batch_id} not found")
 
                         except Exception as e:
-                            logger.error(f"❌ Failed to verify/register VNC session: {e}")
-
-                            # Fallback: Register in dev session manager
-                            dev_browser_session.register_session(
-                                session_id=job.job_id,
-                                job_url=job.job_url,
-                                user_id=user_id,
-                                current_url=job.job_url
-                            )
-                            logger.info(f"📝 Registered as dev session: {job.job_id}")
-                        
-                        # Determine WebSocket URL
-                        ws_protocol = 'ws' if is_development else 'wss'
-                        
-                        if is_development:
-                            vnc_url = f"{ws_protocol}://localhost:{6900 + idx}"
-                        else:
-                            vnc_url = f"{ws_protocol}://{request_host}/vnc-stream/{vnc_session_id}"
-                        
-                        # Update status based on agent result
-                        # If session has status 'intervention', we map it to 'ready_for_review' 
-                        # so the user sees the "Open Browser" option.
-                        
-                        final_status = 'ready_for_review' # Default success state
-                        
-                        # Check if session is in intervention mode
-                        try:
-                            from Agents.components.vnc import vnc_session_manager as vsm
-                            if vnc_session_id in vsm.sessions:
-                                session = vsm.sessions[vnc_session_id]
-                                if session.get('status') == 'intervention':
-                                    logger.info(f"⚠️ Job {job.job_id} requires intervention - marking ready for review")
-                                    # We keep it as ready_for_review for the frontend to show the button,
-                                    # but we might want to flag it differently in future.
-                        except:
-                            pass
-
-                        # Update status: ready for review
-                        logger.info(f"📝 Updating job {job.job_id} status to: {final_status}")
-                        logger.info(f"   VNC session ID: {vnc_session_id}")
-                        logger.info(f"   VNC port: {actual_vnc_port}")
-                        logger.info(f"   VNC URL: {vnc_url}")
-
-                        batch_vnc_manager.update_job_status(
-                            batch_id, job.job_id, final_status,
-                            progress=100,
-                            vnc_session_id=vnc_session_id,
-                            vnc_port=actual_vnc_port,
-                            vnc_url=vnc_url
-                        )
-
-                        # Verify the update worked
-                        updated_batch = batch_vnc_manager.get_batch(batch_id)
-                        if updated_batch:
-                            updated_job = updated_batch.get_job(job.job_id)
-                            if updated_job:
-                                logger.info(f"✅ Job {idx + 1} status updated to: {updated_job.status}")
-                                logger.info(f"   Job details: vnc_port={updated_job.vnc_port}, vnc_url={updated_job.vnc_url}")
-                            else:
-                                logger.warning(f"⚠️ Could not verify job {job.job_id} - job not found in batch")
-                        else:
-                            logger.warning(f"⚠️ Could not verify job update - batch {batch_id} not found")
-
-                    except Exception as e:
                             logger.error(f"❌ Job {idx + 1} failed with exception: {e}")
                             logger.error(f"   Job ID: {job.job_id}")
                             logger.error(f"   Job URL: {job.job_url}")
