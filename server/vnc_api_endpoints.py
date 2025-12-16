@@ -883,6 +883,12 @@ def batch_apply_with_preferences():
                             )
                             continue
                         
+                        # THREAD SAFETY: Add small delay between jobs to prevent thread exhaustion
+                        if idx > 0:
+                            logger.info(f"⏳ Waiting 5 seconds before starting next job...")
+                            import time
+                            time.sleep(5)
+                        
                         logger.info(f"🎯 Processing job {idx + 1}/{len(batch.jobs)}: {job.job_url}")
 
                         # Check if this job should have resume tailored
