@@ -924,6 +924,8 @@ def batch_apply_with_preferences():
 
                             # Calculate VNC port (5900, 5901, 5902, etc.)
                             vnc_port = 5900 + idx
+                            
+                            logger.info(f"🚀 Starting job execution for {job.job_id} on VNC port {vnc_port}")
 
                             # Run agent with VNC mode with automatic retry on failures
                             async def run_job_with_retry():
@@ -945,9 +947,19 @@ def batch_apply_with_preferences():
                                     resume_path=resume_path  # Pass resume path
                                 )
                             
-                            vnc_info = loop.run_until_complete(
-                                resource_manager.retry_handler.execute_async(run_job_with_retry)
-                            )
+                            # Add timeout to prevent jobs from hanging forever (5 minutes max)
+                            async def run_with_timeout():
+                                try:
+                                    return await asyncio.wait_for(
+                                        resource_manager.retry_handler.execute_async(run_job_with_retry),
+                                        timeout=300.0  # 5 minute timeout per job
+                                    )
+                                except asyncio.TimeoutError:
+                                    logger.error(f"❌ Job {job.job_id} timed out after 5 minutes")
+                                    raise Exception("Job execution timed out after 5 minutes")
+                            
+                            vnc_info = loop.run_until_complete(run_with_timeout())
+                            logger.info(f"✅ Job execution completed for {job.job_id}, got vnc_info: {vnc_info is not None}")
 
                             vnc_session_id = job.job_id  # Use job_id as session_id
                             actual_vnc_port = vnc_port
@@ -1018,18 +1030,21 @@ def batch_apply_with_preferences():
                             logger.info(f"✅ Job {idx + 1} ready for review: {job.job_url}")
 
                         except Exception as e:
-                            logger.error(f"❌ Job {idx + 1} failed after retries: {e}")
+                            logger.error(f"❌ Job {idx + 1} ({job.job_id}) failed: {e}")
                             import traceback
                             logger.error(traceback.format_exc())
                             
                             # Report error to health monitor
-                            error_type = "connection_closed" if "closed" in str(e).lower() else "batch_job_error"
+                            error_type = "timeout" if "timed out" in str(e).lower() else "connection_closed" if "closed" in str(e).lower() else "batch_job_error"
                             report_error(error_type, str(e), job.job_id, recoverable=True)
                             
+                            # Update status to failed with error message
                             batch_vnc_manager.update_job_status(
                                 batch_id, job.job_id, 'failed',
                                 error=str(e)
                             )
+                            
+                            logger.info(f"📝 Marked job {job.job_id} as failed, continuing to next job...")
 
                     # Mark batch as completed - get fresh reference from manager!
                     with batch_vnc_manager._lock:
