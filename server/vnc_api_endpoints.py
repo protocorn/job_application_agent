@@ -658,15 +658,23 @@ def batch_apply_with_vnc():
                             error=str(e)
                         )
                 
-                # Mark batch as completed and persist to Redis
-                batch.status = 'completed'
-                batch_vnc_manager._save_batch_to_redis(batch)
-                logger.info(f"✅ Batch {batch_id} processing completed and persisted")
+                # Mark batch as completed - get fresh reference from manager!
+                with batch_vnc_manager._lock:
+                    fresh_batch = batch_vnc_manager.get_batch(batch_id)
+                    if fresh_batch:
+                        fresh_batch.status = 'completed'
+                        batch_vnc_manager._save_batch_to_redis(fresh_batch)
+                        logger.info(f"✅ Batch {batch_id} processing completed and persisted")
+                    else:
+                        logger.error(f"❌ Could not find batch {batch_id} to mark complete")
                 
             except Exception as e:
                 logger.error(f"Error processing batch {batch_id}: {e}")
-                batch.status = 'failed'
-                batch_vnc_manager._save_batch_to_redis(batch)
+                with batch_vnc_manager._lock:
+                    fresh_batch = batch_vnc_manager.get_batch(batch_id)
+                    if fresh_batch:
+                        fresh_batch.status = 'failed'
+                        batch_vnc_manager._save_batch_to_redis(fresh_batch)
             finally:
                 loop.close()
         
@@ -710,6 +718,9 @@ def get_batch_status(batch_id):
         batch = batch_vnc_manager.get_batch(batch_id)
         
         if not batch:
+            logger.warning(f"❌ Batch {batch_id} not found - checked memory and Redis")
+            logger.warning(f"   Available batches in memory: {list(batch_vnc_manager.batches.keys())}")
+            logger.warning(f"   Redis connected: {batch_vnc_manager.redis_client is not None}")
             return jsonify({"error": "Batch not found"}), 404
         
         # Verify user owns this batch
@@ -721,6 +732,8 @@ def get_batch_status(batch_id):
         
     except Exception as e:
         logger.error(f"Error getting batch status: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
 
@@ -957,15 +970,23 @@ def batch_apply_with_preferences():
                             error=str(e)
                         )
 
-                # Mark batch as completed and persist to Redis
-                batch.status = 'completed'
-                batch_vnc_manager._save_batch_to_redis(batch)
-                logger.info(f"✅ Batch {batch_id} processing completed and persisted")
+                # Mark batch as completed - get fresh reference from manager!
+                with batch_vnc_manager._lock:
+                    fresh_batch = batch_vnc_manager.get_batch(batch_id)
+                    if fresh_batch:
+                        fresh_batch.status = 'completed'
+                        batch_vnc_manager._save_batch_to_redis(fresh_batch)
+                        logger.info(f"✅ Batch {batch_id} processing completed and persisted")
+                    else:
+                        logger.error(f"❌ Could not find batch {batch_id} to mark complete")
 
             except Exception as e:
                 logger.error(f"Error processing batch {batch_id}: {e}")
-                batch.status = 'failed'
-                batch_vnc_manager._save_batch_to_redis(batch)
+                with batch_vnc_manager._lock:
+                    fresh_batch = batch_vnc_manager.get_batch(batch_id)
+                    if fresh_batch:
+                        fresh_batch.status = 'failed'
+                        batch_vnc_manager._save_batch_to_redis(fresh_batch)
             finally:
                 loop.close()
 
