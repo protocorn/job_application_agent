@@ -61,12 +61,14 @@ def setup_vnc_websocket_routes(app):
                 session_id: VNC session identifier
             """
             logger.info(f"🔌 New VNC WebSocket connection for session: {session_id}")
+            logger.info(f"🔍 DEBUG - Active sessions in registry: {list(vnc_session_ports.keys())}")
 
             # Get the VNC port for this session
             session_ports = get_vnc_session_port(session_id)
 
             if not session_ports:
                 logger.error(f"❌ No VNC session found for: {session_id}")
+                logger.error(f"🔍 DEBUG - Available sessions: {vnc_session_ports}")
                 try:
                     ws.close(1008, "Session not found")  # 1008 = Policy Violation
                 except:
@@ -78,7 +80,9 @@ def setup_vnc_websocket_routes(app):
             # We must unwrap the WebSocket frames and forward raw TCP to the VNC server.
             # Connecting to websockify (6900) would fail because it expects a WebSocket handshake.
             vnc_port = session_ports['vnc_port']
+            ws_port = session_ports['ws_port']
             logger.info(f"📡 Proxying directly to VNC server on localhost:{vnc_port}")
+            logger.info(f"🔍 DEBUG - Session {session_id} -> VNC port {vnc_port}, WS port {ws_port}")
 
             # Connect to local VNC server
             try:

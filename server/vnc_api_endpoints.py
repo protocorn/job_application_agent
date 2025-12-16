@@ -580,6 +580,7 @@ def batch_apply_with_vnc():
                             ws_port = 6900 + idx  # Calculate websockify port
                             register_vnc_session(vnc_session_id, actual_vnc_port, ws_port)
                             logger.info(f"📝 Registered session {vnc_session_id} for WebSocket proxy - VNC:{actual_vnc_port}, WS:{ws_port}")
+                            logger.info(f"🔍 DEBUG - Job {idx}: session_id={vnc_session_id}, vnc_port={actual_vnc_port}, ws_port={ws_port}")
 
                         except Exception as e:
                             logger.error(f"❌ Failed to verify/register VNC session: {e}")

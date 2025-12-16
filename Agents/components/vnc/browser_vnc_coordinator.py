@@ -105,6 +105,7 @@ class BrowserVNCCoordinator:
             # VNC port 5900 → Display :99, VNC port 5901 → Display :100, etc.
             display_num = 99 + (self.vnc_port - 5900)
             logger.info(f"📺 Starting virtual display :{display_num} for VNC port {self.vnc_port}...")
+            logger.info(f"🔍 DEBUG - Display mapping: VNC port {self.vnc_port} -> Display :{display_num}")
 
             self.virtual_display = VirtualDisplayManager(
                 width=self.display_width,
