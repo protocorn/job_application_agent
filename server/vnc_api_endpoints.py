@@ -949,73 +949,73 @@ def batch_apply_with_preferences():
                                 resource_manager.retry_handler.execute_async(run_job_with_retry)
                             )
 
-                        vnc_session_id = job.job_id  # Use job_id as session_id
-                        actual_vnc_port = vnc_port
+                            vnc_session_id = job.job_id  # Use job_id as session_id
+                            actual_vnc_port = vnc_port
 
-                        # CRITICAL: Register session in vnc_session_manager so the API can find it
-                        try:
-                            from Agents.components.vnc import vnc_session_manager as vsm
+                            # CRITICAL: Register session in vnc_session_manager so the API can find it
+                            try:
+                                from Agents.components.vnc import vnc_session_manager as vsm
 
-                            # Preserve existing status if intervention already marked it
-                            existing_entry = vsm.sessions.get(vnc_session_id, {})
-                            session_status = existing_entry.get('status', 'active')
+                                # Preserve existing status if intervention already marked it
+                                existing_entry = vsm.sessions.get(vnc_session_id, {})
+                                session_status = existing_entry.get('status', 'active')
 
-                            vsm.sessions[vnc_session_id] = {
-                                'session_id': vnc_session_id,
-                                'user_id': user_id,
-                                'job_url': job.job_url,
-                                'vnc_port': actual_vnc_port,
-                                'status': session_status,
-                                'created_at': datetime.now()
-                            }
+                                vsm.sessions[vnc_session_id] = {
+                                    'session_id': vnc_session_id,
+                                    'user_id': user_id,
+                                    'job_url': job.job_url,
+                                    'vnc_port': actual_vnc_port,
+                                    'status': session_status,
+                                    'created_at': datetime.now()
+                                }
 
-                            logger.info(f"✅ Registered VNC session {vnc_session_id} in global manager (status: {session_status})")
+                                logger.info(f"✅ Registered VNC session {vnc_session_id} in global manager (status: {session_status})")
 
-                            # CRITICAL: Also register in vnc_stream_proxy for WebSocket routing
-                            ws_port = 6900 + idx  # Calculate websockify port
-                            register_vnc_session(vnc_session_id, actual_vnc_port, ws_port)
-                            logger.info(f"📝 Registered session {vnc_session_id} for WebSocket proxy - VNC:{actual_vnc_port}, WS:{ws_port}")
+                                # CRITICAL: Also register in vnc_stream_proxy for WebSocket routing
+                                ws_port = 6900 + idx  # Calculate websockify port
+                                register_vnc_session(vnc_session_id, actual_vnc_port, ws_port)
+                                logger.info(f"📝 Registered session {vnc_session_id} for WebSocket proxy - VNC:{actual_vnc_port}, WS:{ws_port}")
 
-                        except Exception as e:
-                            logger.warning(f"Could not register in VNC manager: {e}")
+                            except Exception as e:
+                                logger.warning(f"Could not register in VNC manager: {e}")
 
-                            # Fallback: Register in dev session manager so at least frontend knows about it
-                            dev_browser_session.register_session(
-                                session_id=job.job_id,
-                                job_url=job.job_url,
-                                user_id=user_id,
-                                current_url=job.job_url
+                                # Fallback: Register in dev session manager so at least frontend knows about it
+                                dev_browser_session.register_session(
+                                    session_id=job.job_id,
+                                    job_url=job.job_url,
+                                    user_id=user_id,
+                                    current_url=job.job_url
+                                )
+                                logger.info(f"📝 Registered as dev session: {job.job_id}")
+
+                            # Determine WebSocket URL
+                            ws_protocol = 'ws' if is_development else 'wss'
+
+                            if is_development:
+                                vnc_url = f"{ws_protocol}://localhost:{6900 + idx}"
+                            else:
+                                vnc_url = f"{ws_protocol}://{request_host}/vnc-stream/{vnc_session_id}"
+
+                            # Determine final status (map intervention to ready_for_review so UI shows button)
+                            final_status = 'ready_for_review'
+                            try:
+                                from Agents.components.vnc import vnc_session_manager as vsm
+                                session_entry = vsm.sessions.get(vnc_session_id)
+                                if session_entry and session_entry.get('status') == 'intervention':
+                                    logger.info(f"⚠️ Job {job.job_id} requires intervention - marking ready for review for manual takeover")
+                            except Exception:
+                                pass
+
+                            # Update status: ready for review
+                            batch_vnc_manager.update_job_status(
+                                batch_id, job.job_id, final_status,
+                                progress=100,
+                                vnc_session_id=vnc_session_id,
+                                vnc_port=actual_vnc_port,
+                                vnc_url=vnc_url
                             )
-                            logger.info(f"📝 Registered as dev session: {job.job_id}")
 
-                        # Determine WebSocket URL
-                        ws_protocol = 'ws' if is_development else 'wss'
-
-                        if is_development:
-                            vnc_url = f"{ws_protocol}://localhost:{6900 + idx}"
-                        else:
-                            vnc_url = f"{ws_protocol}://{request_host}/vnc-stream/{vnc_session_id}"
-
-                        # Determine final status (map intervention to ready_for_review so UI shows button)
-                        final_status = 'ready_for_review'
-                        try:
-                            from Agents.components.vnc import vnc_session_manager as vsm
-                            session_entry = vsm.sessions.get(vnc_session_id)
-                            if session_entry and session_entry.get('status') == 'intervention':
-                                logger.info(f"⚠️ Job {job.job_id} requires intervention - marking ready for review for manual takeover")
-                        except Exception:
-                            pass
-
-                        # Update status: ready for review
-                        batch_vnc_manager.update_job_status(
-                            batch_id, job.job_id, final_status,
-                            progress=100,
-                            vnc_session_id=vnc_session_id,
-                            vnc_port=actual_vnc_port,
-                            vnc_url=vnc_url
-                        )
-
-                        logger.info(f"✅ Job {idx + 1} ready for review: {job.job_url}")
+                            logger.info(f"✅ Job {idx + 1} ready for review: {job.job_url}")
 
                         except Exception as e:
                             logger.error(f"❌ Job {idx + 1} failed after retries: {e}")
