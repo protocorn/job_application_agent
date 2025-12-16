@@ -91,9 +91,9 @@ EXPOSE 5000
 # VNC port
 EXPOSE 5900
 
-# Health check
+# Health check - use wget which is already installed
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=5 \
-    CMD python -c "import requests; requests.get('http://localhost:5000/api/health', timeout=5)" || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:5000/api/health || exit 1
 
 # Create startup script that initializes VNC infrastructure
 RUN echo '#!/bin/bash\n\
