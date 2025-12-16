@@ -658,13 +658,15 @@ def batch_apply_with_vnc():
                             error=str(e)
                         )
                 
-                # Mark batch as completed
+                # Mark batch as completed and persist to Redis
                 batch.status = 'completed'
-                logger.info(f"✅ Batch {batch_id} processing completed")
+                batch_vnc_manager._save_batch_to_redis(batch)
+                logger.info(f"✅ Batch {batch_id} processing completed and persisted")
                 
             except Exception as e:
                 logger.error(f"Error processing batch {batch_id}: {e}")
                 batch.status = 'failed'
+                batch_vnc_manager._save_batch_to_redis(batch)
             finally:
                 loop.close()
         
@@ -955,13 +957,15 @@ def batch_apply_with_preferences():
                             error=str(e)
                         )
 
-                # Mark batch as completed
+                # Mark batch as completed and persist to Redis
                 batch.status = 'completed'
-                logger.info(f"✅ Batch {batch_id} processing completed")
+                batch_vnc_manager._save_batch_to_redis(batch)
+                logger.info(f"✅ Batch {batch_id} processing completed and persisted")
 
             except Exception as e:
                 logger.error(f"Error processing batch {batch_id}: {e}")
                 batch.status = 'failed'
+                batch_vnc_manager._save_batch_to_redis(batch)
             finally:
                 loop.close()
 
