@@ -167,7 +167,21 @@ else:
     logging.info(f"✅ CORS: Production mode - only explicit origins allowed: {len(allowed_origins)} origins")
 
 # Apply CORS with expanded origins list (supports regex for Vercel in dev only)
-CORS(app, origins=allowed_origins, supports_credentials=True)
+CORS(
+    app, 
+    origins=allowed_origins, 
+    supports_credentials=True,
+    allow_headers=['Content-Type', 'Authorization', 'Accept'],
+    methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    expose_headers=['Content-Type', 'Authorization']
+)
+
+# Global handler for CORS preflight OPTIONS requests
+@app.before_request
+def handle_preflight():
+    if request.method == 'OPTIONS':
+        response = app.make_default_options_response()
+        return response
 
 # Apply security headers to all responses
 @app.after_request
@@ -2066,9 +2080,13 @@ def resume_job(job_id):
 
 # Authentication API Routes
 
-@app.route("/api/auth/signup", methods=['POST'])
+@app.route("/api/auth/signup", methods=['POST', 'OPTIONS'])
 def signup():
     """User registration endpoint"""
+    # Handle CORS preflight request
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     try:
         data = request.json
         if not data:
@@ -2104,9 +2122,13 @@ def signup():
         logging.error(f"Error in signup endpoint: {e}")
         return jsonify({"error": "Registration failed. Please try again."}), 500
 
-@app.route("/api/auth/login", methods=['POST'])
+@app.route("/api/auth/login", methods=['POST', 'OPTIONS'])
 def login():
     """User login endpoint with IP-based rate limiting"""
+    # Handle CORS preflight request
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     try:
         data = request.json
         if not data:
@@ -2215,9 +2237,13 @@ def verify_email():
         logging.error(f"Error in verify email endpoint: {e}")
         return jsonify({"error": "Email verification failed"}), 500
 
-@app.route("/api/auth/resend-verification", methods=['POST'])
+@app.route("/api/auth/resend-verification", methods=['POST', 'OPTIONS'])
 def resend_verification():
     """Resend verification email to user"""
+    # Handle CORS preflight request
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     try:
         data = request.json
         if not data or not data.get('email'):
