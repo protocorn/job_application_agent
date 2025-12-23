@@ -151,15 +151,21 @@ class BatchVNCManager:
         self.batches: Dict[str, BatchVNCSession] = {}
         self._lock = threading.RLock()  # Reentrant lock for thread safety
         
-        # Setup Redis for persistence
+        # Setup Redis for persistence with timeout
         self.redis_client = None
         if REDIS_AVAILABLE:
             try:
                 redis_url = os.getenv('REDIS_URL')
                 if redis_url:
-                    self.redis_client = redis.from_url(redis_url, decode_responses=True)
+                    # Add socket timeout to prevent hanging (2 seconds)
+                    self.redis_client = redis.from_url(
+                        redis_url, 
+                        decode_responses=True,
+                        socket_timeout=2.0,  # Timeout for socket operations
+                        socket_connect_timeout=2.0  # Timeout for connection
+                    )
                     self.redis_client.ping()
-                    logger.info("✅ Redis connected for batch persistence")
+                    logger.info("✅ Redis connected for batch persistence (2s timeout)")
                     self._load_batches_from_redis()
                 else:
                     logger.warning("⚠️ REDIS_URL not configured - batches will not persist")
@@ -168,21 +174,25 @@ class BatchVNCManager:
                 self.redis_client = None
     
     def _save_batch_to_redis(self, batch: BatchVNCSession):
-        """Save batch to Redis for persistence"""
+        """Save batch to Redis for persistence (non-blocking, failures won't stop agent)"""
         if not self.redis_client:
             return
         
         try:
             key = f"batch:{batch.batch_id}"
             data = json.dumps(batch.to_dict())
-            # Set expiry to 24 hours
+            # Set expiry to 24 hours with timeout protection
             self.redis_client.setex(key, 86400, data)
             logger.debug(f"💾 Saved batch {batch.batch_id} to Redis")
+        except redis.exceptions.TimeoutError as e:
+            logger.warning(f"⏱️ Redis timeout saving batch {batch.batch_id} - continuing anyway")
+        except redis.exceptions.ConnectionError as e:
+            logger.warning(f"📡 Redis connection error saving batch {batch.batch_id} - continuing anyway")
         except Exception as e:
-            logger.error(f"Failed to save batch to Redis: {e}")
+            logger.warning(f"⚠️ Failed to save batch to Redis: {e} - continuing anyway")
     
     def _load_batch_from_redis(self, batch_id: str) -> Optional[BatchVNCSession]:
-        """Load batch from Redis"""
+        """Load batch from Redis with timeout protection"""
         if not self.redis_client:
             return None
         
@@ -194,8 +204,12 @@ class BatchVNCManager:
                 batch = BatchVNCSession.from_dict(batch_dict)
                 logger.debug(f"📥 Loaded batch {batch_id} from Redis")
                 return batch
+        except redis.exceptions.TimeoutError as e:
+            logger.warning(f"⏱️ Redis timeout loading batch {batch_id}")
+        except redis.exceptions.ConnectionError as e:
+            logger.warning(f"📡 Redis connection error loading batch {batch_id}")
         except Exception as e:
-            logger.error(f"Failed to load batch from Redis: {e}")
+            logger.warning(f"⚠️ Failed to load batch from Redis: {e}")
         
         return None
     
