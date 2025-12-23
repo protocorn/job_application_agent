@@ -339,25 +339,53 @@ class BrowserVNCCoordinator:
             )
 
             # Create browser context (CDP connects to the browser, we need a context)
-            # Note: When connecting over CDP, we use the existing browser context or create a new one.
-            # connect_over_cdp gives us a Browser instance.
+            # IMPORTANT: Always create a NEW context to avoid reusing old sessions
+            # Close any existing contexts first to prevent URL mixup
+            logger.info(f"🔍 Found {len(self.browser.contexts)} existing contexts")
+            for old_context in self.browser.contexts:
+                try:
+                    logger.info(f"🗑️ Closing old context with {len(old_context.pages)} pages")
+                    await old_context.close()
+                except Exception as e:
+                    logger.warning(f"Failed to close old context: {e}")
             
-            # In CDP mode, the contexts are managed on the browser side.
-            # We can just get the default context or create one.
-            # Let's verify if we have contexts.
-            if len(self.browser.contexts) > 0:
-                context = self.browser.contexts[0]
-            else:
-                context = await self.browser.new_context()
+            # Create a fresh new context
+            logger.info("✨ Creating fresh browser context for new session")
+            context = await self.browser.new_context(
+                viewport={'width': self.display_width, 'height': self.display_height}
+            )
 
-            # Get or create page
-            if len(context.pages) > 0:
-                self.page = context.pages[0]
-            else:
-                self.page = await context.new_page()
-
-            # Set viewport size (needed because we didn't launch with specific viewport in args)
-            await self.page.set_viewport_size({"width": self.display_width, "height": self.display_height})
+            # Create a fresh new page
+            logger.info("✨ Creating fresh page for new session")
+            self.page = await context.new_page()
+            
+            # CRITICAL: Verify and navigate to the correct URL
+            # The browser launched with --app={job_url}, but we need to ensure the page is actually there
+            if self.job_url:
+                current_url = self.page.url
+                logger.info(f"🔍 Current page URL: {current_url}")
+                logger.info(f"🎯 Expected job URL: {self.job_url}")
+                
+                # If page is not at the correct URL, navigate to it
+                if self.job_url not in current_url and current_url != "about:blank":
+                    logger.warning(f"⚠️ Page URL mismatch! Navigating to correct URL...")
+                    try:
+                        await self.page.goto(self.job_url, wait_until="domcontentloaded", timeout=30000)
+                        logger.info(f"✅ Navigated to correct URL: {self.job_url}")
+                    except Exception as e:
+                        logger.error(f"❌ Failed to navigate to job URL: {e}")
+                elif current_url == "about:blank":
+                    # Browser just started, need to navigate
+                    logger.info("📍 Navigating to job URL...")
+                    try:
+                        await self.page.goto(self.job_url, wait_until="domcontentloaded", timeout=30000)
+                        logger.info(f"✅ Navigated to job URL: {self.job_url}")
+                    except Exception as e:
+                        logger.error(f"❌ Failed to navigate to job URL: {e}")
+                else:
+                    logger.info(f"✅ Page is already at correct URL")
+            
+            logger.info(f"✅ Fresh browser context and page created for URL: {self.job_url}")
 
             # Inject security controls if job_url is provided
             if self.job_url:
