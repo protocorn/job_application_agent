@@ -334,26 +334,67 @@ class BrowserVNCCoordinator:
 
             # Connect Playwright to the running browser
             logger.info(f"🔌 Connecting Playwright to CDP port {self.cdp_port}...")
-            self.browser = await self.playwright.chromium.connect_over_cdp(
-                f"http://localhost:{self.cdp_port}"
-            )
+            try:
+                self.browser = await self.playwright.chromium.connect_over_cdp(
+                    f"http://localhost:{self.cdp_port}"
+                )
+            except Exception as e:
+                logger.error(f"❌ Failed to connect to CDP: {e}")
+                raise
 
             # Create browser context (CDP connects to the browser, we need a context)
             # IMPORTANT: Always create a NEW context to avoid reusing old sessions
             # Close any existing contexts first to prevent URL mixup
             logger.info(f"🔍 Found {len(self.browser.contexts)} existing contexts")
-            for old_context in self.browser.contexts:
+            
+            # Close old contexts with better error handling
+            for old_context in self.browser.contexts[:]:  # Use slice to avoid modification during iteration
                 try:
                     logger.info(f"🗑️ Closing old context with {len(old_context.pages)} pages")
+                    # Close all pages first
+                    for page in old_context.pages[:]:
+                        try:
+                            await page.close()
+                        except Exception as e:
+                            logger.debug(f"Failed to close page: {e}")
+                    # Then close context
                     await old_context.close()
+                    # Give browser time to clean up
+                    await asyncio.sleep(0.5)
                 except Exception as e:
-                    logger.warning(f"Failed to close old context: {e}")
+                    logger.warning(f"Failed to close old context (continuing anyway): {e}")
             
-            # Create a fresh new context
+            # Verify browser is still connected before creating context
+            if not self.browser or not self.browser.is_connected():
+                logger.error("❌ Browser disconnected after closing old contexts")
+                raise RuntimeError("Browser disconnected during context cleanup")
+            
+            # Create a fresh new context with retry logic
             logger.info("✨ Creating fresh browser context for new session")
-            context = await self.browser.new_context(
-                viewport={'width': self.display_width, 'height': self.display_height}
-            )
+            context = None
+            max_retries = 3
+            
+            for attempt in range(max_retries):
+                try:
+                    context = await self.browser.new_context(
+                        viewport={'width': self.display_width, 'height': self.display_height}
+                    )
+                    logger.info(f"✅ Created browser context on attempt {attempt + 1}")
+                    break
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to create context (attempt {attempt + 1}/{max_retries}): {e}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(1.0)
+                        # Check if browser is still connected
+                        if not self.browser or not self.browser.is_connected():
+                            logger.error("❌ Browser disconnected, cannot retry")
+                            raise RuntimeError("Browser disconnected during context creation")
+                    else:
+                        logger.error("❌ Failed to create context after all retries")
+                        raise
+            
+            if not context:
+                raise RuntimeError("Failed to create browser context")
 
             # Create a fresh new page
             logger.info("✨ Creating fresh page for new session")

@@ -168,9 +168,9 @@ class BatchVNCManager:
                     logger.info("✅ Redis connected for batch persistence (2s timeout)")
                     self._load_batches_from_redis()
                 else:
-                    logger.warning("⚠️ REDIS_URL not configured - batches will not persist")
+                    logger.info("ℹ️ REDIS_URL not configured - using in-memory batch storage (dev mode)")
             except Exception as e:
-                logger.error(f"❌ Failed to connect to Redis: {e}")
+                logger.warning(f"⚠️ Redis connection failed: {e} - using in-memory storage")
                 self.redis_client = None
     
     def _save_batch_to_redis(self, batch: BatchVNCSession):

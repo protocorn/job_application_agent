@@ -82,18 +82,43 @@ class VNCServer:
                 preexec_fn=os.setsid  # Create new process group for clean shutdown
             )
             
-            # Wait a bit for VNC to start
+            # Wait for VNC server to start and verify it's actually listening
             import time
-            time.sleep(2)
+            from .vnc_health_check import wait_for_port, verify_vnc_server
             
-            # Verify it started
-            if self.vnc_process.poll() is None:
+            logger.info(f"⏳ Waiting for VNC server to start listening on port {self.port}...")
+            
+            # Wait up to 10 seconds for port to become available
+            if not wait_for_port('localhost', self.port, timeout=10.0):
+                # Check if process died
+                if self.vnc_process.poll() is not None:
+                    stderr = self.vnc_process.stderr.read().decode() if self.vnc_process.stderr else ""
+                    logger.error(f"❌ x11vnc process exited: {stderr}")
+                else:
+                    logger.error(f"❌ x11vnc started but port {self.port} not listening after 10s")
+                    # Kill the non-responsive process
+                    try:
+                        os.killpg(os.getpgid(self.vnc_process.pid), signal.SIGKILL)
+                    except:
+                        pass
+                return False
+            
+            # Verify VNC protocol is working
+            logger.info(f"🔍 Verifying VNC protocol on port {self.port}...")
+            success, message = verify_vnc_server('localhost', self.port, timeout=3.0)
+            
+            if success:
                 self.is_running = True
-                logger.info(f"✅ VNC server started on port {self.port}")
+                logger.info(f"✅ VNC server verified and healthy on port {self.port}")
+                logger.info(f"   {message}")
                 return True
             else:
-                stderr = self.vnc_process.stderr.read().decode() if self.vnc_process.stderr else ""
-                logger.error(f"x11vnc failed to start: {stderr}")
+                logger.error(f"❌ VNC server port listening but not responding correctly: {message}")
+                # Kill the malfunctioning process
+                try:
+                    os.killpg(os.getpgid(self.vnc_process.pid), signal.SIGKILL)
+                except:
+                    pass
                 return False
                 
         except FileNotFoundError:

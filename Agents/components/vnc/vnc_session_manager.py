@@ -90,11 +90,53 @@ class VNCSessionManager:
                 job_url=job_url  # IMPORTANT: This enables app mode and security restrictions
             )
             
-            # Start VNC environment
-            success = await coordinator.start()
+            # Start VNC environment with retry logic and exponential backoff
+            max_retries = 3
+            base_delay = 2.0  # seconds
+            success = False
+            
+            for attempt in range(max_retries):
+                try:
+                    logger.info(f"🚀 Starting VNC environment (attempt {attempt + 1}/{max_retries})...")
+                    success = await coordinator.start()
+                    
+                    if success:
+                        logger.info(f"✅ VNC environment started successfully on attempt {attempt + 1}")
+                        break
+                    else:
+                        logger.warning(f"⚠️ VNC start returned False (attempt {attempt + 1}/{max_retries})")
+                        
+                        # Clean up failed attempt
+                        try:
+                            await coordinator.stop()
+                        except:
+                            pass
+                        
+                        if attempt < max_retries - 1:
+                            # Exponential backoff
+                            delay = base_delay * (2 ** attempt)
+                            logger.info(f"⏳ Waiting {delay}s before retry...")
+                            await asyncio.sleep(delay)
+                        
+                except Exception as e:
+                    logger.error(f"❌ Exception during VNC start (attempt {attempt + 1}/{max_retries}): {e}")
+                    
+                    # Clean up failed attempt
+                    try:
+                        await coordinator.stop()
+                    except:
+                        pass
+                    
+                    if attempt < max_retries - 1:
+                        # Exponential backoff
+                        delay = base_delay * (2 ** attempt)
+                        logger.info(f"⏳ Waiting {delay}s before retry...")
+                        await asyncio.sleep(delay)
+                    else:
+                        logger.error(f"❌ All retry attempts exhausted for session {session_id}")
             
             if not success:
-                logger.error(f"Failed to start VNC session {session_id}")
+                logger.error(f"❌ Failed to start VNC session {session_id} after {max_retries} attempts")
                 self._free_port(vnc_port)
                 return None
             
