@@ -704,6 +704,7 @@ def extract_pdf_text(file_obj) -> str:
 # ============= HEALTH CHECK ENDPOINTS =============
 
 @app.route('/health', methods=['GET'])
+@app.route('/api/health', methods=['GET'])
 def health_check():
     """Basic health check endpoint - returns 200 if server is running"""
     return jsonify({
@@ -4150,12 +4151,16 @@ if __name__ == "__main__":
     log_file = setup_file_logging(log_level=logging.DEBUG, console_logging=True)
     logging.info(f"API Server starting. Logs will be saved to: {log_file}")
 
-    # Initialize production infrastructure
+    # Initialize production infrastructure (non-blocking - allow server to start)
     try:
         initialize_production_infrastructure()
     except Exception as e:
-        logging.error(f"Failed to initialize production infrastructure: {e}")
-        sys.exit(1)
+        logging.error(f"⚠️ Failed to initialize production infrastructure: {e}")
+        logging.warning("⚠️ Server will start anyway - some features may be limited")
+        logging.info("   Health check endpoint will be available")
+        logging.info("   Readiness check will show component status")
+        # Don't exit - let the server start so health checks work
+        # Railway can detect the issue via /ready endpoint
 
     # ============= GRACEFUL SHUTDOWN HANDLERS =============
     import signal
