@@ -2,5 +2,4 @@
 [build]
 builder = "dockerfile"
 
-[start]
-cmd = "python server/api_server.py"
+# Note: startCommand is defined in Dockerfile CMD, don't override it here
