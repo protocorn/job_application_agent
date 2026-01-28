@@ -1741,6 +1741,52 @@ Return ONLY a JSON object:
             state.context['blocker'] = popup_result
             return 'resolve_blocker'
         
+        # Check for account creation OR login page (Workday and other ATS)
+        # This should be done BEFORE normal form filling
+        if self.user_id:
+            try:
+                from components.executors.account_creation_handler import AccountCreationHandler
+                profile = _load_profile_data(user_id=self.user_id)
+                user_email = profile.get('email', '')
+                
+                if user_email:
+                    account_handler = AccountCreationHandler(self.current_context, self.user_id)
+                    
+                    # First, check if this is a login page with saved credentials
+                    if not state.context.get('login_attempted'):
+                        logger.info("🔍 Checking for login page with saved credentials...")
+                        login_result = await account_handler.handle_login_with_saved_credentials()
+                        
+                        if login_result.get('handled') and login_result.get('success'):
+                            logger.info(f"✅ Logged in with saved credentials: {login_result.get('message')}")
+                            state.context['login_attempted'] = True
+                            await self.current_context.wait_for_timeout(3000)
+                            # Continue to next page after login
+                        elif login_result.get('handled'):
+                            logger.warning(f"⚠️ Login attempted but failed: {login_result.get('message')}")
+                            state.context['login_attempted'] = True
+                    
+                    # Second, check if this is an account creation page
+                    if not state.context.get('account_creation_attempted'):
+                        logger.info("🔍 Checking for account creation page...")
+                        account_result = await account_handler.handle_account_creation(user_email)
+                        
+                        # Mark that we've attempted account creation (don't repeat in loops)
+                        state.context['account_creation_attempted'] = True
+                        
+                        if account_result.get('handled') and account_result.get('success'):
+                            logger.info(f"✅ Account creation handled: {account_result.get('message')}")
+                            # Wait a bit for page to process
+                            await self.current_context.wait_for_timeout(2000)
+                            # Continue to form filling (account might ask for more info)
+                        elif account_result.get('handled'):
+                            logger.warning(f"⚠️ Account creation attempted but not successful: {account_result.get('message')}")
+                            
+            except Exception as e:
+                logger.warning(f"⚠️ Error checking for account creation/login: {e}")
+                import traceback
+                logger.debug(traceback.format_exc())
+        
         # Track action sequence for pattern detection
         if 'action_sequence' not in state.context:
             state.context['action_sequence'] = []

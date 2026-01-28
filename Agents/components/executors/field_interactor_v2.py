@@ -21,6 +21,50 @@ from components.exceptions.field_exceptions import (
 from components.executors.ats_dropdown_handlers_v2 import get_dropdown_handler
 
 
+def create_clean_filename(original_path: str, profile: Optional[Dict[str, Any]] = None, file_type: str = "Resume") -> str:
+    """
+    Create a clean copy of a file with format: FirstName_LastName_FileType.ext
+    
+    Args:
+        original_path: Path to the original file
+        profile: User profile data containing first_name and last_name
+        file_type: Type of file (e.g., "Resume", "CoverLetter")
+    
+    Returns:
+        Path to the renamed file copy
+    """
+    import shutil
+    import tempfile
+    
+    # Get file extension
+    _, ext = os.path.splitext(original_path)
+    
+    # Extract name from profile if available
+    if profile:
+        first_name = profile.get('first_name', '').strip()
+        last_name = profile.get('last_name', '').strip()
+        
+        if first_name and last_name:
+            # Clean names (remove special characters)
+            first_name = "".join(c for c in first_name if c.isalnum())
+            last_name = "".join(c for c in last_name if c.isalnum())
+            clean_name = f"{first_name}_{last_name}_{file_type}{ext}"
+        else:
+            clean_name = f"{file_type}{ext}"
+    else:
+        clean_name = f"{file_type}{ext}"
+    
+    # Create a clean copy in temp directory
+    temp_dir = tempfile.gettempdir()
+    clean_path = os.path.join(temp_dir, clean_name)
+    
+    # Copy file with clean name
+    shutil.copy2(original_path, clean_path)
+    logger.debug(f"📝 Created clean filename: {clean_name}")
+    
+    return clean_path
+
+
 class FieldInteractorV2:
     """
     Next-generation field interactor with:
@@ -40,6 +84,8 @@ class FieldInteractorV2:
         self.action_recorder = action_recorder
         self.dropdown_handler = get_dropdown_handler()  # Fast v2 handler
         self._cached_fields: Optional[List[Dict[str, Any]]] = None
+        self.profile: Optional[Dict[str, Any]] = None  # Store profile for clean filenames
+        self.created_clean_files: List[str] = []  # Track files created with clean names for cleanup
         
         # Import QuestionExtractor here to avoid circular imports
         try:
@@ -61,6 +107,10 @@ class FieldInteractorV2:
         Returns:
             Dict containing success status, method used, and any errors
         """
+        # Store profile for clean filename generation
+        if profile:
+            self.profile = profile
+            
         element = field_data['element']
         category = field_data.get('field_category', 'text_input')
         field_label = field_data.get('label', 'Unknown')
@@ -896,26 +946,31 @@ class FieldInteractorV2:
             if not os.path.exists(file_path):
                 raise FileNotFoundError(f"Resume file not found: {file_path}")
 
-            # Upload file
-            await asyncio.wait_for(element.set_input_files(file_path), timeout=10)
+            # Create clean filename based on file type
+            file_type = "Resume" if "resume" in field_label.lower() else "CoverLetter"
+            clean_file_path = create_clean_filename(file_path, self.profile, file_type)
+            self.created_clean_files.append(clean_file_path)  # Track for cleanup
+            
+            # Upload file with clean name
+            await asyncio.wait_for(element.set_input_files(clean_file_path), timeout=10)
             await asyncio.sleep(0.3)
 
             # Verification for file upload is tricky - check if file name appears
             try:
-                file_name = os.path.basename(file_path)
+                clean_file_name = os.path.basename(clean_file_path)
                 page_content = await self.page.content()
-                if file_name in page_content:
+                if clean_file_name in page_content:
                     result.update({
                         "success": True,
                         "method": "file_upload",
-                        "final_value": file_path
+                        "final_value": clean_file_name
                     })
                 else:
-                    logger.warning(f"File uploaded but name not found on page: {file_name}")
+                    logger.warning(f"File uploaded but name not found on page: {clean_file_name}")
                     result.update({
                         "success": True,
                         "method": "file_upload",
-                        "final_value": file_path,
+                        "final_value": clean_file_name,
                         "verification": {"note": "File name not confirmed on page"}
                     })
             except Exception:
@@ -923,7 +978,7 @@ class FieldInteractorV2:
                 result.update({
                     "success": True,
                     "method": "file_upload",
-                    "final_value": file_path
+                    "final_value": os.path.basename(clean_file_path)
                 })
 
         except FileNotFoundError as e:
@@ -1090,6 +1145,11 @@ class FieldInteractorV2:
             if not os.path.exists(resume_path):
                 logger.error(f"Resume file not found at path: {resume_path}")
                 return False
+            
+            # Create clean filename for upload
+            clean_resume_path = create_clean_filename(resume_path, self.profile, "Resume")
+            self.created_clean_files.append(clean_resume_path)  # Track for cleanup
+            logger.info(f"📝 Using clean filename for upload: {os.path.basename(clean_resume_path)}")
 
             # Strategy 1: Workday-specific file upload handling
             workday_selectors = [
@@ -1106,11 +1166,11 @@ class FieldInteractorV2:
 
                         if 'input' in selector:
                             # Direct file input
-                            await element.set_input_files(resume_path)
+                            await element.set_input_files(clean_resume_path)
                             logger.info("✅ Resume uploaded via Workday file input")
                             if self.action_recorder:
                                 self.action_recorder.record_file_upload(
-                                    selector, resume_path, success=True,
+                                    selector, clean_resume_path, success=True,
                                     upload_method="direct_input",
                                     field_label="Resume Upload (Workday)"
                                 )
@@ -1121,11 +1181,11 @@ class FieldInteractorV2:
                             async with page_context.expect_file_chooser() as fc_info:
                                 await element.click()
                             file_chooser = await fc_info.value
-                            await file_chooser.set_files(resume_path)
+                            await file_chooser.set_files(clean_resume_path)
                             logger.info(f"✅ Resume uploaded via Workday {selector}")
                             if self.action_recorder:
                                 self.action_recorder.record_file_upload(
-                                    selector, resume_path, success=True,
+                                    selector, clean_resume_path, success=True,
                                     upload_method="click_trigger",
                                     field_label="Resume Upload (Workday)"
                                 )
@@ -1139,11 +1199,11 @@ class FieldInteractorV2:
             for fi in file_inputs:
                 try:
                     if await fi.is_visible():
-                        await fi.set_input_files(resume_path)
+                        await fi.set_input_files(clean_resume_path)
                         logger.info("✅ Resume uploaded via visible file input")
                         if self.action_recorder:
                             self.action_recorder.record_file_upload(
-                                'input[type="file"]', resume_path, success=True,
+                                'input[type="file"]', clean_resume_path, success=True,
                                 upload_method="direct_input",
                                 field_label="Resume Upload (Direct Input)"
                             )
@@ -1166,11 +1226,11 @@ class FieldInteractorV2:
                     async with page_context.expect_file_chooser() as fc_info:
                         await trigger_locator.click()
                     file_chooser = await fc_info.value
-                    await file_chooser.set_files(resume_path)
+                    await file_chooser.set_files(clean_resume_path)
                     logger.info("✅ Resume uploaded via button trigger")
                     if self.action_recorder:
                         self.action_recorder.record_file_upload(
-                            'button[trigger]', resume_path, success=True,
+                            'button[trigger]', clean_resume_path, success=True,
                             upload_method="click_trigger",
                             field_label="Resume Upload (Button Trigger)"
                         )
@@ -1186,7 +1246,7 @@ class FieldInteractorV2:
                     async with page_context.expect_file_chooser() as fc_info:
                         await generic_trigger.click()
                     file_chooser = await fc_info.value
-                    await file_chooser.set_files(resume_path)
+                    await file_chooser.set_files(clean_resume_path)
                     logger.info("✅ Resume uploaded via generic trigger")
                     if self.action_recorder:
                         self.action_recorder.record_file_upload(
@@ -1222,7 +1282,7 @@ class FieldInteractorV2:
                 elif ai_upload_result:  # Backward compatibility for bool return
                     logger.info("✅ Resume uploaded via AI-powered locator")
                     if self.action_recorder:
-                        self.action_recorder.record_file_upload('ai_powered_locator_legacy', resume_path, success=True)
+                        self.action_recorder.record_file_upload('ai_powered_locator_legacy', clean_resume_path, success=True)
                     return True
             except Exception as e:
                 logger.debug(f"AI-powered upload strategy failed: {e}")
@@ -1570,7 +1630,7 @@ Your response (JSON only):
                 try:
                     element = await self.page.wait_for_selector(selector, timeout=5000)
                     if element:
-                        await element.set_input_files(resume_path)
+                        await element.set_input_files(clean_resume_path)
                         logger.info("✅ Resume uploaded via direct input (AI method)")
                         await asyncio.sleep(0.5)  # Wait for upload to process
                         return True
@@ -1587,7 +1647,7 @@ Your response (JSON only):
                         async with page_context.expect_file_chooser() as fc_info:
                             await element.click()
                         file_chooser = await fc_info.value
-                        await file_chooser.set_files(resume_path)
+                        await file_chooser.set_files(clean_resume_path)
                         logger.info("✅ Resume uploaded via click trigger (AI method)")
                         await asyncio.sleep(0.5)  # Wait for upload to process
                         return True
@@ -1613,7 +1673,7 @@ Your response (JSON only):
                         async with page_context.expect_file_chooser() as fc_info:
                             await element.click()
                         file_chooser = await fc_info.value
-                        await file_chooser.set_files(resume_path)
+                        await file_chooser.set_files(clean_resume_path)
                         logger.info("✅ Resume uploaded via drop zone click (AI method)")
                         await asyncio.sleep(0.5)
                         return True

@@ -901,15 +901,26 @@ class GenericFormFillerV2Enhanced:
                         import tempfile
                         import os
                         
-                        # Create temporary file with the content
-                        # Use field label for filename if possible
-                        safe_label = "".join([c for c in field_label if c.isalnum() or c in (' ', '_', '-')]).strip()[:30] or "document"
-                        temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt', prefix=f"{safe_label}_")
-                        temp_file.write(str(cleaned_value))
-                        temp_file.close()
+                        # Create clean filename: FirstName_LastName_CoverLetter.txt
+                        first_name = profile.get('first_name', '').strip()
+                        last_name = profile.get('last_name', '').strip()
                         
-                        logger.info(f"✅ Created temporary file: {temp_file.name}")
-                        cleaned_value = temp_file.name
+                        if first_name and last_name:
+                            clean_first = "".join(c for c in first_name if c.isalnum())
+                            clean_last = "".join(c for c in last_name if c.isalnum())
+                            file_name = f"{clean_first}_{clean_last}_CoverLetter.txt"
+                        else:
+                            file_name = "CoverLetter.txt"
+                        
+                        # Create temp file with clean name
+                        temp_dir = tempfile.gettempdir()
+                        temp_file_path = os.path.join(temp_dir, file_name)
+                        
+                        with open(temp_file_path, 'w', encoding='utf-8') as f:
+                            f.write(str(cleaned_value))
+                        
+                        logger.info(f"✅ Created temporary file: {file_name}")
+                        cleaned_value = temp_file_path
                         
                         # Track for cleanup if agent has tracker
                         if hasattr(self, 'created_files'):

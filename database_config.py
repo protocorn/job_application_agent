@@ -258,6 +258,23 @@ class VNCSession(Base):
     
     user = relationship("User")
 
+class CompanyCredentials(Base):
+    __tablename__ = "company_credentials"
+    __table_args__ = {'schema': 'public'}
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("public.users.id"), nullable=False, index=True)
+    company_name = Column(String, nullable=False)  # Display name (e.g., "Troutman Pepper")
+    company_domain = Column(String, nullable=False, index=True)  # Domain for matching (e.g., "troutmanpepper.com")
+    email = Column(String, nullable=False)  # Email used for the account
+    password_encrypted = Column(Text, nullable=False)  # Encrypted password
+    ats_type = Column(String, default='workday')  # workday, greenhouse, lever, etc.
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_used_at = Column(DateTime)  # Track when credentials were last used
+    
+    user = relationship("User")
+
 # Database utility functions
 def get_db():
     db = SessionLocal()

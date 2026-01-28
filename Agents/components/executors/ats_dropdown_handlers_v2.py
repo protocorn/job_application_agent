@@ -77,11 +77,19 @@ class ATSDropdownHandlerV2:
 
     async def _get_frame_root(self, element: Locator) -> Locator:
         """
-        Get the root (body) of the frame containing this element.
-        This is critical for finding options in iframes.
+        Get the root context for finding dropdown options.
+        Greenhouse often renders options in a portal outside the iframe!
         """
-        # XPath / resolves to the document root of the current frame
-        return element.locator('xpath=/html/body')
+        # First, try to get the page object (works for both iframe and main page)
+        try:
+            # For elements in iframes, we need to search in the PAGE context, not frame
+            # because Greenhouse renders dropdowns in portals attached to the main page body
+            page = element.page
+            # Return a locator that searches the entire page
+            return page.locator('body')
+        except Exception:
+            # Fallback to frame-local search
+            return element.locator('xpath=/html/body')
 
     async def _fill_greenhouse(self, element: Locator, value: str, field_label: str) -> bool:
         """
@@ -106,7 +114,7 @@ class ATSDropdownHandlerV2:
             
             logger.debug(f"  Typing: '{value}'")
             await element.type(value, delay=50)
-            await asyncio.sleep(0.5) # Wait for filter
+            await asyncio.sleep(0.8) # Wait for filter and portal rendering
 
             # Find options - FRAME AWARE
             # We look for [role="option"] inside the frame's body
@@ -115,14 +123,29 @@ class ATSDropdownHandlerV2:
             # We should try a few common patterns.
             frame_root = await self._get_frame_root(element)
             
-            # Pattern 1: Standard ARIA options
-            options_locator = frame_root.locator('[role="option"]:visible')
-            count = await options_locator.count()
+            # Pattern 1: Standard ARIA options (filter visible manually)
+            options_locator = frame_root.locator('[role="option"]')
+            count = 0
+            # Count only visible options
+            total = await options_locator.count()
+            for i in range(total):
+                try:
+                    if await options_locator.nth(i).is_visible(timeout=100):
+                        count += 1
+                except Exception:
+                    continue
             
             # Pattern 2: Greenhouse specific classes (if ARIA fails)
             if count == 0:
-                options_locator = frame_root.locator('.select__option:visible, .dropdown-option:visible, li:not([role]):visible, [class*="option"]:visible')
-                count = await options_locator.count()
+                options_locator = frame_root.locator('.select__option, .dropdown-option, li:not([role]), [class*="option"]')
+                count = 0
+                total = await options_locator.count()
+                for i in range(min(total, 20)):  # Check first 20 to avoid long delays
+                    try:
+                        if await options_locator.nth(i).is_visible(timeout=100):
+                            count += 1
+                    except Exception:
+                        continue
 
             if count == 0:
                 logger.warning(f"⚠️ No options appeared after typing - attempting click to force load options")
@@ -132,13 +155,27 @@ class ATSDropdownHandlerV2:
                     await element.click(force=True)
                     await asyncio.sleep(1.0) # Wait for hydration
                     
-                    # Re-check options with both patterns
-                    options_locator = frame_root.locator('[role="option"]:visible')
-                    count = await options_locator.count()
+                    # Re-check options with both patterns (filter visible manually)
+                    options_locator = frame_root.locator('[role="option"]')
+                    count = 0
+                    total = await options_locator.count()
+                    for i in range(total):
+                        try:
+                            if await options_locator.nth(i).is_visible(timeout=100):
+                                count += 1
+                        except Exception:
+                            continue
                     
                     if count == 0:
-                        options_locator = frame_root.locator('.select__option:visible, .dropdown-option:visible, li:not([role]):visible, [class*="option"]:visible')
-                        count = await options_locator.count()
+                        options_locator = frame_root.locator('.select__option, .dropdown-option, li:not([role]), [class*="option"]')
+                        count = 0
+                        total = await options_locator.count()
+                        for i in range(min(total, 20)):
+                            try:
+                                if await options_locator.nth(i).is_visible(timeout=100):
+                                    count += 1
+                            except Exception:
+                                continue
                     
                     if count > 0:
                         logger.info(f"✅ Options appeared after forced click: {count} options")
@@ -151,16 +188,34 @@ class ATSDropdownHandlerV2:
                 await self._extract_all_options(element, frame_root) # Just to log/debug
                 return False
 
-            # Check matches
-            logger.debug(f"  Found {count} visible options")
-            for i in range(min(count, 5)):
-                opt = options_locator.nth(i)
-                text = await opt.text_content()
-                if text and value.lower() in text.lower():
-                    logger.info(f"✅ Exact/Partial match found: '{text.strip()}'")
-                    await opt.click()
-                    await asyncio.sleep(0.2)
-                    return True
+            # Check matches - iterate through all options and check visibility
+            logger.debug(f"  Found {count} visible options, checking matches...")
+            total_options = await options_locator.count()
+            checked_visible = 0
+            
+            for i in range(min(total_options, 20)):  # Check up to 20 options
+                try:
+                    opt = options_locator.nth(i)
+                    
+                    # Skip if not visible
+                    if not await opt.is_visible(timeout=100):
+                        continue
+                    
+                    checked_visible += 1
+                    text = await opt.text_content()
+                    if text and value.lower() in text.lower():
+                        logger.info(f"✅ Exact/Partial match found: '{text.strip()}'")
+                        await opt.click()
+                        await asyncio.sleep(0.2)
+                        return True
+                    
+                    # Stop if we've checked enough visible options
+                    if checked_visible >= 5:
+                        break
+                        
+                except Exception as e:
+                    logger.debug(f"  Error checking option {i}: {e}")
+                    continue
 
             # If no text match but options exist, select first one? 
             # Riskier, but 'Enter' usually selects first filtered option
