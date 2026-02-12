@@ -132,6 +132,11 @@ class UserProfile(Base):
 
     # Basic Information
     resume_url = Column(String)
+    resume_source_type = Column(String, default='google_doc')  # google_doc, latex_zip
+    latex_zip_base64 = Column(Text)  # Base64-encoded source ZIP (Overleaf export)
+    latex_main_tex_path = Column(String)  # Relative path of main tex within ZIP
+    latex_file_manifest = Column(JSON)  # [{path,size,extension}, ...]
+    latex_uploaded_at = Column(DateTime)
     cover_letter_template = Column(Text)  # Cover letter template (text or Google Doc URL)
     date_of_birth = Column(String)
     gender = Column(String)

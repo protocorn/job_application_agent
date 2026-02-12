@@ -32,7 +32,7 @@ class MimikreeProjectDiscovery:
             gemini_api_key: Gemini API key for question generation and parsing
         """
         genai.configure(api_key=gemini_api_key)
-        self.model = genai.GenerativeModel("gemini-2.0-flash-exp")
+        self.model = genai.GenerativeModel("gemini-2.5-flash")
         self.logger = logger
 
     def generate_discovery_questions(

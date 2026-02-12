@@ -1086,21 +1086,51 @@ class JobAPIFactory:
     """Factory to create and manage job API adapters"""
 
     @staticmethod
-    def get_all_adapters() -> List[JobAPIAdapter]:
+    def get_all_adapters(proxy_manager=None) -> List[JobAPIAdapter]:
         """Get all available adapters"""
-        return [
+        # Import JobSpy adapter
+        try:
+            import sys
+            import os
+            sys.path.insert(0, os.path.dirname(__file__))
+            from jobspy_adapter import JobSpyAdapter
+            jobspy_available = True
+        except Exception as e:
+            logger.warning(f"JobSpy not available: {e}")
+            jobspy_available = False
+        
+        adapters = []
+        
+        # Add JobSpy FIRST (it scrapes multiple sources concurrently!)
+        if jobspy_available:
+            adapters.append(JobSpyAdapter(proxy_manager=proxy_manager))
+        
+        # Add API-based adapters as fallback
+        adapters.extend([
             JSearchAdapter(),
             AdzunaAdapter(),
             ActiveJobsDBAdapter(),
             GoogleJobsAdapter(),
             TheMuseAdapter(),
             TheirStackAdapter()
-        ]
+        ])
+        
+        return adapters
 
     @staticmethod
     def get_adapter(api_name: str) -> Optional[JobAPIAdapter]:
         """Get a specific adapter by name"""
+        # Import JobSpy adapter
+        try:
+            import sys
+            import os
+            sys.path.insert(0, os.path.dirname(__file__))
+            from jobspy_adapter import JobSpyAdapter
+        except:
+            JobSpyAdapter = None
+        
         adapters = {
+            "jobspy": JobSpyAdapter() if JobSpyAdapter else None,
             "jsearch": JSearchAdapter(),
             "adzuna": AdzunaAdapter(),
             "activejobsdb": ActiveJobsDBAdapter(),

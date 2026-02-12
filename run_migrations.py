@@ -14,7 +14,8 @@ migrations = [
     'migrate_add_projects.py',
     'migrate_add_mimikree_credentials.py',
     'migrate_add_google_oauth.py',
-    'migrate_add_pattern_learning.py'
+    'migrate_add_pattern_learning.py',
+    'migrate_add_latex_resume_storage.py'
 ]
 
 print("=" * 60)

@@ -1,0 +1,25 @@
+# Proxy Configuration File
+# Format: host:port or username:password@host:port
+# One proxy per line
+# Lines starting with # are comments
+
+# Example proxies (replace with your actual proxies):
+# proxy1.example.com:8080
+# proxy2.example.com:3128
+# user:pass@proxy3.example.com:8080
+
+# Free proxy services (often unreliable):
+# https://free-proxy-list.net/
+# https://www.proxy-list.download/
+# https://www.sslproxies.org/
+
+# Paid proxy services (recommended for production):
+# - Bright Data: https://brightdata.com/
+# - Oxylabs: https://oxylabs.io/
+# - SmartProxy: https://smartproxy.com/
+# - ProxyRack: https://www.proxyrack.com/
+
+# For testing (replace with real proxies):
+# 123.456.789.012:8080
+# 234.567.890.123:3128
+# myuser:mypass@345.678.901.234:8080

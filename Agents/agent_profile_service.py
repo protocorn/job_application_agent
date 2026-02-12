@@ -38,6 +38,9 @@ class AgentProfileService:
             # Build complete profile data in the format agents expect
             profile_data = {
                 "resume_url": profile.resume_url if profile and profile.resume_url else "",
+                "resume_source_type": profile.resume_source_type if profile and profile.resume_source_type else "google_doc",
+                "latex_main_tex_path": profile.latex_main_tex_path if profile and profile.latex_main_tex_path else "",
+                "latex_file_manifest": profile.latex_file_manifest if profile and profile.latex_file_manifest else [],
                 "first name": user.first_name,
                 "last name": user.last_name,
                 "email": user.email,

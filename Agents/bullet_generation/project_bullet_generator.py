@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class ProjectBulletGenerator:
     """Generates tailored project bullets for resumes"""
 
-    def __init__(self, gemini_api_key: str, model_name: str = "gemini-2.0-flash-exp"):
+    def __init__(self, gemini_api_key: str, model_name: str = "gemini-2.5-flash"):
         """
         Initialize the bullet generator.
 

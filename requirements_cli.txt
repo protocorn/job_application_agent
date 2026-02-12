@@ -1,0 +1,32 @@
+# Terminal-Based Job Application Agent Requirements
+# Core dependencies for CLI version
+
+# Database
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+python-dotenv>=1.0.0
+
+# Authentication
+bcrypt>=4.0.0
+
+# Web Automation
+playwright>=1.40.0
+
+# Logging
+python-json-logger>=2.0.0
+
+# Existing agent dependencies
+# (These should already be installed if you have the web version)
+google-auth>=2.16.0
+google-auth-oauthlib>=1.0.0
+google-auth-httplib2>=0.1.0
+google-api-python-client>=2.70.0
+redis>=4.5.0
+
+# Optional: For resume processing
+pypdf2>=3.0.0
+python-docx>=0.8.11
+
+# Optional: For AI features
+google-generativeai>=0.3.0
+

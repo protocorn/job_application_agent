@@ -153,7 +153,7 @@ def generate_content_with_retry(
 
         response = generate_content_with_retry(
             client=client,
-            model='gemini-2.0-flash-exp',
+            model='gemini-2.5-flash',
             contents='Your prompt here'
         )
     """

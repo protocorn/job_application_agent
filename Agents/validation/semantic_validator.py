@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class SemanticValidator:
     """Validates semantic preservation in resume edits"""
 
-    def __init__(self, gemini_api_key: str, model_name: str = "gemini-2.0-flash-exp"):
+    def __init__(self, gemini_api_key: str, model_name: str = "gemini-2.5-flash"):
         """
         Initialize the semantic validator.
 

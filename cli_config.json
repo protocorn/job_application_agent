@@ -1,0 +1,42 @@
+{
+  "app_name": "Job Application Agent CLI",
+  "version": "1.1.0",
+  "settings": {
+    "default_headless": false,
+    "default_tailor_resume": false,
+    "auto_save_applications": true,
+    "log_level": "INFO",
+    "browser_timeout": 30000,
+    "max_application_history": 100,
+    "max_batch_jobs": 10,
+    "batch_keep_browsers_open": true
+  },
+  "automation": {
+    "slow_mo_ms": 0,
+    "hold_seconds": 0,
+    "debug_mode": false,
+    "take_screenshots": true,
+    "save_sessions": true
+  },
+  "features": {
+    "resume_tailoring": true,
+    "job_discovery": true,
+    "auto_apply": true,
+    "application_tracking": true,
+    "mimikree_integration": false,
+    "vnc_mode": false
+  },
+  "display": {
+    "use_colors": true,
+    "clear_screen": true,
+    "show_progress": true,
+    "verbose_output": false
+  },
+  "database": {
+    "connection_pool_size": 5,
+    "connection_timeout": 30,
+    "retry_attempts": 3
+  }
+}
+
+

@@ -21,6 +21,7 @@ from database_optimizer import get_optimized_db_session
 
 # Import existing agents
 from resume_tailoring_agent import tailor_resume_and_return_url
+from latex_tailoring_agent import tailor_latex_resume_from_base64
 from job_application_agent import run_links_with_refactored_agent
 from multi_source_job_discovery_agent import MultiSourceJobDiscoveryAgent
 
@@ -39,6 +40,7 @@ def handle_resume_tailoring(payload: Dict[str, Any]) -> Dict[str, Any]:
         
         # Extract parameters
         original_resume_url = payload.get('original_resume_url')
+        resume_source_type = payload.get('resume_source_type', 'google_doc')
         job_description = payload.get('job_description')
         job_title = payload.get('job_title', 'Unknown Position')
         company = payload.get('company', 'Unknown Company')
@@ -59,8 +61,10 @@ def handle_resume_tailoring(payload: Dict[str, Any]) -> Dict[str, Any]:
             )
         
         # Validate required parameters
-        if not original_resume_url or not job_description:
-            raise ValueError("original_resume_url and job_description are required")
+        if not job_description:
+            raise ValueError("job_description is required")
+        if resume_source_type != 'latex_zip' and not original_resume_url:
+            raise ValueError("original_resume_url is required for Google Docs tailoring")
         
         # Check user rate limits
         allowed, info = rate_limiter.check_limit('resume_tailoring_per_user_per_day', str(user_id))
@@ -91,17 +95,39 @@ def handle_resume_tailoring(payload: Dict[str, Any]) -> Dict[str, Any]:
                 logger.warning(f"User {user_id} has no Mimikree credentials - tailoring will use limited features")
                 # Continue without Mimikree - the tailoring agent can handle this
             
-            # Execute resume tailoring
-            tailoring_result = tailor_resume_and_return_url(
-                original_resume_url=original_resume_url,
-                job_description=job_description,
-                job_title=job_title,
-                company=company,
-                credentials=credentials,
-                mimikree_email=mimikree_email,
-                mimikree_password=mimikree_password,
-                user_full_name=user_full_name
-            )
+            if resume_source_type == 'latex_zip':
+                # Pull stored LaTeX ZIP source from profile
+                from database_config import SessionLocal, UserProfile
+                from uuid import UUID
+                db = SessionLocal()
+                try:
+                    user_uuid = UUID(str(user_id))
+                    profile = db.query(UserProfile).filter(UserProfile.user_id == user_uuid).first()
+                    if not profile or not profile.latex_zip_base64:
+                        raise ValueError("No LaTeX resume ZIP found in profile. Upload ZIP from frontend first.")
+                    latex_zip_base64 = profile.latex_zip_base64
+                    main_tex_path = profile.latex_main_tex_path or payload.get('latex_main_tex_path')
+                finally:
+                    db.close()
+                tailoring_result = tailor_latex_resume_from_base64(
+                    latex_zip_base64=latex_zip_base64,
+                    main_tex_file=main_tex_path,
+                    job_description=job_description,
+                    job_title=job_title,
+                    company=company,
+                )
+            else:
+                # Execute Google Docs resume tailoring
+                tailoring_result = tailor_resume_and_return_url(
+                    original_resume_url=original_resume_url,
+                    job_description=job_description,
+                    job_title=job_title,
+                    company=company,
+                    credentials=credentials,
+                    mimikree_email=mimikree_email,
+                    mimikree_password=mimikree_password,
+                    user_full_name=user_full_name
+                )
 
             # Increment global Gemini usage counters
             # Note: User-specific resume_tailoring counter was already incremented by check_limit()
@@ -201,14 +227,15 @@ def handle_job_application(payload: Dict[str, Any]) -> Dict[str, Any]:
         async def run_application():
             return await run_links_with_refactored_agent(
                 links=[job_url],
-                headless=True,
+                headless=False,  # Show browser for visibility
                 keep_open=False,
                 debug=False,
                 hold_seconds=2,
                 slow_mo_ms=0,
                 job_id=f"job_queue_{user_id}_{int(time.time())}",
                 jobs_dict={},  # Empty dict for job queue context
-                session_manager=session_manager
+                session_manager=session_manager,
+                user_id=user_id  # Pass user_id for persistent browser reuse
             )
         
         # Run the async job application

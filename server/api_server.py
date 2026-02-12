@@ -16,6 +16,7 @@ import base64
 import uuid
 import asyncio
 import redis
+from datetime import datetime
 
 
 sys.path.append(os.path.dirname(__file__))
@@ -24,6 +25,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))  # For logging_co
 
 # Original imports
 from resume_tailoring_agent import get_google_services, get_doc_id_from_url, copy_google_doc, read_google_doc_content, apply_json_replacements_to_doc, tailor_resume as tailor_resume_with_agent, tailor_resume_and_return_url
+from latex_tailoring_agent import parse_latex_zip
 from job_application_agent import run_links_with_refactored_agent
 from logging_config import setup_file_logging
 from components.session.session_manager import SessionManager
@@ -44,59 +46,6 @@ from mimikree_service import mimikree_service
 
 #Initialize the app
 app = Flask(__name__)
-
-# ============= VNC STREAMING SETUP (NEW) =============
-# Global flag for VNC availability
-VNC_ENABLED = False
-socketio = None
-
-try:
-    from flask_socketio import SocketIO
-    
-    # Initialize Socket.IO for VNC streaming
-    socketio = SocketIO(
-        app, 
-        cors_allowed_origins="*",
-        async_mode='threading',
-        logger=False,  # Reduce verbosity
-        engineio_logger=False
-    )
-    
-    # Import VNC components
-    try:
-        from vnc_api_endpoints import vnc_api
-        from vnc_socketio_handler import setup_vnc_socketio
-        from vnc_stream_proxy import setup_vnc_websocket_routes
-
-        # Setup VNC WebSocket handlers (Socket.IO based)
-        setup_vnc_socketio(socketio)
-
-        # Setup VNC WebSocket proxy routes (Flask-Sock based)
-        vnc_ws_enabled = setup_vnc_websocket_routes(app)
-        if vnc_ws_enabled:
-            logging.info("✅ VNC WebSocket proxy routes registered")
-
-        # Register VNC API endpoints
-        app.register_blueprint(vnc_api)
-
-        VNC_ENABLED = True
-        logging.info("✅ VNC streaming initialized successfully")
-
-    except ImportError as e:
-        VNC_ENABLED = False
-        logging.warning(f"⚠️ VNC endpoints not available: {e}")
-        logging.info("   VNC mode disabled - will use standard mode")
-        logging.info("   This is normal for local development without VNC dependencies")
-        
-except ImportError as e:
-    # Flask-SocketIO not installed
-    VNC_ENABLED = False
-    socketio = None
-    logging.warning(f"⚠️ Flask-SocketIO not installed: {e}")
-    logging.info("   VNC streaming disabled - will use standard mode")
-    logging.info("   Install with: pip install flask-socketio")
-    
-# ============= END VNC SETUP =============
 
 # ============= RESOURCE MANAGEMENT & MONITORING SETUP =============
 # Initialize resource manager, connection pool, and health monitor
@@ -223,18 +172,6 @@ def initialize_production_infrastructure():
         # Schedule automated backups
         schedule_backups()
         logging.info("✅ Backup scheduler initialized")
-        
-        # Recover VNC sessions
-        try:
-            from Agents.components.vnc.vnc_session_manager import vnc_session_manager
-            import asyncio
-            # We need to run this in the background loop
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(vnc_session_manager.recover_sessions())
-            logging.info("✅ VNC session recovery check complete")
-        except Exception as e:
-            logging.warning(f"⚠️ VNC recovery failed (non-critical): {e}")
         
         logging.info("🚀 Production infrastructure initialized successfully")
         
@@ -710,7 +647,6 @@ def health_check():
     return jsonify({
         "status": "healthy",
         "timestamp": time.time(),
-        "vnc_enabled": VNC_ENABLED,
         "sentry_enabled": SENTRY_ENABLED
     }), 200
 
@@ -744,24 +680,6 @@ def readiness_check():
         checks["redis"] = {"status": "not_ready", "error": str(e)}
         all_ready = False
 
-    # Check VNC capacity if enabled
-    if VNC_ENABLED:
-        try:
-            from vnc_api_endpoints import vnc_session_manager
-            available_slots = vnc_session_manager.max_sessions - len(vnc_session_manager.sessions)
-            checks["vnc_capacity"] = {
-                "status": "ready" if available_slots > 0 else "at_capacity",
-                "available_slots": available_slots,
-                "max_sessions": vnc_session_manager.max_sessions
-            }
-            if available_slots == 0:
-                all_ready = False
-        except Exception as e:
-            checks["vnc_capacity"] = {"status": "error", "error": str(e)}
-            all_ready = False
-    else:
-        checks["vnc_capacity"] = {"status": "disabled", "message": "VNC not enabled"}
-
     response = {
         "status": "ready" if all_ready else "not_ready",
         "timestamp": time.time(),
@@ -786,6 +704,7 @@ def get_profile():
             return jsonify({
                 "resumeData": result['profile'],
                 "resume_url": result['profile'].get("resume_url", ""),
+                "resume_source_type": result['profile'].get("resume_source_type", "google_doc"),
                 "success": True,
                 "message": "Profile fetched successfully",
                 "error": None
@@ -860,7 +779,10 @@ def process_resume():
         # Persist resume_url on user's profile
         try:
             from profile_service import ProfileService
-            ProfileService.create_or_update_profile(user_id, { 'resume_url': resume_url })
+            ProfileService.create_or_update_profile(user_id, {
+                'resume_url': resume_url,
+                'resume_source_type': 'google_doc'
+            })
         except Exception as persist_err:
             logging.warning(f"Could not persist resume_url: {persist_err}")
 
@@ -1011,7 +933,8 @@ def upload_resume():
         try:
             from profile_service import ProfileService
             ProfileService.create_or_update_profile(user_id, {
-                'resume_url': google_doc_url
+                'resume_url': google_doc_url,
+                'resume_source_type': 'google_doc'
             })
         except Exception as persist_err:
             logging.warning(f"Could not persist resume URL: {persist_err}")
@@ -1028,6 +951,66 @@ def upload_resume():
     except Exception as e:
         logging.error(f"Error uploading resume: {e}")
         return jsonify({"error": f"Failed to upload resume: {str(e)}"}), 500
+
+
+@app.route("/api/upload-latex-resume", methods=['POST'])
+@require_auth
+def upload_latex_resume():
+    """Handle LaTeX ZIP upload (Overleaf exports), store in profile, and parse profile data."""
+    try:
+        user_id = request.current_user['id']
+        if 'resume_zip' not in request.files:
+            return jsonify({"error": "No ZIP file provided"}), 400
+
+        file = request.files['resume_zip']
+        if file.filename == '':
+            return jsonify({"error": "No ZIP file selected"}), 400
+
+        filename = file.filename.lower()
+        if not filename.endswith('.zip'):
+            return jsonify({"error": "Only ZIP files are supported for LaTeX resumes"}), 400
+
+        file.seek(0, 2)
+        file_size = file.tell()
+        file.seek(0)
+        if file_size > 20 * 1024 * 1024:
+            return jsonify({"error": "ZIP file too large (maximum 20MB)"}), 400
+        if file_size == 0:
+            return jsonify({"error": "ZIP file is empty"}), 400
+
+        main_tex_file = (request.form.get('main_tex_file') or "").strip() or None
+        zip_bytes = file.read()
+        parsed = parse_latex_zip(zip_bytes, requested_main_tex=main_tex_file)
+
+        # Extract profile data from plain-text version of LaTeX source
+        profile_data = process_resume_with_llm(parsed.plain_text)
+        if profile_data is None:
+            return jsonify({
+                "error": "Failed to process LaTeX resume with Gemini",
+                "success": False
+            }), 500
+
+        # Persist LaTeX source and metadata to profile
+        ProfileService.create_or_update_profile(user_id, {
+            'resume_source_type': 'latex_zip',
+            'resume_url': '',
+            'latex_zip_base64': parsed.zip_base64,
+            'latex_main_tex_path': parsed.main_tex_file,
+            'latex_file_manifest': parsed.file_manifest,
+            'latex_uploaded_at': datetime.utcnow(),
+        })
+
+        return jsonify({
+            "success": True,
+            "message": "LaTeX ZIP uploaded successfully. Tailoring will use your stored LaTeX source.",
+            "profile_data": profile_data,
+            "resume_source_type": "latex_zip",
+            "main_tex_file": parsed.main_tex_file,
+            "tex_files": parsed.tex_files,
+        }), 200
+    except Exception as e:
+        logging.error(f"Error uploading LaTeX resume: {e}")
+        return jsonify({"error": f"Failed to upload LaTeX resume: {str(e)}"}), 500
 
 def extract_docx_text(file_obj) -> str:
     """Extract text from DOCX file using python-docx"""
@@ -1315,24 +1298,47 @@ def tailor_resume():
         # Validate required fields
         job_description = data.get('job_description')
         resume_url = data.get('resume_url')
-        
-        if not job_description or not resume_url:
-            return jsonify({"error": "Job description and resume URL are required"}), 400
+        if not job_description:
+            return jsonify({"error": "Job description is required"}), 400
 
-        # Check if user has connected Google account
-        if not GoogleOAuthService.is_connected(user_id):
-            return jsonify({
-                "error": "Please connect your Google account first to tailor resumes",
-                "needs_google_auth": True
-            }), 403
+        # Determine current resume source mode from saved profile
+        profile_result = ProfileService.get_profile(user_id)
+        profile_data = profile_result.get('profile') if profile_result.get('success') else {}
+        resume_source_type = (profile_data or {}).get('resume_source_type', 'google_doc')
 
-        # Get user's Google credentials
-        credentials = GoogleOAuthService.get_credentials(user_id)
-        if not credentials:
-            return jsonify({
-                "error": "Failed to retrieve Google credentials. Please reconnect your account.",
-                "needs_google_auth": True
-            }), 403
+        credentials = None
+        credentials_dict = None
+        if resume_source_type != 'latex_zip':
+            if not resume_url:
+                return jsonify({"error": "Resume URL is required for Google Docs tailoring"}), 400
+
+            # Check if user has connected Google account
+            if not GoogleOAuthService.is_connected(user_id):
+                return jsonify({
+                    "error": "Please connect your Google account first to tailor Google Docs resumes",
+                    "needs_google_auth": True
+                }), 403
+
+            # Get user's Google credentials
+            credentials = GoogleOAuthService.get_credentials(user_id)
+            if not credentials:
+                return jsonify({
+                    "error": "Failed to retrieve Google credentials. Please reconnect your account.",
+                    "needs_google_auth": True
+                }), 403
+
+            # Serialize credentials to JSON-compatible format
+            credentials_dict = {
+                'token': credentials.token,
+                'refresh_token': credentials.refresh_token,
+                'token_uri': credentials.token_uri,
+                'client_id': credentials.client_id,
+                'client_secret': credentials.client_secret,
+                'scopes': list(credentials.scopes) if credentials.scopes else None
+            }
+        else:
+            # In LaTeX mode, payload uses saved ZIP source from profile; no Google required.
+            resume_url = None
 
         # Get user's full name from database
         from database_config import SessionLocal, User
@@ -1344,23 +1350,15 @@ def tailor_resume():
             db.close()
 
         # Prepare job payload
-        # Serialize credentials to JSON-compatible format
-        credentials_dict = {
-            'token': credentials.token,
-            'refresh_token': credentials.refresh_token,
-            'token_uri': credentials.token_uri,
-            'client_id': credentials.client_id,
-            'client_secret': credentials.client_secret,
-            'scopes': list(credentials.scopes) if credentials.scopes else None
-        }
-
         payload = {
+            'resume_source_type': resume_source_type,
             'original_resume_url': resume_url,
             'job_description': job_description,
             'job_title': data.get('job_title', 'Unknown Position'),
             'company': data.get('company_name', 'Unknown Company'),
             'credentials': credentials_dict,
-            'user_full_name': user_full_name
+            'user_full_name': user_full_name,
+            'latex_main_tex_path': (profile_data or {}).get('latex_main_tex_path')
         }
 
         # Submit job to queue
@@ -1402,24 +1400,31 @@ def tailor_resume_sync():
         company_name = data.get('company_name')
         resume_url = data.get('resume_url')
 
-        if not job_description or not resume_url:
+        if not job_description:
+            return jsonify({"error": "Job description is required"}), 400
+
+        profile_result = ProfileService.get_profile(user_id)
+        profile_data = profile_result.get('profile') if profile_result.get('success') else {}
+        resume_source_type = (profile_data or {}).get('resume_source_type', 'google_doc')
+        if resume_source_type != 'latex_zip' and not resume_url:
             return jsonify({"error": "Job description and resume URL are required"}), 400
 
-        # Check if user has connected Google account
-        if not GoogleOAuthService.is_connected(user_id):
-            return jsonify({
-                "error": "Please connect your Google account first to tailor resumes",
-                "needs_google_auth": True
-            }), 403
-
         try:
-            # Get user's Google credentials
-            credentials = GoogleOAuthService.get_credentials(user_id)
-            if not credentials:
-                return jsonify({
-                    "error": "Failed to retrieve Google credentials. Please reconnect your account.",
-                    "needs_google_auth": True
-                }), 403
+            credentials = None
+            if resume_source_type != 'latex_zip':
+                # Get user's Google credentials
+                if not GoogleOAuthService.is_connected(user_id):
+                    return jsonify({
+                        "error": "Please connect your Google account first to tailor Google Docs resumes",
+                        "needs_google_auth": True
+                    }), 403
+
+                credentials = GoogleOAuthService.get_credentials(user_id)
+                if not credentials:
+                    return jsonify({
+                        "error": "Failed to retrieve Google credentials. Please reconnect your account.",
+                        "needs_google_auth": True
+                    }), 403
 
             # Get user's full name and cover letter template from database
             from database_config import SessionLocal, User
@@ -1439,24 +1444,38 @@ def tailor_resume_sync():
             mimikree_email = os.getenv('MIMIKREE_EMAIL')
             mimikree_password = os.getenv('MIMIKREE_PASSWORD')
 
-            # Use the resume tailor agent to create tailored Google Doc
-            tailoring_result = tailor_resume_and_return_url(
-                resume_url,
-                job_description,
-                job_id,
-                company_name,
-                credentials=credentials,
-                user_full_name=user_full_name,
-                mimikree_email=mimikree_email,
-                mimikree_password=mimikree_password
-            )
-
-            # Extract URL (now returns dict with metrics)
-            tailored_url = tailoring_result.get('url') if isinstance(tailoring_result, dict) else tailoring_result
+            if resume_source_type == 'latex_zip':
+                from latex_tailoring_agent import tailor_latex_resume_from_base64
+                from database_config import UserProfile
+                profile_row = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+                latex_zip_base64 = profile_row.latex_zip_base64 if profile_row else None
+                main_tex_path = profile_row.latex_main_tex_path if profile_row else None
+                tailoring_result = tailor_latex_resume_from_base64(
+                    latex_zip_base64=latex_zip_base64,
+                    main_tex_file=main_tex_path,
+                    job_description=job_description,
+                    job_title=job_id or "Unknown Position",
+                    company=company_name or "Unknown Company",
+                )
+                tailored_url = None
+            else:
+                # Use the resume tailor agent to create tailored Google Doc
+                tailoring_result = tailor_resume_and_return_url(
+                    resume_url,
+                    job_description,
+                    job_id,
+                    company_name,
+                    credentials=credentials,
+                    user_full_name=user_full_name,
+                    mimikree_email=mimikree_email,
+                    mimikree_password=mimikree_password
+                )
+                # Extract URL (now returns dict with metrics)
+                tailored_url = tailoring_result.get('url') if isinstance(tailoring_result, dict) else tailoring_result
 
             # Tailor cover letter if template exists
             tailored_cover_letter_id = None
-            if cover_letter_template:
+            if cover_letter_template and resume_source_type != 'latex_zip':
                 from Agents.cover_letter_tailoring import tailor_cover_letter
                 from googleapiclient.discovery import build
 
@@ -1501,7 +1520,11 @@ def tailor_resume_sync():
                 "tailored_document_id": tailored_url,
                 "tailored_cover_letter_id": tailored_cover_letter_id,
                 "success": True,
-                "message": "Resume and cover letter tailored successfully" if tailored_cover_letter_id else "Resume tailored successfully",
+                "message": (
+                    "LaTeX resume tailored successfully (downloadable ZIP generated)."
+                    if resume_source_type == 'latex_zip'
+                    else ("Resume and cover letter tailored successfully" if tailored_cover_letter_id else "Resume tailored successfully")
+                ),
                 "error": None
             }
 
@@ -1548,407 +1571,9 @@ def tailor_resume_sync():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/apply-job", methods=['POST'])
-def apply_job():
-    try:
-        data = request.json
-        if not data:
-            logging.error("No data provided in request")
-            return jsonify({"error": "No data provided"}), 400
-        
-        job_url = data.get('jobUrl', '')
-        resume_url = data.get('resumeUrl', '')
-        use_tailored = data.get('useTailored', False)
-        tailored_resume_url = data.get('tailoredResumeUrl', '')
+# Auto job apply endpoint removed - feature only available via CLI
 
-        logging.info(f"Received payload - job_url: {job_url}, resume_url: {resume_url}, use_tailored: {use_tailored}, tailored_resume_url: {tailored_resume_url}")
-
-        if not job_url or not resume_url:
-            logging.error(f"Missing required fields - job_url: {bool(job_url)}, resume_url: {bool(resume_url)}")
-            return jsonify({"error": "Job URL and resume URL are required"}), 400
-        
-        # Determine which resume to use
-        final_resume_url = tailored_resume_url if use_tailored and tailored_resume_url else resume_url
-
-        logging.info(f"Starting job application for: {job_url}")
-        logging.info(f"Using resume: {resume_url}")
-
-        import uuid
-        import asyncio
-        import time
-        from concurrent.futures import ThreadPoolExecutor
-
-        # Create an unique job id
-        job_id = str(uuid.uuid4())
-
-        # Store the job in the JOBS dictionary
-        JOBS[job_id] = {
-            "job_url": job_url,
-            "resumeUrl": resume_url,
-            "status": "queued",
-            "links" : [job_url],
-            "logs" : [],
-            "created_at" : time.time(),
-        }
-
-        logging.info(f"Job {job_id} stored in JOBS dictionary")
-        logging.info(f"JOBS keys: {list(JOBS.keys())}")
-
-        # Define the job application function
-        async def run_job_application():
-            try:
-                # Check if job still exists
-                if job_id not in JOBS:
-                    logging.error(f"Job {job_id} not found when starting execution")
-                    return
-
-                # Update status to running
-                JOBS[job_id]["status"] = "running"
-                JOBS[job_id]["logs"].append({
-                    "timestamp": time.time(),
-                    "level": "info",
-                    "message": f"Starting job application for: {job_url}"
-                })
-
-                logging.info(f"Job {job_id} starting execution")
-
-                # Run the refactored job agent with better error handling
-                try:
-                    await run_links_with_refactored_agent(
-                        links=[job_url],
-                        headless=True,   # headless mode for background processing
-                        keep_open=False,  # don't keep open to avoid hanging processes
-                        debug=False,     # no debug mode for background processing
-                        hold_seconds=2,   # reduced hold time
-                        slow_mo_ms=0,     # no slow motion for background processing
-                        job_id=job_id,    # pass job_id for intervention notifications
-                        jobs_dict=JOBS,   # pass shared JOBS dictionary for logging
-                        session_manager=session_manager  # pass session manager for freezing
-                    )
-                    
-                    # Update status to completed
-                    if job_id in JOBS:
-                        JOBS[job_id]["status"] = "completed"
-                        JOBS[job_id]["logs"].append({
-                            "timestamp": time.time(),
-                            "level": "success",
-                            "message": "Job application completed successfully"
-                        })
-
-                        # Also update session status if session exists
-                        session_id = JOBS[job_id].get('session_id')
-                        if session_id:
-                            session_manager.update_session(session_id, status="completed")
-                            logging.info(f"Updated session {session_id} status to completed")
-
-                        logging.info(f"Job {job_id} completed successfully")
-                    
-                except Exception as e:
-                    # Handle agent-specific errors
-                    if job_id in JOBS:
-                        JOBS[job_id]["status"] = "failed"
-                        JOBS[job_id]["logs"].append({
-                            "timestamp": time.time(),
-                            "level": "error",
-                            "message": f"Job agent failed: {str(e)}"
-                        })
-
-                        # Also update session status if session exists
-                        session_id = JOBS[job_id].get('session_id')
-                        if session_id:
-                            session_manager.update_session(session_id, status="failed")
-                            logging.info(f"Updated session {session_id} status to failed")
-
-                    logging.error(f"Job agent error for {job_id}: {e}")
-                    raise
-            
-            except Exception as e:
-                # Update status to failed
-                if job_id in JOBS:
-                    JOBS[job_id]["status"] = "failed"
-                    JOBS[job_id]["logs"].append({
-                        "timestamp": time.time(),
-                        "level": "error",
-                        "message": f"Job application failed: {str(e)}"
-                    })
-
-                    # Also update session status if session exists
-                    session_id = JOBS[job_id].get('session_id')
-                    if session_id:
-                        session_manager.update_session(session_id, status="failed")
-                        logging.info(f"Updated session {session_id} status to failed")
-
-                logging.error(f"Error in job application {job_id}: {e}")
-                import traceback
-                logging.error(f"Full traceback: {traceback.format_exc()}")
-
-        # Submit the job to thread pool
-        def run_async_job():
-            try:
-                logging.info(f"Starting async job thread for {job_id}")
-                asyncio.run(run_job_application())
-            except Exception as e:
-                logging.error(f"Error running async job {job_id}: {e}")
-                if job_id in JOBS:
-                    JOBS[job_id]["status"] = "failed"
-                    JOBS[job_id]["logs"].append({
-                        "timestamp": time.time(),
-                        "level": "error", 
-                        "message": f"Failed to start job: {str(e)}"
-                    })
-                import traceback
-                logging.error(f"Thread error traceback: {traceback.format_exc()}")
-        
-        # Start the job in a separate thread
-        import threading
-        job_thread = threading.Thread(target=run_async_job, name=f"job-{job_id[:8]}")
-        job_thread.daemon = True
-        job_thread.start()
-        
-        logging.info(f"Job thread started for {job_id}")
-        
-        job_response = {"job_id": job_id, "status": "queued"}
-        
-        return jsonify({
-            "success": True,
-            "job_id": job_response.get('job_id'),
-            "message": "Job application started successfully"
-        }), 200
-        
-    except Exception as e:
-        logging.error(f"Error starting job application: {e}")
-        return jsonify({"error": f"Failed to start job application: {str(e)}"}), 500
-
-@app.route("/api/apply-batch-jobs", methods=['POST'])
-@require_auth
-def apply_batch_jobs():
-    """Apply to multiple jobs in batch mode"""
-    try:
-        data = request.json
-        user_id = request.current_user['id']
-
-        if not data:
-            logging.error("No data provided in request")
-            return jsonify({"error": "No data provided"}), 400
-
-        job_urls = data.get('jobUrls', [])
-        resume_url = data.get('resumeUrl', '')
-        use_tailored = data.get('useTailored', False)
-
-        logging.info(f"Received batch apply request - {len(job_urls)} jobs, use_tailored: {use_tailored}")
-
-        if not job_urls or not isinstance(job_urls, list):
-            logging.error("Invalid or missing jobUrls")
-            return jsonify({"error": "jobUrls must be a non-empty list"}), 400
-
-        if not resume_url:
-            logging.error("Missing resume URL")
-            return jsonify({"error": "Resume URL is required"}), 400
-
-        # Create a batch ID
-        batch_id = str(uuid.uuid4())
-
-        # Store batch information
-        JOBS[batch_id] = {
-            "type": "batch",
-            "batch_id": batch_id,
-            "status": "queued",
-            "total_jobs": len(job_urls),
-            "completed_jobs": 0,
-            "failed_jobs": 0,
-            "job_ids": [],
-            "logs": [],
-            "created_at": time.time()
-        }
-
-        logging.info(f"Batch {batch_id} created with {len(job_urls)} jobs")
-
-        # Define batch processing function
-        async def run_batch_applications():
-            try:
-                JOBS[batch_id]["status"] = "running"
-                JOBS[batch_id]["logs"].append({
-                    "timestamp": time.time(),
-                    "level": "info",
-                    "message": f"Starting batch application for {len(job_urls)} jobs"
-                })
-
-                for index, job_url in enumerate(job_urls, 1):
-                    if batch_id not in JOBS:
-                        logging.error(f"Batch {batch_id} no longer exists, stopping")
-                        break
-
-                    # Create individual job ID
-                    job_id = str(uuid.uuid4())
-
-                    # Add to batch tracking
-                    JOBS[batch_id]["job_ids"].append(job_id)
-
-                    # Create individual job entry
-                    JOBS[job_id] = {
-                        "batch_id": batch_id,
-                        "job_url": job_url,
-                        "resumeUrl": resume_url,
-                        "status": "queued",
-                        "links": [job_url],
-                        "logs": [],
-                        "created_at": time.time(),
-                        "job_number": index,
-                        "total_in_batch": len(job_urls)
-                    }
-
-                    JOBS[batch_id]["logs"].append({
-                        "timestamp": time.time(),
-                        "level": "info",
-                        "message": f"Processing job {index}/{len(job_urls)}: {job_url}"
-                    })
-
-                    logging.info(f"Batch {batch_id}: Starting job {index}/{len(job_urls)} - {job_id}")
-
-                    try:
-                        # Update individual job status
-                        JOBS[job_id]["status"] = "running"
-
-                        # Handle resume tailoring if needed
-                        final_resume_url = resume_url
-                        if use_tailored:
-                            try:
-                                JOBS[job_id]["logs"].append({
-                                    "timestamp": time.time(),
-                                    "level": "info",
-                                    "message": "Tailoring resume for this job..."
-                                })
-
-                                # You could add actual tailoring logic here if needed
-                                # For now, we'll use the original resume
-
-                            except Exception as tailor_error:
-                                logging.error(f"Resume tailoring failed for job {job_id}: {tailor_error}")
-                                JOBS[job_id]["logs"].append({
-                                    "timestamp": time.time(),
-                                    "level": "warning",
-                                    "message": f"Resume tailoring failed, using original resume: {str(tailor_error)}"
-                                })
-
-                        # Run the job agent
-                        await run_links_with_refactored_agent(
-                            links=[job_url],
-                            headless=True,
-                            keep_open=False,
-                            debug=False,
-                            hold_seconds=2,
-                            slow_mo_ms=0,
-                            job_id=job_id,
-                            jobs_dict=JOBS,
-                            session_manager=session_manager
-                        )
-
-                        # Update individual job status
-                        if job_id in JOBS:
-                            JOBS[job_id]["status"] = "completed"
-                            JOBS[job_id]["logs"].append({
-                                "timestamp": time.time(),
-                                "level": "success",
-                                "message": "Job application completed successfully"
-                            })
-
-                        # Update batch completed count
-                        if batch_id in JOBS:
-                            JOBS[batch_id]["completed_jobs"] += 1
-                            JOBS[batch_id]["logs"].append({
-                                "timestamp": time.time(),
-                                "level": "success",
-                                "message": f"Completed job {index}/{len(job_urls)}"
-                            })
-
-                        logging.info(f"Batch {batch_id}: Job {index} completed successfully")
-
-                    except Exception as job_error:
-                        # Handle individual job failure
-                        if job_id in JOBS:
-                            JOBS[job_id]["status"] = "failed"
-                            JOBS[job_id]["logs"].append({
-                                "timestamp": time.time(),
-                                "level": "error",
-                                "message": f"Job application failed: {str(job_error)}"
-                            })
-
-                        # Update batch failed count
-                        if batch_id in JOBS:
-                            JOBS[batch_id]["failed_jobs"] += 1
-                            JOBS[batch_id]["logs"].append({
-                                "timestamp": time.time(),
-                                "level": "error",
-                                "message": f"Failed job {index}/{len(job_urls)}: {str(job_error)}"
-                            })
-
-                        logging.error(f"Batch {batch_id}: Job {index} failed - {job_error}")
-
-                        # Continue to next job instead of stopping the batch
-                        continue
-
-                # Mark batch as completed
-                if batch_id in JOBS:
-                    JOBS[batch_id]["status"] = "completed"
-                    JOBS[batch_id]["logs"].append({
-                        "timestamp": time.time(),
-                        "level": "success",
-                        "message": f"Batch completed: {JOBS[batch_id]['completed_jobs']} successful, {JOBS[batch_id]['failed_jobs']} failed"
-                    })
-
-                logging.info(f"Batch {batch_id} completed")
-
-            except Exception as e:
-                # Handle batch-level errors
-                if batch_id in JOBS:
-                    JOBS[batch_id]["status"] = "failed"
-                    JOBS[batch_id]["logs"].append({
-                        "timestamp": time.time(),
-                        "level": "error",
-                        "message": f"Batch processing failed: {str(e)}"
-                    })
-
-                logging.error(f"Error in batch application {batch_id}: {e}")
-                import traceback
-                logging.error(f"Full traceback: {traceback.format_exc()}")
-
-        # Start batch processing in separate thread
-        def run_async_batch():
-            try:
-                logging.info(f"Starting async batch thread for {batch_id}")
-                asyncio.run(run_batch_applications())
-            except Exception as e:
-                logging.error(f"Error running async batch {batch_id}: {e}")
-                if batch_id in JOBS:
-                    JOBS[batch_id]["status"] = "failed"
-                    JOBS[batch_id]["logs"].append({
-                        "timestamp": time.time(),
-                        "level": "error",
-                        "message": f"Failed to start batch: {str(e)}"
-                    })
-                import traceback
-                logging.error(f"Batch thread error traceback: {traceback.format_exc()}")
-
-        # Start the batch in a separate thread
-        import threading
-        batch_thread = threading.Thread(target=run_async_batch, name=f"batch-{batch_id[:8]}")
-        batch_thread.daemon = True
-        batch_thread.start()
-
-        logging.info(f"Batch thread started for {batch_id}")
-
-        return jsonify({
-            "success": True,
-            "batch_id": batch_id,
-            "batch_size": len(job_urls),
-            "message": f"Batch application started for {len(job_urls)} jobs"
-        }), 200
-
-    except Exception as e:
-        logging.error(f"Error starting batch application: {e}")
-        import traceback
-        logging.error(f"Full traceback: {traceback.format_exc()}")
-        return jsonify({"error": f"Failed to start batch application: {str(e)}"}), 500
+# Auto batch job apply endpoint removed - feature only available via CLI
 
 @app.route("/api/job-logs/<job_or_session_id>", methods=['GET'])
 def get_job_logs(job_or_session_id):
@@ -2002,42 +1627,7 @@ def get_job_status(job_or_session_id):
         logging.error(f"Error getting job status for {job_or_session_id}: {e}")
         return jsonify({"error": f"Failed to get job status: {str(e)}"}), 500
 
-@app.route("/api/batch-status/<batch_id>", methods=['GET'])
-def get_batch_status(batch_id):
-    """Get detailed status of a batch application including all individual jobs"""
-    try:
-        if batch_id not in JOBS:
-            return jsonify({"error": "Batch not found"}), 404
-
-        batch_data = JOBS[batch_id]
-
-        # Get individual job statuses
-        job_statuses = []
-        for job_id in batch_data.get('job_ids', []):
-            if job_id in JOBS:
-                job_info = JOBS[job_id]
-                job_statuses.append({
-                    "job_id": job_id,
-                    "job_url": job_info.get('job_url', ''),
-                    "status": job_info.get('status', 'unknown'),
-                    "job_number": job_info.get('job_number', 0),
-                    "logs_count": len(job_info.get('logs', []))
-                })
-
-        return jsonify({
-            "batch_id": batch_id,
-            "status": batch_data.get('status', 'unknown'),
-            "total_jobs": batch_data.get('total_jobs', 0),
-            "completed_jobs": batch_data.get('completed_jobs', 0),
-            "failed_jobs": batch_data.get('failed_jobs', 0),
-            "created_at": batch_data.get('created_at', 0),
-            "jobs": job_statuses,
-            "logs": batch_data.get('logs', [])
-        }), 200
-
-    except Exception as e:
-        logging.error(f"Error getting batch status for {batch_id}: {e}")
-        return jsonify({"error": f"Failed to get batch status: {str(e)}"}), 500
+# Batch status endpoint removed - batch apply feature only available via CLI
 
 @app.route("/api/resume-job/<job_id>", methods=['POST'])
 def resume_job(job_id):
@@ -3238,7 +2828,6 @@ def health():
     """Detailed health check endpoint with resource monitoring"""
     health_data = {
         "status": "ok",
-        "vnc_enabled": VNC_ENABLED if 'VNC_ENABLED' in globals() else False,
         "timestamp": time.time()
     }
     
@@ -4178,23 +3767,6 @@ if __name__ == "__main__":
         except Exception as e:
             logging.error(f"Error stopping job queue: {e}")
 
-        try:
-            # Close any active VNC sessions
-            if VNC_ENABLED:
-                logging.info("Closing active VNC sessions...")
-                from vnc_api_endpoints import vnc_session_manager
-                import asyncio
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                for session_id in list(vnc_session_manager.sessions.keys()):
-                    try:
-                        loop.run_until_complete(vnc_session_manager.end_session(session_id))
-                    except Exception as e:
-                        logging.error(f"Error closing VNC session {session_id}: {e}")
-                logging.info("✓ VNC sessions closed")
-        except Exception as e:
-            logging.error(f"Error closing VNC sessions: {e}")
-
         logging.info("✅ Graceful shutdown complete")
         sys.exit(0)
 
@@ -4212,32 +3784,16 @@ if __name__ == "__main__":
     # Get port from environment variable (Railway, Heroku, etc.) or default to 5000
     port = int(os.getenv('PORT', 5000))
 
-    # Use socketio.run() if VNC is enabled, otherwise use app.run()
-    if socketio and VNC_ENABLED:
-        logging.info(f"🚀 Starting server with Socket.IO support on port {port}")
-        logging.info(f"   Mode: {'DEVELOPMENT' if is_development else 'PRODUCTION'}")
-        logging.info(f"   VNC Streaming: ENABLED ✅")
-        
-        socketio.run(
-            app,
-            host='0.0.0.0',
-            port=port,
-            debug=is_development,
-            allow_unsafe_werkzeug=True,
-            use_reloader=False  # Disable reloader to prevent Windows socket issues
-        )
-    else:
-        logging.info(f"🚀 Starting server on port {port}")
-        logging.info(f"   Mode: {'DEVELOPMENT' if is_development else 'PRODUCTION'}")
-        logging.info(f"   VNC Streaming: DISABLED (Socket.IO not available)")
-        
-        # Use standard Flask server
-        app.run(
-            host='0.0.0.0',
-            port=port,
-            debug=is_development,
-            use_reloader=False
-        )
+    logging.info(f"🚀 Starting server on port {port}")
+    logging.info(f"   Mode: {'DEVELOPMENT' if is_development else 'PRODUCTION'}")
+    
+    # Use standard Flask server
+    app.run(
+        host='0.0.0.0',
+        port=port,
+        debug=is_development,
+        use_reloader=False
+    )
 
     # Cleanup on shutdown
     try:

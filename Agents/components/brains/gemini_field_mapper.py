@@ -174,6 +174,7 @@ class GeminiFieldMapper:
                 'placeholder': field.get('placeholder', ''),
                 'input_type': field.get('input_type', 'text'),
                 'is_dropdown': 'dropdown' in field_category,
+                'is_multiselect': 'multi' in field_category or field_category == 'greenhouse_dropdown_multi',
                 'requires_manual_writing': self._requires_manual_writing(label, field_category),
                 'field_question': field_question  # Question text for radio/checkbox groups
             }
@@ -208,6 +209,10 @@ class GeminiFieldMapper:
             field_text += f"  Label: {field_info['label']}\n"
             field_text += f"  Type: {field_info['field_category']}\n"
             
+            # Flag multi-select dropdowns explicitly
+            if field_info.get('is_multiselect'):
+                field_text += f"  ⚠️ MULTI-SELECT DROPDOWN (can select multiple values) - Use MULTISELECT response\n"
+            
             # Include question context for radio/checkbox fields
             if field_info.get('field_question'):
                 field_text += f"  Question: {field_info['field_question']}\n"
@@ -241,14 +246,30 @@ Use the profile data with CONFIDENCE. If the profile contains information, USE I
    - ONLY use if the exact information exists in the profile
 
 2. DROPDOWN SELECTION: For dropdown/select fields where you can match profile data to options
-   - Choose the best option from the available options list based on profile
-   - Response format: "ID: <field_id> -> DROPDOWN: <selected_option>"
+   - **CRITICAL**: This includes ALL dropdown types: standard HTML selects, React Select, Greenhouse dropdowns, Workday dropdowns, etc.
+   - **DO NOT mark dropdowns as NEEDS_HUMAN_INPUT just because they're "Greenhouse" or special types** - the agent can handle them automatically!
+   - Choose the best option from the available options list based on profile, OR provide the value directly if no options list
+   - Response format: "ID: <field_id> -> DROPDOWN: <selected_option>" OR "ID: <field_id> -> SIMPLE: <value>" (for type-ahead dropdowns)
+   - For dropdowns without pre-extracted options (field_category contains "greenhouse_dropdown", "workday_dropdown", etc.):
+     * Provide the VALUE from profile (e.g., "University of Maryland", "Master of Science", "College Park, MD")
+     * The agent will TYPE this value and select the matching option - you don't need to worry about exact option matching
+     * Use SIMPLE or DROPDOWN format - both work for these fields
    - CONFIDENT MAPPING FOR DEMOGRAPHICS (USE PROFILE DATA WHEN AVAILABLE):
      * GENDER: If profile has gender="Male" -> SELECT "Male", "M", "Man" (NEVER "Prefer not to say")
-     * RACE/ETHNICITY: Infer from nationality (e.g., Asian countries → "Asian", European → "White", etc.) (NEVER "Prefer not to say" when data exists)
-     * HISPANIC: Infer from nationality (e.g., non-Latin American countries → "No", "Non-Hispanic") (confident inference)
-     * DISABILITY: If not specified in profile -> ONLY THEN use "No" or "Prefer not to say"
-     * VETERAN: If not specified in profile -> ONLY THEN use "No" or "Prefer not to say"
+     * RACE/ETHNICITY: **ALWAYS INFER** from nationality when not explicitly provided:
+       - Indian → "Asian" or "South Asian"
+       - Chinese, Japanese, Korean, Vietnamese, Thai → "Asian" or "East Asian"
+       - Mexican, Colombian, Brazilian → "Hispanic or Latino" or "Latin American"
+       - British, German, French, Italian → "White" or "Caucasian"
+       - Nigerian, Kenyan, South African → "Black or African American" (if US form) or "African"
+       - Use nationality + name patterns to make educated inferences
+       - **ONLY use "Prefer not to say" if NO nationality/name data exists**
+     * HISPANIC/LATINO: **ALWAYS INFER** from nationality:
+       - Latin American countries (Mexico, Colombia, Brazil, Argentina, etc.) → "Yes" or "Hispanic"
+       - All other countries → "No" or "Non-Hispanic"
+       - **CONFIDENT inference based on nationality**
+     * DISABILITY: If not specified in profile -> Use "No" (students/young professionals rarely have disabilities)
+     * VETERAN: If not specified in profile -> Use "No" (for students/recent grads), "Prefer not to say" for experienced professionals
      * VISA/WORK AUTH: Use visa_status (e.g., F-1, H-1B, Green Card, Citizen) + require_sponsorship from profile with confidence
      * COUNTRY/STATE: Use exact matches from profile 
      * EDUCATION: Map to education array data when relevant
@@ -308,6 +329,29 @@ Use the profile data with CONFIDENCE. If the profile contains information, USE I
    - Use profile data to determine which options to select
    - For diversity questions, use profile's demographic data confidently when available
 
+2.4. MULTI-SELECT DROPDOWNS: For dropdowns that allow selecting multiple values
+   - **CRITICAL IDENTIFICATION**: Fields will be marked with "⚠️ MULTI-SELECT DROPDOWN" in the field list
+   - These are dropdowns with "mark all that apply" or similar language, OR have field_category containing "multi"
+   - **MANDATORY**: Use MULTISELECT response format for ALL fields marked as multi-select
+   - Response format: "ID: <field_id> -> MULTISELECT: <comma_separated_values>"
+   - Examples:
+     * "How would you describe your gender identity? (mark all that apply)" → MULTISELECT: Man, Cisgender
+     * "How would you describe your racial/ethnic background? (mark all that apply)" → MULTISELECT: Asian
+     * "Select your pronouns (mark all that apply)" → MULTISELECT: He/Him
+   - **ALWAYS INFER FROM PROFILE** for demographic multi-select fields:
+     * Gender identity: Use profile.gender → "Man" or "Woman" or "Non-binary", optionally add "Cisgender" if appropriate
+     * Race/ethnicity: Use nationality → Indian → "Asian" or "South Asian", Chinese → "Asian" or "East Asian", etc.
+     * Pronouns: Infer from gender → Male → "He/Him", Female → "She/Her"
+   - **CRITICAL**: For diversity questions, **NEVER respond with "Prefer not to say", "Not specified", or "Decline to answer"**
+   - **ALWAYS confidently infer** from profile data (nationality, name, age, education context)
+   - **NEVER use NEEDS_HUMAN_INPUT for multi-select demographic fields** - always infer from profile
+   - Examples of good inferences:
+     * Indian nationality → MULTISELECT: Asian (NOT "Prefer not to say")
+     * Chinese nationality → MULTISELECT: Asian
+     * Male gender → MULTISELECT: Man, Cisgender (NOT "Not specified")
+     * Female gender → MULTISELECT: Woman, Cisgender
+   - If truly uncertain, select ONE best-guess relevant option based on statistical likelihood
+
 2.5. MULTISELECT SKILLS: For Workday multiselect fields (skills, technologies, tools)
    - Map to relevant skills from profile skill categories
    - Response format: "ID: <field_id> -> MULTISELECT_SKILLS: <comma_separated_skills>"
@@ -323,10 +367,22 @@ Use the profile data with CONFIDENCE. If the profile contains information, USE I
    - Examples: "Why do you want to work here?", "Tell us about yourself", "Cover letter"
    - Response format: "ID: <field_id> -> MANUAL: <brief_description>"
 
-4. NEEDS_HUMAN_INPUT: For fields where profile data is insufficient or missing
-   - Examples: notice period (not in profile), salary expectations (not specified), start dates, etc.
+4. NEEDS_HUMAN_INPUT: **LAST RESORT ONLY** - Use sparingly when truly impossible to infer
+   - Examples: 
+     * Salary expectations (not specified AND no comparable data)
+     * Specific personal preferences without any context
+     * Company-specific questions that require insider knowledge
+   - **DO NOT USE** for:
+     * **Dropdowns (ANY TYPE)** - including Greenhouse, Workday, Lever, etc. - provide the value and agent will handle it!
+     * Demographic questions (ALWAYS infer from nationality/name/age/education)
+     * Yes/No questions (use logical defaults)
+     * Work location (infer from current location/city in profile)
+     * Start date/availability (infer: students → "Upon graduation", others → "Immediately" or "2 weeks notice")
+     * Notice period (infer: students → "Immediately", others → "2 weeks")
+     * Education fields (school, degree, major) - use profile.education array
+     * Location fields (city, state, country) - use profile location data
    - Response format: "ID: <field_id> -> NEEDS_HUMAN_INPUT: <reason>"
-   - Use this when you don't have the specific information needed
+   - **CRITICAL**: Exhaust all inference possibilities before using this
 
 CRITICAL RULES - CONFIDENCE-BASED APPROACH:
 - BE CONFIDENT with profile data: If profile contains information, USE IT DECISIVELY
@@ -338,10 +394,13 @@ CRITICAL RULES - CONFIDENCE-BASED APPROACH:
   * "Do you require visa sponsorship?" → Use require_sponsorship from profile
   * "Have you applied to this position before?" → Usually "No" unless specified
   * "Are you willing to relocate?" → Use willing_to_relocate from profile
-- For fields WITHOUT profile data:
-  * Notice period (not in profile) → NEEDS_HUMAN_INPUT
-  * Salary expectations (not specified) → NEEDS_HUMAN_INPUT
-  * Specific company questions without profile context → NEEDS_HUMAN_INPUT
+- For fields WITHOUT explicit profile data - **USE SMART INFERENCE**:
+  * Notice period → INFER: Students/recent grads → "Immediately" or "Upon graduation", Others → "2 weeks" or "Negotiable"
+  * Work location/Intended work location → INFER from current city/state in profile
+  * Start date/Availability → INFER: Students with future grad date → "Upon graduation (Month Year)", Others → "Immediately" or "2 weeks notice"
+  * Preferred name → Use first_name from profile
+  * Salary expectations (not specified) → ONLY THEN use NEEDS_HUMAN_INPUT
+  * Specific company questions requiring insider knowledge → ONLY THEN use NEEDS_HUMAN_INPUT
 - For fields WITH profile data or inferable data - USE WITH CONFIDENCE:
   * Gender: Use profile.gender value → SELECT matching option confidently
   * Race/Ethnicity: Infer from profile.nationality → SELECT appropriate race option confidently

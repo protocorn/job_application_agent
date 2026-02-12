@@ -33,6 +33,13 @@ from components.executors.cmp_consent import CmpConsent
 from components.brains.gemini_page_analyzer import GeminiPageAnalyzer
 from components.executors.iframe_helper import IframeHelper
 
+# Persistent browser manager
+sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
+from persistent_browser_manager import PersistentBrowserManager
+
+# Initialize logger first (before VNC import that uses it)
+logger = logging.getLogger(__name__)
+
 # VNC streaming support
 try:
     from components.vnc import BrowserVNCCoordinator
@@ -42,13 +49,11 @@ except ImportError:
     VNC_AVAILABLE = False
     BrowserVNCCoordinator = None
 
-
-logger = logging.getLogger(__name__)
-
 class RefactoredJobAgent:
     """The main class for the refactored job application agent."""
-    def __init__(self, playwright, headless: bool = True, keep_open: bool = False, debug: bool = False, hold_seconds: int = 0, slow_mo_ms: int = 0, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False, resume_path: str = None, job_url: str = None) -> None:
+    def __init__(self, playwright, headless: bool = True, keep_open: bool = False, debug: bool = False, hold_seconds: int = 0, slow_mo_ms: int = 0, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False, resume_path: str = None, job_url: str = None, use_persistent_profile: bool = True, mimikree_email: str = None, mimikree_password: str = None) -> None:
         self.playwright = playwright
+        self.use_persistent_profile = use_persistent_profile  # Use persistent browser profile
 
         # VNC mode setup (for cloud streaming)
         self.vnc_mode = vnc_mode and VNC_AVAILABLE
@@ -56,6 +61,8 @@ class RefactoredJobAgent:
         self.tailor_resume = tailor_resume
         self.resume_path = resume_path
         self.job_url = job_url  # Store job URL for VNC app mode
+        self.mimikree_email = mimikree_email
+        self.mimikree_password = mimikree_password
         self.vnc_coordinator = None
 
         if vnc_mode and not VNC_AVAILABLE:
@@ -78,7 +85,9 @@ class RefactoredJobAgent:
         self.user_id = user_id  # Store user_id for profile loading
         self.current_session = None
         self.page: Optional[Page] = None
+        self.main_page: Optional[Page] = None  # Store reference to main page (not popup)
         self.browser = None  # Store browser reference
+        self.browser_context = None  # Store the browser context for creating new tabs
         self.current_context: Optional[Union[Page, Frame]] = None
         self.state_machine: Optional[StateMachine] = None
         
@@ -140,10 +149,74 @@ class RefactoredJobAgent:
                 return page
         
         # STANDARD MODE: Regular Playwright browser
+        
+        # If browser_context already exists (subsequent job), reuse it and create new tab
+        if self.browser_context:
+            logger.info("♻️ Reusing existing browser context for new job")
+            print(f"[INFO] ♻️ Opening new tab for next job application...")
+            
+            # Clean up any popup windows before creating new tab
+            try:
+                await self._ensure_main_context()
+            except Exception as e:
+                logger.warning(f"Failed to clean up popups: {e}")
+            
+            # Create new tab in the existing context
+            num_existing_tabs = len(self.browser_context.pages)
+            page = await self.browser_context.new_page()
+            
+            # Update main page reference
+            self.main_page = page
+            
+            logger.info(f"✓ New tab created ({num_existing_tabs + 1} total tabs)")
+            print(f"[INFO] ✓ New tab ready (tab {num_existing_tabs + 1})")
+            return page
+        
+        # Use persistent profile if enabled (recommended for production)
+        if self.use_persistent_profile and self.user_id:
+            logger.info(f"🔒 Using persistent browser profile for user {self.user_id}")
+            print(f"[INFO] 🔒 Using persistent profile: browser_profiles/user_{self.user_id}/")
+            
+            # Initialize persistent browser manager
+            browser_manager = PersistentBrowserManager()
+            
+            # Launch persistent context (includes browser)
+            # Pass the existing playwright instance to avoid conflicts
+            context = await browser_manager.launch_persistent_browser(
+                user_id=self.user_id,
+                headless=self.headless,
+                playwright_instance=self.playwright  # Use existing playwright instance!
+            )
+            
+            # Store references
+            self.browser = context  # Context acts as browser in persistent mode
+            self.browser_context = context  # Store context for creating new tabs
+            
+            # Always create a new page (tab) for each job application
+            # This prevents interference between concurrent applications
+            num_existing_tabs = len(context.pages)
+            page = await context.new_page()
+            
+            # Store main page reference (not a popup)
+            self.main_page = page
+            
+            logger.info(f"✓ Persistent browser profile loaded successfully ({num_existing_tabs} existing tabs)")
+            print(f"[INFO] ✓ Persistent profile loaded - opened new tab ({num_existing_tabs + 1} total)")
+            return page
+        
+        # Fallback: Regular browser (non-persistent)
+        logger.info("Using regular (non-persistent) browser")
+        print("[WARN] ⚠️  Using regular browser (NOT persistent profile)")
+        print("[WARN]     Run 'Option 7: Browser Profile Setup' to enable persistent profiles")
         browser = await self.playwright.chromium.launch(headless=self.headless, slow_mo=self.slow_mo_ms)
         self.browser = browser
         context = await browser.new_context()
+        self.browser_context = context  # Store context for creating new tabs
         page = await context.new_page()
+        
+        # Store main page reference (not a popup)
+        self.main_page = page
+        
         # DO NOT set a global default timeout - it affects page loads!
         # Individual operations should specify their own timeouts
         # page.set_default_timeout(5000)  # REMOVED - was causing page load failures
@@ -279,6 +352,85 @@ class RefactoredJobAgent:
         
         # Note: State registration will happen after state machine is created
 
+    async def _ensure_main_context(self):
+        """
+        Ensure we're working in the main browser context, not a popup.
+        Closes any popup windows and returns to main page.
+        """
+        try:
+            if not self.browser_context:
+                logger.warning("No browser context available")
+                return
+            
+            # Get all pages in the context
+            all_pages = self.browser_context.pages
+            
+            # Close any popup windows
+            popups_closed = 0
+            for page in all_pages:
+                if page != self.main_page:
+                    try:
+                        is_popup = await self._is_popup_window(page)
+                        if is_popup:
+                            logger.info(f"🧹 Closing popup window: {page.url[:100]}")
+                            await page.close()
+                            popups_closed += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to check/close potential popup: {e}")
+            
+            if popups_closed > 0:
+                logger.info(f"✅ Closed {popups_closed} popup window(s)")
+            
+            # Return to main page if we're not already on it
+            if self.page != self.main_page and self.main_page:
+                logger.info(f"🔙 Returning to main page: {self.main_page.url[:100]}")
+                self.page = self.main_page
+                await self._update_components_for_new_page(self.main_page)
+                
+        except Exception as e:
+            logger.error(f"Failed to ensure main context: {e}")
+    
+    async def _is_popup_window(self, page: Page) -> bool:
+        """
+        Check if a page is a popup window (vs a regular tab).
+        Popup windows cannot have new tabs created in them.
+        """
+        try:
+            # Check if the window was opened by another window (has an opener)
+            has_opener = await page.evaluate("() => !!window.opener")
+            
+            # Get window features
+            window_info = await page.evaluate("""() => ({
+                width: window.outerWidth,
+                height: window.outerHeight,
+                screenX: window.screenX,
+                screenY: window.screenY,
+                hasMenubar: window.menubar?.visible ?? false,
+                hasToolbar: window.toolbar?.visible ?? false,
+                hasLocation: window.location?.href !== 'about:blank'
+            })""")
+            
+            # Heuristics for popup detection:
+            # 1. Has an opener (opened by another window)
+            # 2. Smaller than typical browser window (< 1000px wide or < 600px tall)
+            # 3. Missing menubar/toolbar
+            is_small = window_info['width'] < 1000 or window_info['height'] < 600
+            missing_chrome = not window_info['hasMenubar'] and not window_info['hasToolbar']
+            
+            is_popup = has_opener or (is_small and missing_chrome)
+            
+            if is_popup:
+                logger.info(f"🪟 Detected popup window: {page.url[:100]} (size: {window_info['width']}x{window_info['height']}, opener: {has_opener})")
+            else:
+                logger.info(f"🗂️ Detected regular tab: {page.url[:100]}")
+            
+            return is_popup
+            
+        except Exception as e:
+            logger.warning(f"Failed to detect popup window: {e}")
+            # If we can't determine, assume it's a regular tab to be safe
+            return False
+    
     async def _update_components_for_new_page(self, new_page: Page):
         """Update all components to work with a new page context after tab switching."""
         logger.info(f"🔄 Updating all components for new page: {new_page.url}")
@@ -408,7 +560,13 @@ class RefactoredJobAgent:
                     self._log_to_jobs("info", f"🖥️ Browser ready for review at VNC port {self.vnc_port}")
                     # Browser stays open - don't close!
                     
-                # STANDARD MODE: Close browser as usual
+                # PERSISTENT PROFILE MODE: Only close the tab, keep browser open
+                elif self.use_persistent_profile and self.page and not self.page.is_closed():
+                    await self.page.close()  # Close only this tab
+                    self._log_to_jobs("info", "🔒 Tab closed (browser kept open for reuse)")
+                    logger.info("✓ Tab closed, persistent browser remains open for reuse")
+                    
+                # STANDARD MODE: Close entire browser
                 elif self.page and not self.page.is_closed():
                     await self.page.context.browser.close()
                     self._log_to_jobs("info", "🔒 Browser session closed")
@@ -442,80 +600,181 @@ class RefactoredJobAgent:
             profile['job_context'] = job_context
             logger.info(f"📋 Extracted job context: {job_context.get('company', 'Unknown')} - {job_context.get('title', 'Unknown')}")
             
-            # --- RESUME TAILORING ---
-            if self.tailor_resume and job_context.get('description'):
-                logger.info("✨ Resume tailoring is ENABLED. Starting tailoring process...")
+            # --- RESUME TAILORING (STRICT FLOW WHEN ENABLED) ---
+            if self.tailor_resume:
+                logger.info("🧵 [Resume Tailoring] ENABLED - tailoring starts before application flow")
+                print("[INFO] 🧵 Resume tailoring is enabled. Tailoring resume before application starts...")
                 try:
-                    # Get Google Doc URL from profile
+                    # Step 0: Enforce Mimikree connection before tailoring
+                    mimikree_email = None
+                    mimikree_password = None
+                    if self.mimikree_email and self.mimikree_password:
+                        mimikree_email = self.mimikree_email
+                        mimikree_password = self.mimikree_password
+                        logger.info(f"🧵 [Resume Tailoring] Using provided Mimikree credentials ({mimikree_email})")
+                    elif self.user_id:
+                        try:
+                            from server.mimikree_service import mimikree_service
+                            connection_test = mimikree_service.test_user_connection(self.user_id)
+                            if not connection_test.get('success'):
+                                error_msg = connection_test.get('error', 'Mimikree is not connected.')
+                                logger.error(f"❌ [Resume Tailoring] {error_msg}")
+                                print(f"[ERROR] ❌ Resume tailoring requires Mimikree connection: {error_msg}")
+                                state.update_context({
+                                    'tailoring_failed': True,
+                                    'tailoring_failure_reason': f'Mimikree not connected: {error_msg}'
+                                })
+                                return 'fail'
+
+                            mimikree_credentials = mimikree_service.get_user_mimikree_credentials(self.user_id)
+                            if not mimikree_credentials:
+                                logger.error("❌ [Resume Tailoring] Mimikree credentials unavailable")
+                                print("[ERROR] ❌ Resume tailoring requires Mimikree credentials. Please reconnect Mimikree.")
+                                state.update_context({
+                                    'tailoring_failed': True,
+                                    'tailoring_failure_reason': 'Mimikree credentials unavailable.'
+                                })
+                                return 'fail'
+
+                            mimikree_email, mimikree_password = mimikree_credentials
+                            logger.info(f"🧵 [Resume Tailoring] Mimikree connected ({mimikree_email})")
+                        except Exception as mimikree_err:
+                            logger.error(f"❌ [Resume Tailoring] Failed to validate Mimikree connection: {mimikree_err}", exc_info=True)
+                            print(f"[ERROR] ❌ Resume tailoring requires Mimikree connection: {mimikree_err}")
+                            state.update_context({
+                                'tailoring_failed': True,
+                                'tailoring_failure_reason': f'Failed to validate Mimikree connection: {mimikree_err}'
+                            })
+                            return 'fail'
+                    else:
+                        logger.error("❌ [Resume Tailoring] Missing user_id for Mimikree validation")
+                        print("[ERROR] ❌ Resume tailoring requires a valid user session.")
+                        state.update_context({
+                            'tailoring_failed': True,
+                            'tailoring_failure_reason': 'Missing user session for Mimikree validation.'
+                        })
+                        return 'fail'
+
+                    # Step 1: Resolve source resume URL
                     resume_url = profile.get('resume_url')
                     if not resume_url and 'docs.google.com' in profile.get('resume_path', ''):
-                         # In case resume_path is actually the URL (sometimes happens in fallback)
-                         resume_url = profile.get('resume_path')
-                    
-                    if resume_url and 'docs.google.com' in resume_url:
-                        logger.info(f"📄 Tailoring resume from: {resume_url}")
-                        
-                        # Import here to avoid circular dependencies or startup costs
-                        try:
-                            from Agents.resume_tailoring_agent import tailor_resume_and_return_url
-                            
-                            # Run tailoring in a thread to avoid blocking the event loop
-                            # Use asyncio.to_thread for blocking operations
-                            logger.info("⏳ Running systematic tailoring (this may take 30-60 seconds)...")
-                            tailoring_metrics = await asyncio.to_thread(
-                                tailor_resume_and_return_url,
-                                resume_url,
-                                job_context.get('description'),
-                                job_context.get('title', 'Job'),
-                                job_context.get('company', 'Company')
-                            )
-                            
-                            if tailoring_metrics and tailoring_metrics.get('pdf_path'):
-                                new_pdf_path = tailoring_metrics['pdf_path']
-                                logger.info(f"✅ Resume tailored successfully! New PDF: {new_pdf_path}")
-                                
-                                # Make it accessible for manual upload if needed
-                                try:
-                                    import shutil
-                                    # Create a convenient folder on Desktop if it exists, otherwise standard temp
-                                    user_home = os.path.expanduser("~")
-                                    desktop_path = os.path.join(user_home, "Desktop")
-                                    
-                                    # Fallback to temp if Desktop doesn't exist (e.g. headless server)
-                                    target_dir = os.path.join(desktop_path, "Current_Job_Resume") if os.path.exists(desktop_path) else os.path.join(user_home, "Downloads", "Current_Job_Resume")
-                                    os.makedirs(target_dir, exist_ok=True)
-                                    
-                                    # Create a user-friendly filename
-                                    safe_company = "".join([c for c in job_context.get('company', 'Company') if c.isalnum() or c in (' ', '_', '-')]).strip()
-                                    dest_filename = f"Resume_for_{safe_company}.pdf"
-                                    dest_path = os.path.join(target_dir, dest_filename)
-                                    
-                                    shutil.copy2(new_pdf_path, dest_path)
-                                    logger.info(f"📂 Copied tailored resume to accessible location: {dest_path}")
-                                    
-                                    # Track both for cleanup
-                                    self.created_files.append(new_pdf_path)
-                                    self.created_files.append(dest_path)
-                                    
-                                    # Update profile to use the ACCESSIBLE path for upload interactions
-                                    profile['resume_path'] = dest_path
-                                except Exception as copy_error:
-                                    logger.warning(f"Failed to copy resume to user folder: {copy_error}")
-                                    # Fallback to original temp path
-                                    profile['resume_path'] = new_pdf_path
-                                    self.created_files.append(new_pdf_path)
+                        # In case resume_path is actually the URL
+                        resume_url = profile.get('resume_path')
 
-                                profile['tailoring_metrics'] = tailoring_metrics
-                            else:
-                                logger.error("❌ Tailoring failed to produce a PDF path")
-                        except ImportError:
-                            logger.error("❌ Could not import resume_tailoring_agent. Is it in the python path?")
+                    if not resume_url or 'docs.google.com' not in resume_url:
+                        logger.error("❌ [Resume Tailoring] Missing valid Google Docs resume URL in profile")
+                        print("[ERROR] ❌ Resume tailoring failed: Missing valid Google Docs resume URL in profile.")
+                        state.update_context({
+                            'tailoring_failed': True,
+                            'tailoring_failure_reason': 'Missing valid Google Docs resume URL in profile.'
+                        })
+                        return 'fail'
+
+                    logger.info(f"🧵 [Resume Tailoring] Source resume: {resume_url}")
+
+                    # Step 2: Resolve tailoring text. Prefer extracted JD description, fallback to visible page text.
+                    tailoring_text = job_context.get('description')
+                    if not tailoring_text:
+                        try:
+                            fallback_text = await self.page.inner_text("body")
+                            fallback_text = (fallback_text or "").strip()
+                            if len(fallback_text) >= 300:
+                                tailoring_text = fallback_text[:12000]
+                                logger.info("🧵 [Resume Tailoring] Using page body text fallback for tailoring context")
+                        except Exception as fallback_err:
+                            logger.warning(f"⚠️ [Resume Tailoring] Could not extract fallback page text: {fallback_err}")
+
+                    if not tailoring_text:
+                        logger.error("❌ [Resume Tailoring] No usable job description/context found for tailoring")
+                        print("[ERROR] ❌ Resume tailoring failed: No usable job description/context found.")
+                        state.update_context({
+                            'tailoring_failed': True,
+                            'tailoring_failure_reason': 'No usable job description/context found for tailoring.'
+                        })
+                        return 'fail'
+
+                    # Step 3: Run tailoring
+                    from Agents.resume_tailoring_agent import tailor_resume_and_return_url
+                    logger.info("🧵 [Resume Tailoring] Tailoring in progress (this may take 30-90 seconds)...")
+                    print("[INFO] ⏳ Resume tailoring in progress (this may take 30-90 seconds)...")
+                    tailoring_metrics = await asyncio.to_thread(
+                        tailor_resume_and_return_url,
+                        resume_url,
+                        tailoring_text,
+                        job_context.get('title', 'Job'),
+                        job_context.get('company', 'Company'),
+                        mimikree_email=mimikree_email,
+                        mimikree_password=mimikree_password
+                    )
+
+                    if not tailoring_metrics:
+                        logger.error("❌ [Resume Tailoring] Tailoring returned no result")
+                        print("[ERROR] ❌ Resume tailoring failed: Tailoring returned no result.")
+                        state.update_context({
+                            'tailoring_failed': True,
+                            'tailoring_failure_reason': 'Tailoring returned no result.'
+                        })
+                        return 'fail'
+
+                    # Step 4: Persist and expose tailored resume path
+                    profile['tailoring_metrics'] = tailoring_metrics
+                    new_pdf_path = tailoring_metrics.get('pdf_path')
+                    if new_pdf_path:
+                        logger.info(f"✅ [Resume Tailoring] Tailored resume ready: {new_pdf_path}")
+                        print(f"[OK] ✅ Resume tailored and ready for download: {new_pdf_path}")
                     else:
-                        logger.warning("⚠️ Cannot tailor resume: No Google Docs URL found in profile")
-                        
+                        logger.warning("⚠️ [Resume Tailoring] Tailoring finished but no PDF path was returned")
+                        print("[WARN] ⚠️ Resume tailoring completed but no local PDF path was returned.")
+
+                    try:
+                        import shutil
+                        user_home = os.path.expanduser("~")
+                        desktop_path = os.path.join(user_home, "Desktop")
+                        target_dir = (
+                            os.path.join(desktop_path, "Current_Job_Resume")
+                            if os.path.exists(desktop_path)
+                            else os.path.join(user_home, "Downloads", "Current_Job_Resume")
+                        )
+                        os.makedirs(target_dir, exist_ok=True)
+
+                        safe_company = "".join(
+                            [c if c.isalnum() or c == '_' else '_' for c in job_context.get('company', 'Company')]
+                        ).strip('_')
+                        dest_filename = f"Resume_{safe_company}.pdf"
+                        dest_path = os.path.join(target_dir, dest_filename)
+
+                        if new_pdf_path and os.path.exists(new_pdf_path):
+                            shutil.copy2(new_pdf_path, dest_path)
+                            logger.info(f"📂 [Resume Tailoring] Download-ready copy created: {dest_path}")
+                            self.created_files.append(new_pdf_path)
+                            self.created_files.append(dest_path)
+                            profile['resume_path'] = dest_path
+                            profile['tailored_resume_ready'] = True
+                            profile['tailored_resume_download_path'] = dest_path
+                        elif new_pdf_path:
+                            # Keep path even if file check races
+                            profile['resume_path'] = new_pdf_path
+                            profile['tailored_resume_ready'] = True
+                            profile['tailored_resume_download_path'] = new_pdf_path
+                    except Exception as copy_error:
+                        logger.warning(f"⚠️ [Resume Tailoring] Could not create download-ready copy: {copy_error}")
+                        if new_pdf_path:
+                            profile['resume_path'] = new_pdf_path
+                            profile['tailored_resume_ready'] = True
+                            profile['tailored_resume_download_path'] = new_pdf_path
+
+                    logger.info("🚀 [Application] Resume tailoring complete. Starting job application flow...")
+                    print("[INFO] 🚀 Resume tailoring complete. Starting job application flow...")
+
                 except Exception as e:
-                    logger.error(f"❌ Error during resume tailoring: {e}", exc_info=True)
-            # ------------------------
+                    logger.error(f"❌ [Resume Tailoring] Error during tailoring: {e}", exc_info=True)
+                    print(f"[ERROR] ❌ Resume tailoring failed: {e}")
+                    state.update_context({
+                        'tailoring_failed': True,
+                        'tailoring_failure_reason': str(e)
+                    })
+                    return 'fail'
+            # ---------------------------------------------------
 
         state.update_context({'url': self.page.url, 'profile': profile})
         return 'ai_guided_navigation'
@@ -987,12 +1246,10 @@ Return ONLY a JSON object:
             submit_button = await self.submit_detector.detect()
             
             if next_button:
-                await next_button.click()
-                logger.info("✅ Clicked Next button")
-                # Record next button click
-                if self.action_recorder:
-                    selector = await self._get_element_selector(next_button)
-                    self.action_recorder.record_click(selector, "Next button", success=True)
+                # Use robust ClickExecutor for Greenhouse and other ATS buttons
+                success = await self.click_executor.execute(next_button, "Next button")
+                if success:
+                    logger.info("✅ Clicked Next button")
                 await self.page.wait_for_load_state("domcontentloaded", timeout=10000)
                 # Record navigation after next button
                 if self.action_recorder:
@@ -1001,12 +1258,10 @@ Return ONLY a JSON object:
                 return 'ai_guided_navigation'  # Re-analyze after navigation
 
             elif submit_button:
-                await submit_button.click()
-                logger.info("✅ Clicked Submit button")
-                # Record submit button click
-                if self.action_recorder:
-                    selector = await self._get_element_selector(submit_button)
-                    self.action_recorder.record_click(selector, "Submit button", success=True)
+                # Use robust ClickExecutor for Greenhouse and other ATS submit buttons
+                success = await self.click_executor.execute(submit_button, "Submit button")
+                if success:
+                    logger.info("✅ Clicked Submit button")
                 await self.page.wait_for_load_state("domcontentloaded", timeout=10000)
                 # Record navigation after submit
                 if self.action_recorder:
@@ -1169,8 +1424,8 @@ Return ONLY a JSON object:
                 resume_path = profile.get('resume_path')
                 if resume_path:
                     logger.info("🎯 No manual option found - attempting direct resume upload...")
-                    from components.executors.field_interactor import FieldInteractor
-                    interactor = FieldInteractor(self.page, self.action_recorder)
+                    from components.executors.field_interactor_v2 import FieldInteractorV2
+                    interactor = FieldInteractorV2(self.page, self.action_recorder)
                     if await interactor.upload_resume_if_present(resume_path):
                         logger.info("✅ Resume uploaded directly (avoiding autofill)")
                         await self.page.wait_for_timeout(2000)  # Wait for processing
@@ -1213,8 +1468,8 @@ Return ONLY a JSON object:
                 if autofill_found:
                     logger.info("🎯 Skipping autofill button - uploading resume manually")
                     if resume_path:
-                        from components.executors.field_interactor import FieldInteractor
-                        interactor = FieldInteractor(self.page, self.action_recorder)
+                        from components.executors.field_interactor_v2 import FieldInteractorV2
+                        interactor = FieldInteractorV2(self.page, self.action_recorder)
                         if await interactor.upload_resume_if_present(resume_path):
                             logger.info("✅ Resume uploaded manually (autofill button ignored)")
                         
@@ -1239,8 +1494,8 @@ Return ONLY a JSON object:
                 resume_path = profile.get('resume_path')
                 if resume_path:
                     logger.info("🎯 Attempting direct resume upload...")
-                    from components.executors.field_interactor import FieldInteractor
-                    interactor = FieldInteractor(self.page, self.action_recorder)
+                    from components.executors.field_interactor_v2 import FieldInteractorV2
+                    interactor = FieldInteractorV2(self.page, self.action_recorder)
                     if await interactor.upload_resume_if_present(resume_path):
                         logger.info("✅ Resume uploaded directly")
                         await self.page.wait_for_timeout(2000)  # Wait for processing
@@ -1277,9 +1532,11 @@ Return ONLY a JSON object:
                 # Fallback to generic next button
                 next_button = await self.next_button_detector.detect()
                 if next_button:
-                    await next_button.click()
-                    await self.page.wait_for_load_state("domcontentloaded", timeout=10000)
-                    return 'ai_guided_navigation'
+                    # Use robust ClickExecutor
+                    success = await self.click_executor.execute(next_button, "Next button (fallback)")
+                    if success:
+                        await self.page.wait_for_load_state("domcontentloaded", timeout=10000)
+                        return 'ai_guided_navigation'
             
             # If no specific action found, ask for human help
             state.context['human_intervention_reason'] = f"AI suggests navigation but unclear how to proceed: {reason}"
@@ -1591,15 +1848,34 @@ Return ONLY a JSON object:
             await self.page.wait_for_timeout(2000)
             
             # CRITICAL: Check for new tabs first - this is a consequence of the click action
-            logger.info("🔍 Checking for new tabs opened by Apply button click...")
+            logger.info("🔍 Checking for new tabs/windows opened by Apply button click...")
             new_page = await self.nav_validator.detect_new_tab()
             if new_page:
-                logger.info(f"🆕 Apply button opened new tab. Switching to: {new_page.url}")
-                # Switch to the new tab and update our working context
-                self.page = new_page
-                # Update all components to use the new page
-                await self._update_components_for_new_page(new_page)
-                logger.info("✅ Successfully switched to new tab for form filling")
+                # Check if this is a popup window or a regular tab
+                is_popup = await self._is_popup_window(new_page)
+                
+                if is_popup:
+                    logger.info(f"🪟 Popup window detected: {new_page.url[:100]}")
+                    logger.info("   → Will handle popup but keep main tab as working context")
+                    # Don't switch to popup as main working page
+                    # The popup will be detected and handled by popup_detector below
+                    # Close the popup after a brief moment (it might be loading content)
+                    try:
+                        await new_page.wait_for_load_state("domcontentloaded", timeout=5000)
+                        await new_page.wait_for_timeout(1000)
+                        logger.info("   → Closing popup window to prevent interference")
+                        await new_page.close()
+                    except Exception as e:
+                        logger.warning(f"Failed to close popup: {e}")
+                else:
+                    logger.info(f"🗂️ Regular tab detected. Switching to: {new_page.url}")
+                    # Update main_page to the new tab (not a popup)
+                    self.main_page = new_page
+                    # Switch to the new tab and update our working context
+                    self.page = new_page
+                    # Update all components to use the new page
+                    await self._update_components_for_new_page(new_page)
+                    logger.info("✅ Successfully switched to new tab for form filling")
             
             # Check for popups that might have appeared after clicking Apply
             logger.info("🔍 Checking for popups after Apply button click...")
@@ -2751,8 +3027,15 @@ IMPORTANT:
         return None
 
     async def _state_fail(self, state: ApplicationState) -> Optional[str]:
-        logger.warning("❌ Application process failed.")
-        self._update_job_and_session_status('failed', "❌ Job application failed - unable to complete the process")
+        failure_reason = state.context.get('tailoring_failure_reason')
+        if failure_reason:
+            logger.warning(f"❌ Application process failed. Reason: {failure_reason}")
+            print(f"[ERROR] ❌ Application process failed: {failure_reason}")
+            self._update_job_and_session_status('failed', f"❌ Job application failed: {failure_reason}")
+        else:
+            logger.warning("❌ Application process failed.")
+            print("[ERROR] ❌ Application process failed.")
+            self._update_job_and_session_status('failed', "❌ Job application failed - unable to complete the process")
         return None
 
 # Load profile data from PostgreSQL database OR JSON file (based on env settings)
@@ -2910,6 +3193,24 @@ def _load_profile_data(user_id=None):
         logger.warning("🔄 Using fallback profile data...")
         return fallback_profile
 
+# Global playwright instance for persistent browser reuse
+_global_playwright_instance = None
+_global_playwright_lock = None
+
+async def _get_or_create_playwright():
+    """Get or create global playwright instance for browser reuse"""
+    global _global_playwright_instance, _global_playwright_lock
+    
+    # Initialize lock if needed
+    if _global_playwright_lock is None:
+        _global_playwright_lock = asyncio.Lock()
+    
+    async with _global_playwright_lock:
+        if _global_playwright_instance is None:
+            _global_playwright_instance = await async_playwright().start()
+            logger.info("🎭 Created global Playwright instance for browser reuse")
+        return _global_playwright_instance
+
 async def run_links_with_refactored_agent(links: list[str], headless: bool, keep_open: bool, debug: bool, hold_seconds: int, slow_mo_ms: int, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False, resume_path: str = None):
     """
     Run job application agent with optional VNC streaming
@@ -2923,7 +3224,15 @@ async def run_links_with_refactored_agent(links: list[str], headless: bool, keep
     Returns:
         Dict with VNC session info if vnc_mode=True, otherwise None
     """
-    p = await async_playwright().start()
+    # Use persistent profile - reuse playwright instance
+    using_persistent = user_id is not None
+    if using_persistent:
+        p = await _get_or_create_playwright()
+        logger.info("♻️  Reusing global Playwright instance")
+    else:
+        p = await async_playwright().start()
+        logger.info("🎭 Created new Playwright instance")
+    
     vnc_session_info = None
 
     # Log resume tailoring preference
@@ -3017,6 +3326,13 @@ async def run_links_with_refactored_agent(links: list[str], headless: bool, keep
                 except Exception as e:
                     logger.warning(f"Failed to cleanup file {file_path}: {e}")
 
+        # PERSISTENT PROFILE MODE: Don't stop playwright (keeps browser alive)
+        if using_persistent:
+            logger.info("♻️  Job complete - persistent browser remains open for next application")
+            # Don't stop the global playwright instance - this would close the persistent browser!
+            return None
+        
+        # REGULAR MODE: Stop playwright (only if we created a new one, not the global one)
         if not should_keep_open:
             await p.stop()
         else:

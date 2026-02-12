@@ -215,8 +215,8 @@ class StateMachine:
 
             # Collect unfilled fields and buttons
             try:
-                from components.executors.field_interactor import FieldInteractor
-                interactor = FieldInteractor(self.page)
+                from components.executors.field_interactor_v2 import FieldInteractorV2
+                interactor = FieldInteractorV2(self.page)
                 all_fields = await interactor.get_all_form_fields(extract_options=False)
 
                 # Get visible buttons

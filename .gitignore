@@ -418,6 +418,11 @@ terraform.rc
 # Playwright browsers
 .playwright/
 
+# Browser profiles (CRITICAL - Contains cookies, sessions, personal data)
+browser_profiles/
+browser_profiles/*/
+*.profile
+
 # Test job descriptions (if they contain real company data)
 # test_job_descriptions/
 

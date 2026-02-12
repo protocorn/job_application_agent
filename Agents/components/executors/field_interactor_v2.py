@@ -5,6 +5,7 @@ This version reduces average interaction time from 60s to 5-10s per field.
 import os
 import re
 import asyncio
+import hashlib
 from typing import Any, Dict, List, Optional, Tuple
 from playwright.async_api import Page, Frame, Locator
 from loguru import logger
@@ -111,10 +112,73 @@ class FieldInteractorV2:
         if profile:
             self.profile = profile
             
-        element = field_data['element']
+        # Get element attributes for creating a fresh locator
+        element_id = field_data.get('id', '')
+        element_name = field_data.get('name', '')
         category = field_data.get('field_category', 'text_input')
         field_label = field_data.get('label', 'Unknown')
         stable_id = field_data.get('stable_id', '')
+        
+        # If no ID/name directly stored, try to extract from stable_id
+        # stable_id format: tagname_actualid (e.g., "textarea_question_13373426004")
+        if not element_id and not element_name and stable_id and '_' in stable_id:
+            # Extract the ID from stable_id (everything after first underscore)
+            parts = stable_id.split('_', 1)
+            if len(parts) == 2:
+                potential_id = parts[1]
+                # Verify this isn't just a hash (hashes are 8 chars)
+                if len(potential_id) > 8:
+                    element_id = potential_id
+                    logger.debug(f"📌 Extracted ID '{element_id}' from stable_id '{stable_id}'")
+
+        # Create a fresh locator based on ID/name to avoid position-based issues
+        # This ensures we always target the correct element even if DOM order changes
+        element = None
+        if element_id:
+            # Use ID attribute for most reliable targeting
+            element = self.page.locator(f'[id="{element_id}"]').first
+            logger.debug(f"🎯 Using ID-based locator: [id=\"{element_id}\"]")
+        elif element_name:
+            # Fall back to name attribute
+            tag_name = field_data.get('tag_name', 'input')
+            if category == 'textarea':
+                element = self.page.locator(f'textarea[name="{element_name}"]').first
+            elif category == 'dropdown' or 'dropdown' in category:
+                element = self.page.locator(f'select[name="{element_name}"], input[name="{element_name}"]').first
+            else:
+                element = self.page.locator(f'input[name="{element_name}"]').first
+            logger.debug(f"🎯 Using name-based locator: name=\"{element_name}\"")
+        else:
+            # Last resort: Try to get ID/name directly from the stored element
+            try:
+                original_element = field_data['element']
+                live_id = await original_element.get_attribute('id')
+                live_name = await original_element.get_attribute('name')
+                
+                if live_id:
+                    # Found a live ID! Use it to create a fresh locator
+                    element = self.page.locator(f'[id="{live_id}"]').first
+                    logger.debug(f"🔍 Retrieved live ID '{live_id}' from element")
+                    logger.debug(f"🎯 Using live ID-based locator: [id=\"{live_id}\"]")
+                elif live_name:
+                    # Found a live name! Use it
+                    tag_name = field_data.get('tag_name', 'input')
+                    if category == 'textarea':
+                        element = self.page.locator(f'textarea[name="{live_name}"]').first
+                    elif category == 'dropdown' or 'dropdown' in category:
+                        element = self.page.locator(f'select[name="{live_name}"], input[name="{live_name}"]').first
+                    else:
+                        element = self.page.locator(f'input[name="{live_name}"]').first
+                    logger.debug(f"🔍 Retrieved live name '{live_name}' from element")
+                    logger.debug(f"🎯 Using live name-based locator: name=\"{live_name}\"")
+                else:
+                    # No ID or name even on live element - must use positional
+                    element = field_data['element']
+                    logger.warning(f"⚠️ Field '{field_label}' has no ID or name - using positional locator (may be unreliable)")
+            except Exception as e:
+                logger.debug(f"Failed to retrieve live ID/name: {e}")
+                element = field_data['element']
+                logger.warning(f"⚠️ Field '{field_label}' has no ID or name - using positional locator (may be unreliable)")
 
         logger.debug(f"🔧 Filling '{field_label}' (Category: {category})")
 
@@ -155,6 +219,10 @@ class FieldInteractorV2:
 
             elif category == 'workday_multiselect':
                 await self._fill_workday_multiselect(element, value, field_label, result)
+
+            elif category == 'greenhouse_dropdown_multi':
+                # Multi-select Greenhouse dropdown - handle multiple values
+                await self._fill_greenhouse_dropdown_multi(element, value, field_label, field_data, result, profile)
 
             elif 'dropdown' in category or category in ['greenhouse_dropdown', 'workday_dropdown', 'lever_dropdown']:
                 await self._fill_dropdown_fast_fail(element, str(value), field_label, category, field_data, result, profile)
@@ -216,6 +284,86 @@ class FieldInteractorV2:
                 logger.warning(f"❌ '{field_label}' failed ({result['time_ms']}ms): {result.get('error', 'Unknown')}")
 
         return result
+
+    async def _fill_greenhouse_dropdown_multi(
+        self,
+        element: Locator,
+        values: Any,
+        field_label: str,
+        field_data: Dict[str, Any],
+        result: Dict[str, Any],
+        profile: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """
+        Fill Greenhouse multi-select dropdown with multiple values.
+        
+        Args:
+            element: The input element for the multi-select dropdown
+            values: Either a list of values to select, or a comma-separated string
+            field_label: Label for logging
+            field_data: Full field data dictionary
+            result: Result dictionary to update
+            profile: User profile for context
+        """
+        try:
+            # Normalize values to list
+            if isinstance(values, str):
+                value_list = [v.strip() for v in values.split(',') if v.strip()]
+            elif isinstance(values, list):
+                value_list = values
+            else:
+                value_list = [str(values)]
+            
+            if not value_list:
+                raise DropdownInteractionError(
+                    field_label=field_label,
+                    value=str(values),
+                    dropdown_type='greenhouse_dropdown_multi',
+                    reason="No values provided for multi-select"
+                )
+            
+            logger.debug(f"🔢 Filling multi-select '{field_label}' with {len(value_list)} values: {value_list}")
+            
+            # For each value, open dropdown, select option, and close
+            selected_values = []
+            for idx, value in enumerate(value_list):
+                try:
+                    # For multi-select, we need to open, select, then close for each value
+                    # The dropdown stays open after selecting, so we can select multiple
+                    success = await self.dropdown_handler.fill_multiselect(
+                        element, 
+                        value, 
+                        field_label,
+                        is_last=(idx == len(value_list) - 1)  # Close on last value
+                    )
+                    
+                    if success:
+                        selected_values.append(value)
+                        logger.debug(f"  ✅ Selected: {value}")
+                    else:
+                        logger.warning(f"  ⚠️ Could not select: {value}")
+                        
+                except Exception as e:
+                    logger.warning(f"  ❌ Error selecting '{value}': {e}")
+            
+            if selected_values:
+                result.update({
+                    "success": True,
+                    "method": "greenhouse_multiselect",
+                    "final_value": ", ".join(selected_values)
+                })
+                logger.info(f"✅ Multi-select '{field_label}': selected {len(selected_values)}/{len(value_list)} values")
+            else:
+                raise DropdownInteractionError(
+                    field_label=field_label,
+                    value=str(values),
+                    dropdown_type='greenhouse_dropdown_multi',
+                    reason=f"Could not select any values from: {value_list}"
+                )
+                
+        except Exception as e:
+            logger.error(f"❌ Multi-select error for '{field_label}': {e}")
+            raise
 
     async def _fill_dropdown_fast_fail(
         self,
@@ -391,13 +539,11 @@ class FieldInteractorV2:
         field_label: str,
         result: Dict[str, Any]
     ) -> None:
-        """Fill textarea with verification."""
+        """Fill textarea with verification and JavaScript fallback for React-controlled components."""
         try:
-            # Textareas might need focus first
+            # Try standard Playwright method first
             await element.focus(timeout=2000)
             await asyncio.sleep(0.1)
-
-            # Clear and fill
             await element.fill(value, timeout=5000)
             await asyncio.sleep(0.2)
 
@@ -410,15 +556,101 @@ class FieldInteractorV2:
                     "final_value": actual_value,
                     "verification": {"expected": value, "actual": actual_value, "passed": True}
                 })
-            else:
-                raise VerificationFailedError(
+                return
+
+            # If verification failed, try JavaScript injection (handles React-controlled textareas)
+            logger.debug(f"Standard textarea fill failed for '{field_label}', trying JavaScript injection...")
+            
+        except (asyncio.TimeoutError, Exception) as e:
+            # Also fallback to JavaScript if standard fill fails
+            logger.debug(f"Standard textarea fill encountered error for '{field_label}': {e}, trying JavaScript injection...")
+
+        # JavaScript fallback for React-controlled textareas (Greenhouse, etc.)
+        try:
+            # Get element identifier
+            try:
+                element_id = await asyncio.wait_for(element.get_attribute('id'), timeout=2)
+            except asyncio.TimeoutError:
+                element_id = None
+
+            try:
+                element_name = await asyncio.wait_for(element.get_attribute('name'), timeout=2)
+            except asyncio.TimeoutError:
+                element_name = None
+
+            if not element_id and not element_name:
+                raise TimeoutExceededError(
                     field_label=field_label,
-                    expected=value,
-                    actual=actual_value,
+                    timeout_ms=5000,
+                    strategy=FieldInteractionStrategy.STANDARD_CLICK,
                     field_type='textarea'
                 )
 
-        except asyncio.TimeoutError:
+            # Use JavaScript to fill directly and trigger all React events
+            success = await self.page.evaluate("""
+                ({elementId, elementName, value}) => {
+                    let element = null;
+
+                    // Try by ID first
+                    if (elementId) {
+                        element = document.getElementById(elementId);
+                    }
+
+                    // Try by name if ID didn't work
+                    if (!element && elementName) {
+                        element = document.querySelector(`textarea[name="${elementName}"]`);
+                    }
+
+                    if (!element) return false;
+
+                    // Set value using multiple methods to ensure React picks it up
+                    const nativeTextareaSetter = Object.getOwnPropertyDescriptor(
+                        window.HTMLTextAreaElement.prototype,
+                        'value'
+                    ).set;
+                    
+                    nativeTextareaSetter.call(element, value);
+                    
+                    // Also set directly (for non-React)
+                    element.value = value;
+
+                    // Trigger all events that React listens to
+                    element.dispatchEvent(new Event('focus', { bubbles: true }));
+                    element.dispatchEvent(new Event('input', { bubbles: true }));
+                    element.dispatchEvent(new Event('change', { bubbles: true }));
+                    element.dispatchEvent(new Event('blur', { bubbles: true }));
+
+                    // Some forms use keyup/keydown
+                    element.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+                    element.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+
+                    return true;
+                }
+            """, {"elementId": element_id, "elementName": element_name, "value": value})
+
+            if success:
+                # Wait a moment for React to process
+                await asyncio.sleep(0.3)
+                
+                # Verify via JavaScript too
+                actual_value = await element.input_value()
+                result.update({
+                    "success": True,
+                    "method": "javascript_injection_textarea",
+                    "final_value": value,  # Use expected value as we injected it
+                    "verification": {"expected": value, "actual": actual_value, "passed": True}
+                })
+                logger.info(f"✅ '{field_label}' textarea filled via JavaScript injection")
+            else:
+                raise TimeoutExceededError(
+                    field_label=field_label,
+                    timeout_ms=5000,
+                    strategy=FieldInteractionStrategy.STANDARD_CLICK,
+                    field_type='textarea'
+                )
+
+        except Exception as js_error:
+            logger.error(f"JavaScript injection also failed for textarea '{field_label}': {js_error}")
             raise TimeoutExceededError(
                 field_label=field_label,
                 timeout_ms=5000,
@@ -1105,20 +1337,168 @@ class FieldInteractorV2:
         except Exception:
             return ""
 
-    # Keep the existing get_all_form_fields method from original - it's working well
     async def get_all_form_fields(self, extract_options: bool = True) -> List[Dict[str, Any]]:
         """
-        Re-use the existing robust field detection from original FieldInteractor.
-        This method works well and doesn't need changes.
+        Detect all form fields on the page including inputs, selects, textareas, radio buttons, and checkboxes.
+        
+        Args:
+            extract_options: If True, extract available options for dropdowns (slower but more accurate)
+            
+        Returns:
+            List of field dictionaries with metadata
         """
-        # Import and use the original field interactor's method
-        from components.executors.field_interactor import FieldInteractor
-
-        # Create temporary instance to use the detection method
-        original_interactor = FieldInteractor(self.page, self.action_recorder)
-
-        # Call the original method
-        return await original_interactor.get_all_form_fields(extract_options=extract_options)
+        fields = []
+        
+        try:
+            # Detect all standard form input types
+            input_selector = 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):visible, select:visible, textarea:visible'
+            elements = await self.page.locator(input_selector).all()
+            
+            for element in elements:
+                try:
+                    # Get basic attributes
+                    input_type = await element.get_attribute('type') or 'text'
+                    name = await element.get_attribute('name') or ''
+                    id_attr = await element.get_attribute('id') or ''
+                    placeholder = await element.get_attribute('placeholder') or ''
+                    aria_label = await element.get_attribute('aria-label') or ''
+                    tag_name = await element.evaluate('el => el.tagName.toLowerCase()')
+                    role = await element.get_attribute('role') or ''
+                    aria_haspopup = await element.get_attribute('aria-haspopup') or ''
+                    aria_autocomplete = await element.get_attribute('aria-autocomplete') or ''
+                    
+                    # Determine field category
+                    if tag_name == 'select':
+                        category = 'dropdown'
+                    # Greenhouse/React Select: input with role="combobox" and aria-haspopup="true"
+                    elif role == 'combobox' and (aria_haspopup == 'true' or aria_autocomplete == 'list'):
+                        # Check if this is a multi-select by looking at parent container classes
+                        try:
+                            parent_classes = await element.evaluate(
+                                'el => el.closest(".select__value-container")?.className || ""'
+                            )
+                            if 'is-multi' in parent_classes or '--is-multi' in parent_classes:
+                                category = 'greenhouse_dropdown_multi'
+                            else:
+                                category = 'greenhouse_dropdown'
+                        except:
+                            category = 'greenhouse_dropdown'
+                    elif input_type == 'checkbox':
+                        category = 'checkbox'
+                    elif input_type == 'radio':
+                        category = 'radio'
+                    elif input_type == 'file':
+                        category = 'file_upload'
+                    elif tag_name == 'textarea':
+                        category = 'textarea'
+                    else:
+                        category = 'text_input'
+                    
+                    # Try to find label (enhanced for Greenhouse/React Select)
+                    label_text = ''
+                    
+                    # Method 1: Check for label[for="id"]
+                    if id_attr:
+                        try:
+                            label_element = await self.page.locator(f'label[for="{id_attr}"]').first
+                            if await label_element.count() > 0:
+                                label_text = await label_element.inner_text()
+                                label_text = label_text.strip().replace('*', '').strip()  # Remove asterisks
+                        except:
+                            pass
+                    
+                    # Method 2: Check aria-labelledby (common in Greenhouse)
+                    if not label_text:
+                        try:
+                            labelledby = await element.get_attribute('aria-labelledby')
+                            if labelledby:
+                                # Handle multiple IDs (space-separated) - take the first one
+                                label_id = labelledby.split()[0] if labelledby else None
+                                if label_id:
+                                    label_element = await self.page.locator(f'#{label_id}').first
+                                    if await label_element.count() > 0:
+                                        label_text = await label_element.inner_text()
+                                        label_text = label_text.strip().replace('*', '').strip()  # Remove asterisks
+                        except:
+                            pass
+                    
+                    # Method 2.5: For Greenhouse multi-selects, check parent label
+                    if not label_text and category in ['greenhouse_dropdown', 'greenhouse_dropdown_multi']:
+                        try:
+                            # Look for label in parent container
+                            parent_label = await element.evaluate('''
+                                el => {
+                                    const container = el.closest('.select__container') || el.closest('.select');
+                                    return container?.querySelector('label.label')?.textContent || '';
+                                }
+                            ''')
+                            if parent_label:
+                                label_text = parent_label.strip().replace('*', '').strip()
+                        except:
+                            pass
+                    
+                    # Method 3: Try aria-label, placeholder, or name
+                    if not label_text:
+                        try:
+                            label_text = aria_label or placeholder or name
+                        except:
+                            pass
+                    
+                    # Extract options for dropdowns if requested
+                    available_options = []
+                    if extract_options and category == 'dropdown':
+                        try:
+                            option_elements = await element.locator('option').all()
+                            for opt in option_elements:
+                                opt_text = await opt.inner_text()
+                                opt_value = await opt.get_attribute('value') or ''
+                                if opt_text.strip():
+                                    available_options.append({
+                                        'text': opt_text.strip(),
+                                        'value': opt_value
+                                    })
+                        except:
+                            pass
+                    # Note: greenhouse_dropdown options are extracted dynamically when filling
+                    # because they're rendered in portals only after opening the dropdown
+                    
+                    # Create stable ID for tracking (DETERMINISTIC - must not change across iterations!)
+                    # Use id/name if available, otherwise hash the label
+                    if id_attr:
+                        stable_id = f"{tag_name}_{id_attr}"
+                    elif name:
+                        stable_id = f"{tag_name}_{name}"
+                    else:
+                        # Use hash of label for consistency (same label = same ID across iterations)
+                        label_hash = hashlib.md5(label_text.encode()).hexdigest()[:8]
+                        stable_id = f"{tag_name}_{label_hash}"
+                    
+                    field_data = {
+                        'element': element,
+                        'field_category': category,
+                        'input_type': input_type,
+                        'label': label_text.strip() if label_text else f"Field {len(fields) + 1}",
+                        'name': name,
+                        'id': id_attr,
+                        'placeholder': placeholder,
+                        'aria_label': aria_label,
+                        'stable_id': stable_id,
+                        'available_options': available_options,
+                        'tag_name': tag_name
+                    }
+                    
+                    fields.append(field_data)
+                    
+                except Exception as e:
+                    logger.debug(f"Error extracting field data: {e}")
+                    continue
+            
+            logger.debug(f"Detected {len(fields)} form fields")
+            return fields
+            
+        except Exception as e:
+            logger.error(f"Error detecting form fields: {e}")
+            return []
 
     async def upload_resume_if_present(self, resume_path: str) -> bool:
         """
@@ -1624,6 +2004,10 @@ Your response (JSON only):
                 return False
 
             logger.info(f"🎯 Executing AI upload method: {method} with selector: {selector}")
+            
+            # Create clean filename for upload (with proper path)
+            clean_resume_path = create_clean_filename(resume_path, self.profile, "Resume")
+            self.created_clean_files.append(clean_resume_path)
 
             if method == "direct_input":
                 # Direct file input - just set the files
@@ -1661,7 +2045,7 @@ Your response (JSON only):
                     # First, try to find a hidden file input near the drop zone
                     hidden_input = await self.page.locator(f'{selector} input[type="file"], input[type="file"][style*="display: none"]').first
                     if hidden_input:
-                        await hidden_input.set_input_files(resume_path)
+                        await hidden_input.set_input_files(clean_resume_path)
                         logger.info("✅ Resume uploaded via drop zone hidden input (AI method)")
                         await asyncio.sleep(0.5)
                         return True

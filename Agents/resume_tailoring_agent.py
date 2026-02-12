@@ -5,12 +5,14 @@ import re
 import json
 import unicodedata
 import requests
+from pathlib import Path
 from google import genai
 import dotenv
 from typing import List, Tuple, Optional, Dict, Any
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+from google.auth.exceptions import RefreshError
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
@@ -51,24 +53,68 @@ def get_google_services(credentials=None):
     """
     creds = credentials
 
-    # If no credentials provided, use legacy token.json file
+    # Resolve stable paths relative to project root (not current working directory)
+    module_dir = Path(__file__).resolve().parent
+    project_root = module_dir.parent
+    token_candidates = [
+        project_root / "token.json",
+        module_dir / "token.json",
+    ]
+    token_path = next((p for p in token_candidates if p.exists()), project_root / "token.json")
+
+    # Support explicit client secret path via env var, then fall back to common locations
+    env_client_secret = os.getenv("GOOGLE_CLIENT_SECRET_PATH", "").strip()
+    candidate_client_secret_paths = []
+    if env_client_secret:
+        candidate_client_secret_paths.append(Path(env_client_secret))
+    candidate_client_secret_paths.extend([
+        project_root / "credentials.json",
+        module_dir / "credentials.json",
+        module_dir.parent / "credentials.json",
+    ])
+
+    # Pick first existing client secret file
+    client_secret_path = next((p for p in candidate_client_secret_paths if p.exists()), None)
+
+    def _run_oauth_flow():
+        if not client_secret_path:
+            searched_paths = ", ".join(str(p) for p in candidate_client_secret_paths)
+            raise FileNotFoundError(
+                "Google OAuth client secrets file not found. "
+                f"Searched: {searched_paths}. "
+                "Place credentials.json in the project root or set GOOGLE_CLIENT_SECRET_PATH."
+            )
+        flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_path), SCOPES)
+        return flow.run_local_server(port=0)
+
+    # If no credentials provided, use token cache / OAuth flow
     if not creds:
-        # The file token.json stores the user's access and refresh tokens, and is
-        # created automatically when the authorization flow completes for the first
-        # time.
-        if os.path.exists("token.json"):
-            creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+        # token.json stores user's access and refresh tokens
+        if token_path.exists():
+            creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
         # If there are no (valid) credentials available, let the user log in.
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
+                try:
+                    creds.refresh(Request())
+                except RefreshError as refresh_error:
+                    # Common case: invalid_grant when refresh token is revoked/expired.
+                    # Recover by forcing a clean OAuth login.
+                    print(f"[WARN] Google token refresh failed: {refresh_error}")
+                    print("[INFO] Clearing stale token and re-authenticating with Google...")
+                    try:
+                        if token_path.exists():
+                            token_path.unlink()
+                    except Exception as unlink_err:
+                        logger.warning(f"Failed to remove stale token file {token_path}: {unlink_err}")
+                    creds = _run_oauth_flow()
+                except Exception:
+                    # Unknown refresh error: fallback to full OAuth flow as well.
+                    creds = _run_oauth_flow()
             else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    "../credentials.json", SCOPES
-                )
-                creds = flow.run_local_server(port=0)
+                creds = _run_oauth_flow()
             # Save the credentials for the next run
-            with open("token.json", "w") as token:
+            with open(token_path, "w") as token:
                 token.write(creds.to_json())
 
     try:
@@ -431,7 +477,7 @@ JOB DESCRIPTION:
 
         # Make API call
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             contents=prompt
         )
 
@@ -1017,7 +1063,7 @@ JOB DESCRIPTION:
 {job_description}
 """
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-2.5-flash",
         contents=prompt
     )
     text = response.candidates[0].content.parts[0].text.strip()
@@ -1435,7 +1481,12 @@ def get_actual_page_count(drive_service, document_id):
     """
     try:
         import io
-        from PyPDF2 import PdfReader
+        try:
+            from PyPDF2 import PdfReader
+            pdf_lib = "PyPDF2"
+        except ImportError:
+            from pypdf import PdfReader
+            pdf_lib = "pypdf"
         
         # Export document as PDF
         request = drive_service.files().export_media(
@@ -1451,13 +1502,14 @@ def get_actual_page_count(drive_service, document_id):
         # Read PDF and count pages
         pdf_reader = PdfReader(pdf_bytes)
         page_count = len(pdf_reader.pages)
+        print(f"   📄 Page count via {pdf_lib}: {page_count}")
         
         return page_count
     except ImportError:
-        print("WARNING: PyPDF2 not installed. Run: pip install PyPDF2")
+        print("WARNING: No PDF reader library found. Install one: python -m pip install PyPDF2")
         return None
     except Exception as e:
-        print(f"WARNING: Could not get PDF page count: {e}")
+        print(f"WARNING: Could not get PDF page count for doc {document_id}: {e}")
         return None
 
 def download_doc_as_pdf(drive_service, doc_id, pdf_path):
@@ -1614,7 +1666,7 @@ JOB DESCRIPTION:
     try:
         # Increase timeout for complex tailoring operations
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             contents=prompt
         )
         return response.candidates[0].content.parts[0].text
@@ -1655,14 +1707,10 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
             print(f"Error fetching document name: {error}")
             original_doc_name = "Resume"
 
-        # Create a copy of the document with custom naming
-        if user_full_name:
-            # Simple format: FullName_CompanyName
-            clean_company = ''.join(c if c.isalnum() else '_' for c in company)
-            copied_doc_title = f"{user_full_name}_{clean_company}"
-        else:
-            copied_doc_title = f"{original_doc_name} - Tailored for {job_title} at {company}"
-        print(f"Creating a copy of the document: '{copied_doc_title}'")
+        # Create a copy of the document with custom naming: Resume_CompanyName
+        clean_company = ''.join(c if c.isalnum() or c == '_' else '_' for c in company)
+        copied_doc_title = f"Resume_{clean_company}"
+        print(f"Creating tailored resume: '{copied_doc_title}'")
         copied_doc_id = copy_google_doc(drive_service, original_doc_id, copied_doc_title)
         if not copied_doc_id:
             raise ValueError("Could not copy the Google Doc")
@@ -1978,7 +2026,11 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
                                 # Check page count after THIS change
                                 current_page_count = get_actual_page_count(drive_service, copied_doc_id)
                                 
-                                if current_page_count <= original_page_count:
+                                if (
+                                    current_page_count is not None and
+                                    original_page_count is not None and
+                                    current_page_count <= original_page_count
+                                ):
                                     print(f"      ✅ Target reached after {action_word.lower()} {applied_count} bullet(s)!")
                                     print(f"      📄 Page count: {current_page_count}/{original_page_count}")
                                     break  # Stop - we've hit the target!
@@ -2013,13 +2065,23 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
                     current_page_count = get_actual_page_count(drive_service, copied_doc_id)
                     print(f"   After recovery: {current_page_count} page(s)")
                     
-                    if current_page_count <= original_page_count:
+                    if (
+                        current_page_count is not None and
+                        original_page_count is not None and
+                        current_page_count <= original_page_count
+                    ):
                         print(f"✅ Successfully recovered to {current_page_count} page(s)!")
                         break
                     elif attempt < max_recovery_attempts:
-                        print(f"   Still {current_page_count - original_page_count} page(s) over - trying more aggressive approach...")
+                        if current_page_count is None or original_page_count is None:
+                            print("   ⚠️  Page count unavailable during recovery - continuing cautiously...")
+                        else:
+                            print(f"   Still {current_page_count - original_page_count} page(s) over - trying more aggressive approach...")
                     else:
-                        print(f"⚠️  Could not fully recover - still {current_page_count - original_page_count} page(s) over after {max_recovery_attempts} attempts")
+                        if current_page_count is None or original_page_count is None:
+                            print(f"⚠️  Could not verify final page count after {max_recovery_attempts} attempts")
+                        else:
+                            print(f"⚠️  Could not fully recover - still {current_page_count - original_page_count} page(s) over after {max_recovery_attempts} attempts")
                         
             else:
                 print(f"✅ No overflow - resume stays at {current_page_count} page(s)")
@@ -2115,7 +2177,12 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
             'page_stats': {
                 'original_pages': original_page_count,
                 'final_pages': current_page_count,
-                'overflow_recovered': current_page_count <= original_page_count
+                # None when page counting is unavailable (e.g., PyPDF2 missing)
+                'overflow_recovered': (
+                    current_page_count <= original_page_count
+                    if current_page_count is not None and original_page_count is not None
+                    else None
+                )
             },
             'replacements_applied': len(systematic_results['all_replacements'])
         }

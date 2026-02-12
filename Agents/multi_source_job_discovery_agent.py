@@ -27,12 +27,16 @@ from job_relevance_scorer import rank_jobs
 class MultiSourceJobDiscoveryAgent:
     """Job Discovery Agent that searches across multiple job boards"""
 
-    def __init__(self, user_id=None):
+    def __init__(self, user_id=None, proxy_manager=None):
         self.user_id = user_id
+        self.proxy_manager = proxy_manager
         self.profile_data = self._load_profile_data()
-        self.adapters = JobAPIFactory.get_all_adapters()
+        self.adapters = JobAPIFactory.get_all_adapters(proxy_manager=proxy_manager)
         self.gemini_client = self._initialize_gemini()
         logger.info(f"Initialized with {len(self.adapters)} job API adapters")
+        if proxy_manager:
+            stats = proxy_manager.get_stats()
+            logger.info(f"Proxy manager active: {stats['active_proxies']} proxies available")
 
     def _load_profile_data(self) -> Dict[str, Any]:
         """Load profile data from PostgreSQL database OR JSON file (based on env settings)"""
@@ -230,12 +234,23 @@ class MultiSourceJobDiscoveryAgent:
         country = profile.get("country", "United States")
         return country
 
-    def search_all_sources(self, min_relevance_score: int = 30) -> Dict[str, Any]:
+    def search_all_sources(
+        self,
+        min_relevance_score: int = 30,
+        manual_keywords: str = None,
+        manual_location: str = None,
+        manual_remote: bool = None,
+        manual_search_overrides: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Search all job sources and aggregate results
 
         Args:
             min_relevance_score: Minimum relevance score to include (0-100)
+            manual_keywords: Override profile-based keywords (e.g., "Data Scientist")
+            manual_location: Override profile-based location (e.g., "New York, NY")
+            manual_remote: Override remote preference (True/False)
+            manual_search_overrides: Extra adapter/search params to merge (e.g., job_type, hours_old)
 
         Returns:
             {
@@ -246,7 +261,33 @@ class MultiSourceJobDiscoveryAgent:
             }
         """
         try:
+            # Build query params from profile
             query_params = self._build_query_params()
+            
+            # Override with manual parameters if provided
+            if manual_keywords:
+                # Keep both keys for compatibility across adapters.
+                query_params["query"] = manual_keywords
+                query_params["keywords"] = manual_keywords
+                logger.info(f"Using manual keywords: {manual_keywords}")
+            
+            if manual_location:
+                query_params["location"] = manual_location
+                logger.info(f"Using manual location: {manual_location}")
+            
+            if manual_remote is not None:
+                query_params["remote_jobs_only"] = manual_remote
+                query_params["remote_only"] = manual_remote
+                logger.info(f"Using manual remote preference: {manual_remote}")
+
+            if manual_search_overrides:
+                cleaned_overrides = {
+                    k: v for k, v in manual_search_overrides.items()
+                    if v is not None and v != ""
+                }
+                query_params.update(cleaned_overrides)
+                logger.info(f"Applied manual search overrides: {cleaned_overrides}")
+            
             all_jobs = []
             source_counts = {}
 
@@ -280,13 +321,45 @@ class MultiSourceJobDiscoveryAgent:
             logger.info(f"Total jobs after deduplication: {len(unique_jobs)}")
 
             # Rank jobs by relevance
-            if self.profile_data:
-                ranked_jobs = rank_jobs(unique_jobs, self.profile_data, min_score=min_relevance_score)
+            if self.profile_data and len(unique_jobs) > 0:
+                logger.info(f"Ranking {len(unique_jobs)} jobs by relevance...")
+                try:
+                    # For Gemini-generated jobs, use a lower min_score since they're already profile-matched
+                    # Check if jobs are from Gemini
+                    gemini_jobs = [j for j in unique_jobs if j.get('source') == 'Gemini AI + Job Search']
+                    other_jobs = [j for j in unique_jobs if j.get('source') != 'Gemini AI + Job Search']
+                    
+                    ranked_jobs = []
+                    
+                    # Rank Gemini jobs with lower threshold (they're already profile-matched)
+                    if gemini_jobs:
+                        logger.info(f"Ranking {len(gemini_jobs)} Gemini jobs with min_score=0 (already profile-matched)")
+                        gemini_ranked = rank_jobs(gemini_jobs, self.profile_data, min_score=0)
+                        ranked_jobs.extend(gemini_ranked)
+                    
+                    # Rank other jobs with normal threshold
+                    if other_jobs:
+                        logger.info(f"Ranking {len(other_jobs)} non-Gemini jobs with min_score={min_relevance_score}")
+                        other_ranked = rank_jobs(other_jobs, self.profile_data, min_score=min_relevance_score)
+                        ranked_jobs.extend(other_ranked)
+                    
+                    # Sort all jobs by relevance score
+                    ranked_jobs.sort(key=lambda x: x.get('relevance_score', 0), reverse=True)
+                    
+                    logger.info(f"Ranking completed: {len(ranked_jobs)} jobs total")
+                except Exception as e:
+                    logger.error(f"Error ranking jobs: {e}")
+                    logger.warning("Falling back to unranked jobs")
+                    ranked_jobs = unique_jobs
             else:
                 ranked_jobs = unique_jobs
-                logger.warning("No profile data available, skipping ranking")
+                if not self.profile_data:
+                    logger.warning("No profile data available, skipping ranking")
 
-            logger.info(f"Total jobs after filtering (min_score={min_relevance_score}): {len(ranked_jobs)}")
+            # Filter out jobs already applied to (duplicate prevention)
+            ranked_jobs = self._filter_already_applied(ranked_jobs)
+
+            logger.info(f"Total jobs after duplicate filtering: {len(ranked_jobs)}")
 
             # Calculate average score
             avg_score = sum(job.get("relevance_score", 0) for job in ranked_jobs) / len(ranked_jobs) if ranked_jobs else 0
@@ -461,7 +534,7 @@ Return the optimized parameters as JSON:
             logger.info(f"Generating {adapter.api_name} parameters with Gemini...")
 
             response = self.gemini_client.models.generate_content(
-                model='gemini-2.0-flash-exp',
+                model='gemini-2.5-flash',
                 contents=prompt,
                 config={
                     "response_mime_type": "application/json",
@@ -535,19 +608,116 @@ Return the optimized parameters as JSON:
 
         return unique_jobs
 
-    def search_and_save(self, min_relevance_score: int = 30) -> Dict[str, Any]:
+    def _filter_already_applied(self, jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Filter out jobs that the user has already applied to
+        
+        This prevents showing the same jobs repeatedly after the user has already applied
+        """
+        if not self.user_id:
+            logger.info("No user_id provided, skipping duplicate job filtering")
+            return jobs
+        
+        try:
+            # Import here to avoid circular imports
+            from database_config import SessionLocal, JobApplication
+            from sqlalchemy import or_
+            
+            db = SessionLocal()
+            
+            # Get all jobs this user has applied to
+            applied_jobs = db.query(JobApplication).filter(
+                JobApplication.user_id == self.user_id
+            ).all()
+            
+            db.close()
+            
+            if not applied_jobs:
+                logger.info("No previous applications found for this user")
+                return jobs
+            
+            # Create a set of applied job identifiers
+            # We'll match on job_url (primary) and company+title (secondary)
+            applied_urls = set()
+            applied_company_titles = set()
+            
+            for app in applied_jobs:
+                if app.job_url:
+                    # Normalize URL (remove trailing slashes, query params, etc.)
+                    normalized_url = app.job_url.rstrip('/').split('?')[0].lower()
+                    applied_urls.add(normalized_url)
+                
+                # Also track company + title combinations
+                if app.company_name and app.job_title:
+                    company_title = f"{app.company_name.lower().strip()}|{app.job_title.lower().strip()}"
+                    applied_company_titles.add(company_title)
+            
+            logger.info(f"Found {len(applied_urls)} applied job URLs and {len(applied_company_titles)} company+title combinations")
+            
+            # Filter out jobs that match
+            filtered_jobs = []
+            filtered_count = 0
+            
+            for job in jobs:
+                job_url = job.get('job_url', '').rstrip('/').split('?')[0].lower()
+                company = job.get('company', '').lower().strip()
+                title = job.get('title', '').lower().strip()
+                company_title = f"{company}|{title}"
+                
+                # Check if this job has been applied to
+                if job_url and job_url in applied_urls:
+                    filtered_count += 1
+                    logger.debug(f"Filtered duplicate by URL: {job.get('title')} at {job.get('company')}")
+                    continue
+                
+                if company and title and company_title in applied_company_titles:
+                    filtered_count += 1
+                    logger.debug(f"Filtered duplicate by company+title: {title} at {company}")
+                    continue
+                
+                # This job hasn't been applied to yet
+                filtered_jobs.append(job)
+            
+            logger.info(f"Filtered out {filtered_count} jobs that were already applied to")
+            logger.info(f"Returning {len(filtered_jobs)} new/unseen jobs")
+            
+            return filtered_jobs
+            
+        except Exception as e:
+            logger.error(f"Error filtering duplicate jobs: {e}")
+            logger.warning("Returning all jobs without duplicate filtering")
+            return jobs
+
+    def search_and_save(
+        self,
+        min_relevance_score: int = 30,
+        manual_keywords: str = None,
+        manual_location: str = None,
+        manual_remote: bool = None,
+        manual_search_overrides: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Search for jobs and save to database
 
         Args:
             min_relevance_score: Minimum relevance score to include (0-100)
+            manual_keywords: Override profile-based keywords
+            manual_location: Override profile-based location
+            manual_remote: Override remote preference
+            manual_search_overrides: Extra adapter/search params to merge
 
         Returns:
             Result dictionary with saved jobs
         """
         try:
-            # Search all sources
-            result = self.search_all_sources(min_relevance_score)
+            # Search all sources with manual overrides
+            result = self.search_all_sources(
+                min_relevance_score=min_relevance_score,
+                manual_keywords=manual_keywords,
+                manual_location=manual_location,
+                manual_remote=manual_remote,
+                manual_search_overrides=manual_search_overrides
+            )
 
             if result.get("data"):
                 # Save to database

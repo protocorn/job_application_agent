@@ -100,6 +100,17 @@ def clean_gemini_response(text: str) -> str:
     import re
     
     text = text.strip()
+
+    # Remove markdown code fences/backticks and heading markers.
+    text = re.sub(r'```(?:\w+)?\s*', '', text)
+    text = text.replace('```', '').replace('`', '')
+    text = re.sub(r'^\s{0,3}#{1,6}\s+', '', text, flags=re.MULTILINE)
+
+    # Remove common markdown emphasis markers while preserving content.
+    # Example: "**Python**" -> "Python", "*NLP*" -> "NLP"
+    text = text.replace('**', '').replace('__', '')
+    text = re.sub(r'(?<!\w)\*([^*]+)\*(?!\w)', r'\1', text)
+    text = re.sub(r'(?<!\w)_([^_]+)_(?!\w)', r'\1', text)
     
     # Remove character count patterns like "(31 chars)", "(88 chars)", etc.
     text = re.sub(r'\s*\(\d+\s*chars?\)\.?\s*$', '', text, flags=re.IGNORECASE)
@@ -118,7 +129,9 @@ def clean_gemini_response(text: str) -> str:
         if not line:
             continue
         
-        # Remove char count from end of line if present
+        # Remove heading/list markdown prefixes and trailing char counters.
+        line = re.sub(r'^\s{0,3}#{1,6}\s+', '', line)
+        line = re.sub(r'^\s*[-*]\s+', '', line)
         line = re.sub(r'\s*\(\d+\s*chars?\)\.?\s*$', '', line, flags=re.IGNORECASE)
         
         # Skip lines that are clearly metadata/artifacts
@@ -157,6 +170,10 @@ def clean_gemini_response(text: str) -> str:
         
         # Final cleanup - remove any remaining char counts
         result = re.sub(r'\s*\(\d+\s*chars?\)\.?\s*$', '', result, flags=re.IGNORECASE)
+        result = re.sub(r'^\s{0,3}#{1,6}\s+', '', result, flags=re.MULTILINE)
+        result = result.replace('**', '').replace('__', '').replace('`', '')
+        result = re.sub(r'(?<!\w)\*([^*]+)\*(?!\w)', r'\1', result)
+        result = re.sub(r'(?<!\w)_([^_]+)_(?!\w)', r'\1', result)
         return result.strip()
     else:
         # Fallback to original if cleaning removed everything
@@ -282,7 +299,7 @@ Return ONLY valid JSON, no markdown formatting, no extra text."""
             try:
                 response = generate_content_with_retry(
                     client=self.genai_client,
-                    model='gemini-2.0-flash-exp',
+                    model='gemini-2.5-flash',
                     contents=prompt
                 )
 
@@ -695,12 +712,13 @@ WHAT TO AVOID:
 - Don't force vague keywords just to include them
 
 OUTPUT:
-Return ONLY the rewritten profile text. No explanations, no metadata, no commentary."""
+Return ONLY the rewritten profile text. No explanations, no metadata, no commentary.
+Use plain text only. Do NOT use markdown symbols like *, **, #, _, or backticks."""
 
         try:
             response = generate_content_with_retry(
                 client=self.genai_client,
-                model='gemini-2.0-flash-exp',
+                model='gemini-2.5-flash',
                 contents=prompt
             )
 
@@ -811,6 +829,7 @@ If a bullet is currently 2 lines or less, we either expand it or remove it compl
 
 CRITICAL OUTPUT FORMAT:
 - Return ONLY the condensed bullet text
+- Use plain text only (NO markdown symbols: *, **, #, _, backticks)
 - NO metadata, character counts, or labels
 - Just the clean text for the resume
 
@@ -819,7 +838,7 @@ If cannot be condensed to {target_visual_lines} line(s) while keeping key info, 
             try:
                 response = generate_content_with_retry(
                     client=self.genai_client,
-                    model='gemini-2.0-flash-exp',
+                    model='gemini-2.5-flash',
                     contents=prompt
                 )
 
@@ -903,13 +922,14 @@ REQUIREMENTS:
 
 CRITICAL OUTPUT FORMAT:
 - Return ONLY the expanded bullet text
+- Use plain text only (NO markdown symbols: *, **, #, _, backticks)
 - NO metadata, character counts, or explanatory text
 - Just the clean bullet text that goes directly into the resume"""
 
             try:
                 response = generate_content_with_retry(
                     client=self.genai_client,
-                    model='gemini-2.0-flash-exp',
+                    model='gemini-2.5-flash',
                     contents=prompt
                 )
 
@@ -1032,13 +1052,14 @@ REQUIREMENTS:
 
 CRITICAL OUTPUT FORMAT:
 - Return ONLY the rewritten bullet text
+- Use plain text only (NO markdown symbols: *, **, #, _, backticks)
 - NO metadata or character counts
 - Just the clean text for the resume"""
 
                     try:
                         response = generate_content_with_retry(
                             client=self.genai_client,
-                            model='gemini-2.0-flash-exp',
+                            model='gemini-2.5-flash',
                             contents=prompt
                         )
 
@@ -1118,12 +1139,13 @@ EXAMPLE LOGIC:
 CRITICAL OUTPUT FORMAT:
 - Return ONLY the optimized skills text
 - NO explanations, NO metadata, NO reasoning
-- Just the skills list that goes directly into the resume"""
+- Just the skills list that goes directly into the resume
+- Use plain text only. Do NOT include markdown symbols like *, **, #, _, or backticks"""
 
         try:
             response = generate_content_with_retry(
                 client=self.genai_client,
-                model='gemini-2.0-flash-exp',
+                model='gemini-2.5-flash',
                 contents=prompt
             )
 
@@ -1206,8 +1228,22 @@ CRITICAL OUTPUT FORMAT:
 class OverflowRecoveryComplete:
     """Complete implementation of overflow recovery."""
 
-    def __init__(self, genai_client):
+    def __init__(self, genai_client, gemini_api_key: Optional[str] = None):
         self.genai_client = genai_client
+        # Initialize semantic validator for quality checks during condensation.
+        # Keep a typo-compatible alias because older call paths referenced
+        # `semmantic_validator` (double "m").
+        api_key = gemini_api_key or os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
+        if api_key:
+            try:
+                self.semantic_validator = SemanticValidator(api_key)
+            except Exception as e:
+                print(f"   ⚠️  Semantic validator init failed in overflow recovery: {e}")
+                self.semantic_validator = None
+        else:
+            self.semantic_validator = None
+
+        self.semmantic_validator = self.semantic_validator
 
     def recover_from_overflow(
         self,
@@ -1381,13 +1417,14 @@ CRITICAL OUTPUT FORMAT:
 - Return ONLY the condensed text
 - NO labels, NO character counts, NO metadata
 - Just the raw text for the resume
+- Use plain text only (NO markdown symbols: *, **, #, _, backticks)
 
 If the content cannot be meaningfully condensed to {target_visual_lines} line(s) while preserving key facts, return the original."""
 
                 try:
                     response = generate_content_with_retry(
                         client=self.genai_client,
-                        model='gemini-2.0-flash-exp',
+                        model='gemini-2.5-flash',
                         contents=prompt
                     )
 

@@ -160,6 +160,9 @@ class ProfileService:
             'preferred location': 'preferred_location',
             'willing to relocate': 'willing_to_relocate',
             'resume_url': 'resume_url',
+            'resume_source_type': 'resume_source_type',
+            'latex_main_tex_path': 'latex_main_tex_path',
+            'latex_file_manifest': 'latex_file_manifest',
             'gender': 'gender',
             'nationality': 'nationality',
             'preferred language': 'preferred_language'
@@ -171,6 +174,9 @@ class ProfileService:
         """Convert database profile to frontend format"""
         return {
             'resume_url': profile.resume_url or '',
+            'resume_source_type': profile.resume_source_type or 'google_doc',
+            'latex_main_tex_path': profile.latex_main_tex_path or '',
+            'latex_file_manifest': profile.latex_file_manifest or [],
             'first name': '',  # Will be populated from User table
             'last name': '',   # Will be populated from User table
             'email': '',       # Will be populated from User table
@@ -254,6 +260,9 @@ class ProfileService:
         """Return default profile structure for new users"""
         return {
             'resume_url': '',
+            'resume_source_type': 'google_doc',
+            'latex_main_tex_path': '',
+            'latex_file_manifest': [],
             'first name': '',
             'last name': '',
             'email': '',

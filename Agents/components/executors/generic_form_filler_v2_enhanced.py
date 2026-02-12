@@ -93,6 +93,8 @@ class GenericFormFillerV2Enhanced:
         self.pattern_recorder = PatternRecorder()  # NEW: Records AI successes
         self.completion_tracker = FieldCompletionTracker()
         self.attempt_tracker = FieldAttemptTracker()
+        self.pre_filled_values = {}  # Track original values of fields before agent touches them
+        self.gemini_flagged_fields = set()  # Track fields flagged as incorrect by Gemini reviewer
 
     async def fill_form(self, profile: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -137,6 +139,10 @@ class GenericFormFillerV2Enhanced:
             all_fields = await self.interactor.get_all_form_fields(extract_options=False)
             last_detected_fields = all_fields  # Save for correction mechanism
             logger.info(f"🔍 Detected {len(all_fields)} fields (fast mode - no pre-extraction)")
+
+            # Step 1.5: Capture pre-filled values on FIRST iteration only
+            if iteration == 0:
+                await self._capture_pre_filled_values(all_fields)
 
             # Step 2: Consolidate radio button groups (so we don't send duplicates to Gemini)
             all_fields = await self._consolidate_radio_groups(all_fields)
@@ -220,6 +226,12 @@ class GenericFormFillerV2Enhanced:
                 logger.info(f"💡 AI call reduction: {ai_reduction:.1f}% (learned patterns used instead of AI)")
 
         logger.info(f"⏭️ Skipped {len(result['skipped_fields'])} fields after all attempts")
+
+        # Step 7.5: FINAL RE-SCAN for newly appeared conditional fields
+        logger.info("🔄 Performing final scan for any new/conditional fields...")
+        new_fields_filled = await self._final_rescan_and_fill(profile, result)
+        if new_fields_filled > 0:
+            logger.info(f"✅ Filled {new_fields_filled} additional fields from final re-scan")
 
         # Step 8: Look for Next/Continue button and click it (but never Submit)
         next_button_clicked = await self._try_click_next_button()
@@ -466,6 +478,84 @@ class GenericFormFillerV2Enhanced:
             logger.debug(traceback.format_exc())
             return fields
 
+    async def _capture_pre_filled_values(self, fields: List[Dict[str, Any]]) -> None:
+        """
+        Capture the current values of all fields before the agent starts filling them.
+        This allows us to:
+        1. Skip fields that already have values (unless Gemini flags them)
+        2. Restore original values if correction attempts fail
+        """
+        logger.debug(f"📸 Capturing pre-filled values for {len(fields)} fields...")
+        captured_count = 0
+        
+        for field in fields:
+            try:
+                field_label = field.get('label', 'Unknown')
+                field_id = field.get('stable_id', field_label)
+                field_category = field.get('field_category', 'text_input')
+                element = field.get('element')
+                
+                if not element:
+                    continue
+                
+                # Get current value based on field type
+                current_value = None
+                
+                if field_category in ['checkbox', 'radio']:
+                    try:
+                        is_checked = await element.is_checked()
+                        if is_checked:
+                            current_value = "checked"
+                    except:
+                        pass
+                        
+                elif field_category == 'greenhouse_dropdown':
+                    # Check Greenhouse dropdown display value
+                    try:
+                        parent = element.locator('..')
+                        display_selectors = [
+                            '[class*="singleValue"]',
+                            '[class*="value"]',
+                            '.select__single-value'
+                        ]
+                        
+                        for selector in display_selectors:
+                            try:
+                                display_element = parent.locator(selector).first
+                                if await display_element.count() > 0:
+                                    text = await display_element.text_content(timeout=500)
+                                    if text and text.strip() and 'select' not in text.lower():
+                                        current_value = text.strip()
+                                        break
+                            except:
+                                continue
+                    except:
+                        pass
+                        
+                else:
+                    # Standard text inputs, textareas, other dropdowns
+                    try:
+                        current_value = await element.input_value(timeout=500)
+                    except:
+                        pass
+                
+                # Store if field has a value
+                if current_value and str(current_value).strip():
+                    self.pre_filled_values[field_id] = {
+                        'label': field_label,
+                        'value': current_value,
+                        'category': field_category
+                    }
+                    captured_count += 1
+                    logger.debug(f"  ✓ Captured pre-filled '{field_label}' = '{current_value[:50]}...'")
+                    
+            except Exception as e:
+                logger.debug(f"  ✗ Error capturing value for '{field.get('label', 'Unknown')}': {e}")
+                continue
+        
+        if captured_count > 0:
+            logger.info(f"📸 Captured {captured_count} pre-filled field values")
+
     async def _clean_detected_fields(self, fields: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Remove invalid fields from detection:
@@ -561,24 +651,29 @@ class GenericFormFillerV2Enhanced:
             elif next_method == 'learned_pattern':
                 fields_needing_learned.append(field)
 
-        # PHASE 1.5: Try learned patterns on remaining fields
+        # PHASE 1.5: Learned patterns - DISABLED for speed
+        # This phase was slow (2+ min of DB queries) and added little value
+        # Gemini mapping (Phase 2) handles everything the patterns would have found
         fields_needing_ai = []
-        if fields_needing_learned:
-            logger.info(f"🧠 Phase 1.5: Attempting learned pattern matching for {len(fields_needing_learned)} fields...")
-            for field in fields_needing_learned:
-                field_id = self._get_field_id(field)
-                field_label = field.get('label', 'Unknown')
-
-                success = await self._try_learned_pattern(field, profile, result)
-                self.attempt_tracker.mark_attempted(field_id, 'learned_pattern')
-
-                if success:
-                    filled_count += 1
-                    continue  # Success, move to next field
-                else:
-                    # Learned pattern failed - add to AI batch
-                    if not self.attempt_tracker.has_attempted(field_id, 'ai'):
-                        fields_needing_ai.append(field)
+        # if fields_needing_learned:
+        #     logger.info(f"🧠 Phase 1.5: Attempting learned pattern matching for {len(fields_needing_learned)} fields...")
+        #     for field in fields_needing_learned:
+        #         field_id = self._get_field_id(field)
+        #         field_label = field.get('label', 'Unknown')
+        #
+        #         success = await self._try_learned_pattern(field, profile, result)
+        #         self.attempt_tracker.mark_attempted(field_id, 'learned_pattern')
+        #
+        #         if success:
+        #             filled_count += 1
+        #             continue  # Success, move to next field
+        #         else:
+        #             # Learned pattern failed - add to AI batch
+        #             if not self.attempt_tracker.has_attempted(field_id, 'ai'):
+        #                 fields_needing_ai.append(field)
+        
+        # Send ALL fields that need learned patterns directly to AI instead
+        fields_needing_ai = fields_needing_learned
 
         # PHASE 2 & 3: Batch AI processing
         if fields_needing_ai:
@@ -640,12 +735,13 @@ class GenericFormFillerV2Enhanced:
 
             if fill_result['success']:
                 # Trust the fill result - it already verified success
-                logger.info(f"✅ Deterministic: '{field_label}' = '{mapping.value}'")
+                # Log and store the CLEANED value (not the original from profile)
+                logger.info(f"✅ Deterministic: '{field_label}' = '{cleaned_value}'")
                 result["fields_by_method"]["deterministic"] += 1
-                result["filled_fields"][field_label] = mapping.value
+                result["filled_fields"][field_label] = cleaned_value
 
                 field_id = self._get_field_id(field)
-                self.completion_tracker.mark_field_completed(field_id, field_label, mapping.value)
+                self.completion_tracker.mark_field_completed(field_id, field_label, cleaned_value)
                 return True
             else:
                 logger.debug(f"⏭️ Deterministic fill failed for '{field_label}'")
@@ -918,13 +1014,20 @@ class GenericFormFillerV2Enhanced:
                         
                         with open(temp_file_path, 'w', encoding='utf-8') as f:
                             f.write(str(cleaned_value))
+                            f.flush()  # Ensure all data is written
+                            os.fsync(f.fileno())  # Force OS to write to disk
+                        # File is now closed, but Windows may still hold the handle
+                        
+                        # Longer delay to ensure Windows releases the file handle completely
+                        # Also wait for antivirus/file system to finish scanning
+                        await asyncio.sleep(1.0)  # Increased from 0.5s to 1.0s
                         
                         logger.info(f"✅ Created temporary file: {file_name}")
                         cleaned_value = temp_file_path
                         
                         # Track for cleanup if agent has tracker
                         if hasattr(self, 'created_files'):
-                            self.created_files.append(temp_file.name)
+                            self.created_files.append(temp_file_path)
                             
                     except Exception as e:
                         logger.error(f"Failed to create temp file for text content: {e}")
@@ -1185,10 +1288,20 @@ IMPORTANT:
                 logger.info(f"🔧 Correcting '{field_name}': '{filled_fields[field_name]}' → '{corrected_value}'")
                 logger.info(f"   Reason: {reason}")
 
+                # Mark field as Gemini-flagged (allows re-filling even if pre-filled)
+                field_id = self._get_field_id(field_def)
+                self.gemini_flagged_fields.add(field_id)
+                
+                # Store original value before correction attempt (for restoration if correction fails)
+                original_value = filled_fields.get(field_name)
+
                 # Get fresh element
                 element = await self._get_fresh_element(field_def)
                 if not element:
                     logger.warning(f"⚠️ Could not get element for '{field_name}'")
+                    # Restore original value since we couldn't even get the element
+                    if original_value:
+                        filled_fields[field_name] = original_value
                     continue
 
                 # Clear field first
@@ -1214,7 +1327,11 @@ IMPORTANT:
                         corrections_made += 1
                         logger.info(f"✅ Corrected '{field_name}' successfully")
                     else:
-                        logger.warning(f"⚠️ Failed to correct '{field_name}'")
+                        # Correction failed - restore original value
+                        logger.warning(f"⚠️ Failed to correct '{field_name}' - restoring original value")
+                        if original_value:
+                            filled_fields[field_name] = original_value
+                            logger.info(f"↩️ Restored '{field_name}' to original value: '{original_value[:50]}...'")
                 else:
                     # Empty the field (for duplicates/errors)
                     filled_fields[field_name] = ""
@@ -1297,20 +1414,30 @@ If there are problems, set approved=false and list specific issues.
             return {"approved": True, "issues": [], "confidence": 0.5}
 
     def _filter_unfilled_fields(self, fields: List[Dict[str, Any]]) -> List[Dict]:
-        """Filter out fields that are already completed."""
+        """
+        Filter out fields that are already completed or pre-filled.
+        UNLESS they've been flagged by Gemini as incorrect.
+        """
         unfilled = []
 
         for field in fields:
             field_id = self._get_field_id(field)
             field_label = field.get('label', 'Unknown')
 
-            # Check if already completed
+            # Check if already completed by agent in previous iteration
             if self.completion_tracker.should_skip_field(field_id, field_label):
                 continue
 
-            # Check if pre-filled
-            if field.get('is_filled'):
+            # Check if pre-filled (before agent started) and NOT flagged by Gemini
+            if field_id in self.pre_filled_values and field_id not in self.gemini_flagged_fields:
+                pre_filled_data = self.pre_filled_values[field_id]
+                logger.info(f"⏭️ Skipping pre-filled field: '{field_label}' = '{pre_filled_data['value'][:50]}...'")
                 continue
+
+            # Legacy check for pre-filled flag (from field detection)
+            if field.get('is_filled') and field_id not in self.gemini_flagged_fields:
+                continue
+
 
             unfilled.append(field)
 
@@ -1360,6 +1487,54 @@ If there are problems, set approved=false and list specific issues.
                 field['options'] = cached_options[field_id]
 
         return current_fields
+
+    async def _final_rescan_and_fill(self, profile: Dict[str, Any], result: Dict[str, Any]) -> int:
+        """
+        Perform a final scan for any new/conditional fields that appeared after filling.
+        Some forms show additional fields based on previous answers (conditional logic).
+        
+        Returns:
+            int: Number of new fields filled
+        """
+        try:
+            filled_count = 0
+            
+            # Re-detect all fields on the page
+            all_fields = await self.interactor.get_all_form_fields(extract_options=False)
+            logger.debug(f"🔍 Final re-scan detected {len(all_fields)} total fields")
+            
+            # Consolidate groups
+            all_fields = await self._consolidate_radio_groups(all_fields)
+            all_fields = await self._consolidate_checkbox_groups(all_fields)
+            
+            # Clean fields
+            valid_fields = await self._clean_detected_fields(all_fields)
+            
+            # Filter to only NEW unfilled fields (not in our completion tracker)
+            new_fields = []
+            for field in valid_fields:
+                field_id = self._get_field_id(field)
+                field_label = field.get('label', 'Unknown Field')
+                # Check if field should be skipped (already completed)
+                if not self.completion_tracker.should_skip_field(field_id, field_label):
+                    new_fields.append(field)
+            
+            if not new_fields:
+                logger.info("✅ No new fields detected in final re-scan")
+                return 0
+            
+            logger.info(f"🆕 Found {len(new_fields)} NEW fields in final re-scan! Filling them now...")
+            
+            # Fill the new fields using the same strategy
+            filled_count = await self._process_fields_with_strategy(
+                new_fields, profile, result
+            )
+            
+            return filled_count
+            
+        except Exception as e:
+            logger.error(f"❌ Error during final re-scan: {e}")
+            return 0
 
     async def _try_click_next_button(self) -> bool:
         """
