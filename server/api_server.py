@@ -25,7 +25,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))  # For logging_co
 
 # Original imports
 from resume_tailoring_agent import get_google_services, get_doc_id_from_url, copy_google_doc, read_google_doc_content, apply_json_replacements_to_doc, tailor_resume as tailor_resume_with_agent, tailor_resume_and_return_url
-from latex_tailoring_agent import parse_latex_zip
+from latex_tailoring_agent import parse_latex_zip, get_main_tex_preview_from_base64
 from job_application_agent import run_links_with_refactored_agent
 from logging_config import setup_file_logging
 from components.session.session_manager import SessionManager
@@ -1007,10 +1007,45 @@ def upload_latex_resume():
             "resume_source_type": "latex_zip",
             "main_tex_file": parsed.main_tex_file,
             "tex_files": parsed.tex_files,
+            "main_tex_preview": parsed.main_tex_preview,
+            "main_plain_preview": parsed.main_plain_preview,
         }), 200
     except Exception as e:
         logging.error(f"Error uploading LaTeX resume: {e}")
         return jsonify({"error": f"Failed to upload LaTeX resume: {str(e)}"}), 500
+
+
+@app.route("/api/latex-resume/preview", methods=['GET'])
+@require_auth
+def get_latex_resume_preview():
+    """Get preview text for the stored LaTeX resume source."""
+    try:
+        user_id = request.current_user['id']
+        from database_config import SessionLocal, UserProfile
+        db = SessionLocal()
+        try:
+            profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+            if not profile or not profile.latex_zip_base64 or not profile.latex_main_tex_path:
+                return jsonify({
+                    "success": False,
+                    "error": "No LaTeX resume source found for this user."
+                }), 404
+
+            preview = get_main_tex_preview_from_base64(
+                latex_zip_base64=profile.latex_zip_base64,
+                main_tex_file=profile.latex_main_tex_path
+            )
+            return jsonify({
+                "success": True,
+                "main_tex_file": profile.latex_main_tex_path,
+                "main_tex_preview": preview.get("main_tex_preview", ""),
+                "main_plain_preview": preview.get("main_plain_preview", ""),
+            }), 200
+        finally:
+            db.close()
+    except Exception as e:
+        logging.error(f"Error getting LaTeX preview: {e}")
+        return jsonify({"error": f"Failed to get LaTeX preview: {str(e)}"}), 500
 
 def extract_docx_text(file_obj) -> str:
     """Extract text from DOCX file using python-docx"""

@@ -38,6 +38,8 @@ class LatexZipData:
     tex_files: List[str]
     main_tex_file: str
     plain_text: str
+    main_tex_preview: str
+    main_plain_preview: str
     file_manifest: List[Dict[str, Any]]
 
 
@@ -110,6 +112,8 @@ def parse_latex_zip(file_bytes: bytes, requested_main_tex: Optional[str] = None)
     file_manifest: List[Dict[str, Any]] = []
     merged_text_chunks: List[str] = []
 
+    main_tex_preview = ""
+    main_plain_preview = ""
     with zf:
         for info in zf.infolist():
             name = info.filename.replace("\\", "/")
@@ -137,6 +141,15 @@ def parse_latex_zip(file_bytes: bytes, requested_main_tex: Optional[str] = None)
                     logger.warning("Could not decode tex file: %s", name)
 
     main_tex_file = _select_main_tex(tex_files, requested_main_tex)
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes), "r") as zf_preview:
+            main_bytes = zf_preview.read(main_tex_file)
+            main_content = main_bytes.decode("utf-8", errors="ignore")
+            main_tex_preview = main_content[:15000]
+            main_plain_preview = _strip_latex_to_text(main_content)[:10000]
+    except Exception:
+        logger.warning("Could not extract preview for main tex file: %s", main_tex_file)
+
     plain_text = " ".join(chunk for chunk in merged_text_chunks if chunk).strip()
     if not plain_text:
         plain_text = "LaTeX resume detected. Text extraction produced no content."
@@ -146,8 +159,32 @@ def parse_latex_zip(file_bytes: bytes, requested_main_tex: Optional[str] = None)
         tex_files=sorted(tex_files),
         main_tex_file=main_tex_file,
         plain_text=plain_text[:25000],
+        main_tex_preview=main_tex_preview,
+        main_plain_preview=main_plain_preview,
         file_manifest=file_manifest,
     )
+
+
+def get_main_tex_preview_from_base64(
+    latex_zip_base64: str,
+    main_tex_file: str,
+    max_tex_chars: int = 15000,
+    max_plain_chars: int = 10000,
+) -> Dict[str, str]:
+    if not latex_zip_base64 or not main_tex_file:
+        return {"main_tex_preview": "", "main_plain_preview": ""}
+
+    try:
+        zip_bytes = base64.b64decode(latex_zip_base64.encode("ascii"))
+        with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
+            content = zf.read(main_tex_file).decode("utf-8", errors="ignore")
+            return {
+                "main_tex_preview": content[:max_tex_chars],
+                "main_plain_preview": _strip_latex_to_text(content)[:max_plain_chars],
+            }
+    except Exception as e:
+        logger.warning("Failed to build LaTeX preview from stored zip: %s", e)
+        return {"main_tex_preview": "", "main_plain_preview": ""}
 
 
 def tailor_latex_resume_from_base64(
@@ -239,6 +276,8 @@ ORIGINAL MAIN TEX:
             "main_tex_file": main_tex_file,
             "tailored_zip_base64": tailored_zip_base64,
             "tailored_zip_filename": f"tailored_{company.replace(' ', '_') or 'resume'}.zip",
+            "tailored_main_tex_preview": tailored_tex[:15000],
+            "tailored_plain_text_preview": _strip_latex_to_text(tailored_tex)[:10000],
             "url": None,
             "pdf_path": None,
             "keywords": {
