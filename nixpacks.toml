@@ -1,5 +1,0 @@
-# Force Railway to use Dockerfile instead of Nixpacks auto-detection
-[build]
-builder = "dockerfile"
-
-# Note: startCommand is defined in Dockerfile CMD, don't override it here
