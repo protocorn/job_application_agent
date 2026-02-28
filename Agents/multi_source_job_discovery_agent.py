@@ -27,10 +27,11 @@ from job_relevance_scorer import rank_jobs
 class MultiSourceJobDiscoveryAgent:
     """Job Discovery Agent that searches across multiple job boards"""
 
-    def __init__(self, user_id=None, proxy_manager=None):
+    def __init__(self, user_id=None, proxy_manager=None, profile_data=None):
         self.user_id = user_id
         self.proxy_manager = proxy_manager
-        self.profile_data = self._load_profile_data()
+        # Accept pre-loaded profile (e.g. fetched via Launchway API) to avoid a direct DB call.
+        self.profile_data = profile_data if profile_data is not None else self._load_profile_data()
         self.adapters = JobAPIFactory.get_all_adapters(proxy_manager=proxy_manager)
         self.gemini_client = self._initialize_gemini()
         logger.info(f"Initialized with {len(self.adapters)} job API adapters")

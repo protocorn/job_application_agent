@@ -1,0 +1,41 @@
+# ─── Launchway CLI dependencies ──────────────────────────────────────────────
+# Install with: pip install -r requirements-cli.txt
+#
+# For the full package (preferred), use pyproject.toml:
+#   pip install -e .
+
+# Database
+SQLAlchemy>=2.0.0
+psycopg2-binary>=2.9.0
+alembic>=1.12.0
+
+# Security / auth
+bcrypt>=4.0.0
+cryptography>=41.0.0
+
+# Google AI / Gemini
+google-genai
+google-generativeai>=0.3.0
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.1.1
+google-api-python-client>=2.100.0
+
+# HTTP / web scraping
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+# Browser automation (run `playwright install chromium` after this)
+playwright>=1.40.0
+
+# Data processing
+pandas>=2.1.0
+numpy>=1.25.0
+Pillow
+PyPDF2>=3.0.0
+
+# Config / utilities
+python-dotenv>=1.0.0
+python-dateutil>=2.8.2
+loguru

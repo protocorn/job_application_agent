@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 import os
 import sys
 import requests
@@ -25,7 +25,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))  # For logging_co
 
 # Original imports
 from resume_tailoring_agent import get_google_services, get_doc_id_from_url, copy_google_doc, read_google_doc_content, apply_json_replacements_to_doc, tailor_resume as tailor_resume_with_agent, tailor_resume_and_return_url
-from latex_tailoring_agent import parse_latex_zip, get_main_tex_preview_from_base64
+from latex_tailoring_agent import parse_latex_zip, get_main_tex_preview_from_base64, compile_latex_zip_to_pdf
 from job_application_agent import run_links_with_refactored_agent
 from logging_config import setup_file_logging
 from components.session.session_manager import SessionManager
@@ -1000,6 +1000,36 @@ def upload_latex_resume():
             'latex_uploaded_at': datetime.utcnow(),
         })
 
+        # Best-effort: compile and save a PDF so job-apply can use a real resume file path.
+        pdf_generated = False
+        pdf_path = None
+        pdf_error = None
+        try:
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            resumes_dir = os.path.join(project_root, "Resumes")
+            os.makedirs(resumes_dir, exist_ok=True)
+            pdf_path = os.path.join(resumes_dir, f"latex_resume_{user_id}.pdf")
+
+            compile_result = compile_latex_zip_to_pdf(
+                latex_zip_base64=parsed.zip_base64,
+                main_tex_file=parsed.main_tex_file,
+                output_pdf_path=pdf_path,
+                timeout_seconds=90,
+            )
+            pdf_generated = bool(compile_result.get("success"))
+            if not pdf_generated:
+                pdf_path = None
+                pdf_error = compile_result.get("error")
+            else:
+                # Update resume_url to point at local PDF path for automation usage
+                ProfileService.create_or_update_profile(user_id, {
+                    'resume_url': pdf_path,
+                })
+        except Exception as _pdf_e:
+            pdf_generated = False
+            pdf_path = None
+            pdf_error = str(_pdf_e)
+
         return jsonify({
             "success": True,
             "message": "LaTeX ZIP uploaded successfully. Tailoring will use your stored LaTeX source.",
@@ -1009,6 +1039,10 @@ def upload_latex_resume():
             "tex_files": parsed.tex_files,
             "main_tex_preview": parsed.main_tex_preview,
             "main_plain_preview": parsed.main_plain_preview,
+            "latex_file_manifest": parsed.file_manifest,
+            "pdf_generated": pdf_generated,
+            "pdf_path": pdf_path,
+            "pdf_error": pdf_error,
         }), 200
     except Exception as e:
         logging.error(f"Error uploading LaTeX resume: {e}")
@@ -1047,6 +1081,52 @@ def get_latex_resume_preview():
         logging.error(f"Error getting LaTeX preview: {e}")
         return jsonify({"error": f"Failed to get LaTeX preview: {str(e)}"}), 500
 
+
+@app.route("/api/latex-resume/pdf", methods=['GET'])
+@require_auth
+def download_latex_resume_pdf():
+    """Download compiled PDF for stored LaTeX resume (best-effort compile if missing)."""
+    try:
+        user_id = request.current_user['id']
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        resumes_dir = os.path.join(project_root, "Resumes")
+        os.makedirs(resumes_dir, exist_ok=True)
+        pdf_path = os.path.join(resumes_dir, f"latex_resume_{user_id}.pdf")
+
+        # If missing, try compiling from stored LaTeX
+        if not os.path.exists(pdf_path):
+            from database_config import SessionLocal, UserProfile
+            db = SessionLocal()
+            try:
+                profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+                if not profile or not profile.latex_zip_base64 or not profile.latex_main_tex_path:
+                    return jsonify({"success": False, "error": "No LaTeX resume source found for this user."}), 404
+
+                compile_result = compile_latex_zip_to_pdf(
+                    latex_zip_base64=profile.latex_zip_base64,
+                    main_tex_file=profile.latex_main_tex_path,
+                    output_pdf_path=pdf_path,
+                    timeout_seconds=90,
+                )
+                if not compile_result.get("success"):
+                    return jsonify({
+                        "success": False,
+                        "error": compile_result.get("error") or "Failed to compile LaTeX to PDF.",
+                    }), 500
+            finally:
+                db.close()
+
+        # Send as attachment
+        try:
+            return send_file(pdf_path, mimetype="application/pdf", as_attachment=True, download_name="resume.pdf")
+        except TypeError:
+            # Flask < 2.0 compatibility
+            return send_file(pdf_path, mimetype="application/pdf", as_attachment=True, attachment_filename="resume.pdf")
+
+    except Exception as e:
+        logging.error(f"Error downloading LaTeX PDF: {e}")
+        return jsonify({"error": f"Failed to download LaTeX PDF: {str(e)}"}), 500
+
 def extract_docx_text(file_obj) -> str:
     """Extract text from DOCX file using python-docx"""
     try:
@@ -1083,7 +1163,8 @@ def extract_docx_text(file_obj) -> str:
         raise ValueError(f"Failed to extract text from DOCX: {str(e)}")
 
 # ---------------- Action History Endpoints ----------------
-@app.route("/api/action-history", methods=["POST"])
+# --- DISABLED: web-app-only feature, not needed for profile management MVP ---
+# @app.route("/api/action-history", methods=["POST"])
 @require_auth
 def save_action_history_api():
     try:
@@ -1100,7 +1181,8 @@ def save_action_history_api():
         logging.error(f"Error saving action history: {e}")
         return jsonify({ 'success': False, 'error': 'Failed to save action history' }), 500
 
-@app.route("/api/action-history", methods=["GET"])
+# --- DISABLED: web-app-only feature, not needed for profile management MVP ---
+# @app.route("/api/action-history", methods=["GET"])
 @require_auth
 def get_action_history_api():
     try:
@@ -1115,7 +1197,8 @@ def get_action_history_api():
         logging.error(f"Error fetching action history: {e}")
         return jsonify({ 'success': False, 'error': 'Failed to fetch action history' }), 500
 
-@app.route("/api/action-history", methods=["DELETE"])
+# --- DISABLED: web-app-only feature, not needed for profile management MVP ---
+# @app.route("/api/action-history", methods=["DELETE"])
 @require_auth
 def delete_action_history_api():
     try:
@@ -1136,7 +1219,8 @@ def delete_action_history_api():
         logging.error(f"Error processing resume: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/search-jobs", methods=['POST'])
+# --- DISABLED: job automation is CLI-only; not part of web profile management MVP ---
+# @app.route("/api/search-jobs", methods=['POST'])
 @require_auth
 def search_jobs():
     """ Search for jobs using Multi-Source Job Discovery Agent and save to PostgreSQL"""
@@ -1180,7 +1264,8 @@ def search_jobs():
         logging.error(f"Error searching for jobs: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/job-listings", methods=['GET'])
+# --- DISABLED: job automation is CLI-only; not part of web profile management MVP ---
+# @app.route("/api/job-listings", methods=['GET'])
 @require_auth
 def get_job_listings():
     """Get saved job listings from PostgreSQL database"""
@@ -1206,7 +1291,8 @@ def get_job_listings():
         logging.error(f"Error getting job listings: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/recent-job-listings", methods=['GET'])
+# --- DISABLED: job automation is CLI-only; not part of web profile management MVP ---
+# @app.route("/api/recent-job-listings", methods=['GET'])
 @require_auth
 def get_recent_job_listings():
     """Get recently added job listings from PostgreSQL database"""
@@ -1320,7 +1406,8 @@ def get_user_credits():
         logging.error(f"Error getting user credits: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/tailor-resume", methods=['POST'])
+# --- DISABLED: resume tailoring via web is not part of profile management MVP ---
+# @app.route("/api/tailor-resume", methods=['POST'])
 @require_auth
 @rate_limit('api_requests_per_user_per_minute')
 @validate_input
@@ -1421,7 +1508,8 @@ def tailor_resume():
         logging.error(f"Error submitting resume tailoring job: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/tailor-resume-sync", methods=['POST'])
+# --- DISABLED: resume tailoring via web is not part of profile management MVP ---
+# @app.route("/api/tailor-resume-sync", methods=['POST'])
 @require_auth
 @rate_limit('resume_tailoring_per_user_per_day')
 @validate_input
@@ -1610,7 +1698,8 @@ def tailor_resume_sync():
 
 # Auto batch job apply endpoint removed - feature only available via CLI
 
-@app.route("/api/job-logs/<job_or_session_id>", methods=['GET'])
+# --- DISABLED: job automation is CLI-only; not part of web profile management MVP ---
+# @app.route("/api/job-logs/<job_or_session_id>", methods=['GET'])
 def get_job_logs(job_or_session_id):
     """Get job logs for a specific job or session"""
     try:
@@ -1629,7 +1718,8 @@ def get_job_logs(job_or_session_id):
         logging.error(f"Error getting job logs for {job_or_session_id}: {e}")
         return jsonify({"error": f"Failed to get job logs: {str(e)}"}), 500
 
-@app.route("/api/job-status/<job_or_session_id>", methods=['GET'])
+# --- DISABLED: job automation is CLI-only; not part of web profile management MVP ---
+# @app.route("/api/job-status/<job_or_session_id>", methods=['GET'])
 def get_job_status(job_or_session_id):
     """Get job status and details for a specific job or session"""
     try:
@@ -1664,7 +1754,8 @@ def get_job_status(job_or_session_id):
 
 # Batch status endpoint removed - batch apply feature only available via CLI
 
-@app.route("/api/resume-job/<job_id>", methods=['POST'])
+# --- DISABLED: job automation is CLI-only; not part of web profile management MVP ---
+# @app.route("/api/resume-job/<job_id>", methods=['POST'])
 def resume_job(job_id):
     """Resume a job that requires human intervention"""
     try:
@@ -2178,9 +2269,11 @@ def reject_beta_access(user_id):
 
 # ============================================================
 # BETA FEEDBACK ENDPOINTS
+# --- DISABLED: beta feedback program paused for profile management MVP ---
 # ============================================================
 
-@app.route("/api/beta/feedback/status", methods=['GET'])
+# --- DISABLED ---
+# @app.route("/api/beta/feedback/status", methods=['GET'])
 @require_auth
 def get_feedback_status():
     """Check if user has already submitted beta feedback"""
@@ -2207,7 +2300,8 @@ def get_feedback_status():
         logging.error(f"Error checking feedback status: {e}")
         return jsonify({"error": "Failed to check feedback status"}), 500
 
-@app.route("/api/beta/feedback/submit", methods=['POST'])
+# --- DISABLED ---
+# @app.route("/api/beta/feedback/submit", methods=['POST'])
 @require_auth
 @rate_limit('api_requests_per_user_per_minute')
 @validate_input
@@ -2338,7 +2432,8 @@ def submit_beta_feedback():
         logging.error(f"Error submitting beta feedback: {e}")
         return jsonify({"error": f"Failed to submit feedback: {str(e)}"}), 500
 
-@app.route("/api/admin/feedback/all", methods=['GET'])
+# --- DISABLED ---
+# @app.route("/api/admin/feedback/all", methods=['GET'])
 @require_auth
 def get_all_feedback():
     """Get all beta feedback (admin only)"""
@@ -2460,6 +2555,163 @@ def change_password():
     except Exception as e:
         logging.error(f"Error changing password: {e}")
         return jsonify({"error": "Failed to change password"}), 500
+
+@app.route("/api/account/email", methods=['PUT'])
+@require_auth
+def update_email():
+    """Update the authenticated user's email address (CLI endpoint)."""
+    try:
+        from database_config import SessionLocal, User
+        data     = request.get_json() or {}
+        new_email = (data.get("email") or "").strip().lower()
+
+        if not new_email or "@" not in new_email:
+            return jsonify({"error": "A valid email address is required"}), 400
+
+        user_id = request.current_user['id']
+        db      = SessionLocal()
+        try:
+            # Check uniqueness
+            existing = db.query(User).filter(User.email == new_email).first()
+            if existing and str(existing.id) != str(user_id):
+                return jsonify({"error": "Email already in use"}), 409
+
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+
+            user.email = new_email
+            db.commit()
+            logging.info(f"Email updated for user {user_id}")
+            return jsonify({"success": True, "message": "Email updated successfully"}), 200
+        finally:
+            db.close()
+    except Exception as e:
+        logging.error(f"Error updating email: {e}")
+        return jsonify({"error": "Failed to update email"}), 500
+
+
+@app.route("/api/account/info", methods=['GET'])
+@require_auth
+def get_account_info():
+    """Return basic account info + application count (used by CLI)."""
+    try:
+        from database_config import SessionLocal, User, JobApplication
+        user_id = request.current_user['id']
+        db      = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+
+            app_count = db.query(JobApplication).filter(
+                JobApplication.user_id == user_id
+            ).count()
+
+            return jsonify({
+                "success": True,
+                "account": {
+                    "user_id":        str(user.id),
+                    "email":          user.email,
+                    "first_name":     user.first_name,
+                    "last_name":      user.last_name,
+                    "created_at":     user.created_at.isoformat() if user.created_at else None,
+                    "email_verified": user.email_verified,
+                    "is_active":      user.is_active,
+                    "total_applications": app_count,
+                },
+            }), 200
+        finally:
+            db.close()
+    except Exception as e:
+        logging.error(f"Error fetching account info: {e}")
+        return jsonify({"error": "Failed to fetch account info"}), 500
+
+
+@app.route("/api/cli/applications", methods=['GET'])
+@require_auth
+def cli_get_applications():
+    """Return the user's application history (used by CLI)."""
+    try:
+        from database_config import SessionLocal, JobApplication
+        user_id    = request.current_user['id']
+        limit      = min(int(request.args.get("limit", 50)), 200)
+        urls_only  = request.args.get("urls_only", "false").lower() == "true"
+        db         = SessionLocal()
+        try:
+            query = (
+                db.query(JobApplication)
+                .filter(JobApplication.user_id == user_id)
+                .order_by(JobApplication.created_at.desc())
+                .limit(limit)
+            )
+            apps = query.all()
+
+            if urls_only:
+                return jsonify({
+                    "success": True,
+                    "urls": [
+                        a.job_url for a in apps
+                        if a.job_url and a.status in ("completed", "in_progress", "queued")
+                    ],
+                }), 200
+
+            return jsonify({
+                "success": True,
+                "applications": [
+                    {
+                        "id":         str(a.id),
+                        "job_title":  a.job_title,
+                        "company":    a.company_name,
+                        "job_url":    a.job_url,
+                        "status":     a.status,
+                        "applied_at": a.applied_at.isoformat() if a.applied_at else None,
+                        "created_at": a.created_at.isoformat() if a.created_at else None,
+                    }
+                    for a in apps
+                ],
+            }), 200
+        finally:
+            db.close()
+    except Exception as e:
+        logging.error(f"Error fetching CLI applications: {e}")
+        return jsonify({"error": "Failed to fetch applications"}), 500
+
+
+@app.route("/api/cli/applications", methods=['POST'])
+@require_auth
+def cli_record_application():
+    """Record a completed job application from the CLI."""
+    try:
+        from database_config import SessionLocal, JobApplication
+        from datetime import datetime
+        user_id = request.current_user['id']
+        data    = request.get_json() or {}
+
+        job_url = (data.get("job_url") or "").strip()
+        if not job_url:
+            return jsonify({"error": "job_url is required"}), 400
+
+        db = SessionLocal()
+        try:
+            application = JobApplication(
+                user_id=user_id,
+                job_id=f"cli_{datetime.utcnow().timestamp()}",
+                company_name=data.get("company", "Unknown Company"),
+                job_title=data.get("title", "Unknown Position"),
+                job_url=job_url,
+                status=data.get("status", "completed"),
+                applied_at=datetime.utcnow(),
+            )
+            db.add(application)
+            db.commit()
+            return jsonify({"success": True, "message": "Application recorded"}), 201
+        finally:
+            db.close()
+    except Exception as e:
+        logging.error(f"Error recording CLI application: {e}")
+        return jsonify({"error": "Failed to record application"}), 500
+
 
 @app.route("/api/account/export-data", methods=['GET'])
 @require_auth
@@ -2830,6 +3082,34 @@ def disconnect_mimikree():
         logging.error(f"Error disconnecting Mimikree: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/mimikree/credentials", methods=['GET'])
+@require_auth
+def get_mimikree_credentials():
+    """
+    Return the decrypted Mimikree credentials for the current user.
+
+    Used exclusively by the CLI so the local resume-tailoring agent can
+    authenticate against the (separate) Mimikree server.  The credentials
+    are transmitted over HTTPS only, and only to the authenticated owner.
+    """
+    try:
+        user_id = request.current_user['id']
+        status  = mimikree_service.get_user_mimikree_status(user_id)
+        if not status.get('success') or not status.get('is_connected'):
+            return jsonify({"error": "Mimikree is not connected"}), 404
+
+        creds = mimikree_service.get_user_mimikree_credentials(user_id)
+        if not creds or not creds[0]:
+            return jsonify({"error": "Mimikree credentials not found"}), 404
+
+        email, password = creds
+        return jsonify({"success": True, "email": email, "password": password}), 200
+
+    except Exception as e:
+        logging.error(f"Error fetching Mimikree credentials: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/mimikree/test", methods=['POST'])
 @require_auth
 @rate_limit('api_requests_per_user_per_minute')
@@ -2900,8 +3180,10 @@ def system_status():
         }), 500
 
 # Session Management API Routes
+# --- DISABLED: browser session management is CLI-only; not part of web profile management MVP ---
 
-@app.route("/api/sessions/dashboard", methods=['GET'])
+# --- DISABLED ---
+# @app.route("/api/sessions/dashboard", methods=['GET'])
 def get_dashboard_data():
     """Get dashboard data with session statistics"""
     try:
@@ -2932,7 +3214,8 @@ def get_dashboard_data():
         
         return jsonify({"error": f"Failed to get dashboard data: {str(e)}"}), 500
 
-@app.route("/api/sessions", methods=['GET'])
+# --- DISABLED ---
+# @app.route("/api/sessions", methods=['GET'])
 def get_all_sessions():
     """Get all sessions"""
     try:
@@ -2942,7 +3225,8 @@ def get_all_sessions():
         logging.error(f"Error getting sessions: {e}")
         return jsonify({"error": f"Failed to get sessions: {str(e)}"}), 500
 
-@app.route("/api/sessions/<session_id>", methods=['GET'])
+# --- DISABLED ---
+# @app.route("/api/sessions/<session_id>", methods=['GET'])
 def get_session(session_id):
     """Get specific session by ID"""
     try:
@@ -2954,7 +3238,8 @@ def get_session(session_id):
         logging.error(f"Error getting session {session_id}: {e}")
         return jsonify({"error": f"Failed to get session: {str(e)}"}), 500
 
-@app.route("/api/sessions/<session_id>/resume", methods=['POST'])
+# --- DISABLED ---
+# @app.route("/api/sessions/<session_id>/resume", methods=['POST'])
 def resume_session_api(session_id):
     """Resume a frozen session by opening browser"""
     try:
@@ -3133,7 +3418,8 @@ def resume_session_api(session_id):
         logging.error(f"Error resuming session {session_id}: {e}")
         return jsonify({"error": f"Failed to resume session: {str(e)}"}), 500
 
-@app.route("/api/sessions/<session_id>", methods=['DELETE'])
+# --- DISABLED ---
+# @app.route("/api/sessions/<session_id>", methods=['DELETE'])
 def delete_session(session_id):
     """Delete a session"""
     try:
@@ -3146,7 +3432,8 @@ def delete_session(session_id):
         logging.error(f"Error deleting session {session_id}: {e}")
         return jsonify({"error": f"Failed to delete session: {str(e)}"}), 500
 
-@app.route("/api/sessions/<session_id>/mark-complete", methods=['POST'])
+# --- DISABLED ---
+# @app.route("/api/sessions/<session_id>/mark-complete", methods=['POST'])
 def mark_session_complete(session_id):
     """Mark a session as manually completed"""
     try:
@@ -3167,7 +3454,8 @@ def mark_session_complete(session_id):
         logging.error(f"Error marking session {session_id} as complete: {e}")
         return jsonify({"error": f"Failed to mark session as complete: {str(e)}"}), 500
 
-@app.route("/api/sessions/<session_id>/screenshot", methods=['GET'])
+# --- DISABLED ---
+# @app.route("/api/sessions/<session_id>/screenshot", methods=['GET'])
 def get_session_screenshot(session_id):
     """Get session screenshot"""
     try:
@@ -3377,7 +3665,8 @@ def delete_project(project_id):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/tailoring/analyze-projects", methods=['POST'])
+# --- DISABLED: tailoring analysis is used by CLI directly, not needed as web endpoint for MVP ---
+# @app.route("/api/tailoring/analyze-projects", methods=['POST'])
 @require_auth
 def analyze_projects():
     """Analyze projects for relevance to a job"""
@@ -3510,7 +3799,8 @@ def analyze_projects():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/tailoring/generate-project-bullets", methods=['POST'])
+# --- DISABLED: bullet generation is used by CLI directly, not needed as web endpoint for MVP ---
+# @app.route("/api/tailoring/generate-project-bullets", methods=['POST'])
 @require_auth
 def generate_project_bullets():
     """Generate tailored bullets for a project"""
@@ -3641,7 +3931,8 @@ def get_job_queue_stats():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/jobs/<job_id>/status", methods=['GET'])
+# --- DISABLED: async job queue is used by tailor-resume (web); disabled with it ---
+# @app.route("/api/jobs/<job_id>/status", methods=['GET'])
 @require_auth
 def get_job_status_api(job_id):
     """Get status of a specific job"""
@@ -3664,7 +3955,8 @@ def get_job_status_api(job_id):
         logging.error(f"Error getting job status: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/jobs/<job_id>/cancel", methods=['POST'])
+# --- DISABLED ---
+# @app.route("/api/jobs/<job_id>/cancel", methods=['POST'])
 @require_auth
 def cancel_job_api(job_id):
     """Cancel a job"""
@@ -3681,7 +3973,8 @@ def cancel_job_api(job_id):
         logging.error(f"Error cancelling job: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/user/jobs", methods=['GET'])
+# --- DISABLED ---
+# @app.route("/api/user/jobs", methods=['GET'])
 @require_auth
 def get_user_jobs_api():
     """Get all jobs for the current user"""

@@ -21,7 +21,11 @@ class MimikreeService:
     def __init__(self):
         # Get encryption key from security manager
         self.cipher_suite = security_manager.cipher_suite
-        self.base_url = os.getenv('MIMIKREE_BASE_URL', 'http://localhost:3000')
+        # Use development URL (localhost:8080) unless running in production
+        if os.getenv('FLASK_ENV') == 'production':
+            self.base_url = os.getenv('MIMIKREE_BASE_URL', 'https://www.mimikree.com')
+        else:
+            self.base_url = os.getenv('MIMIKREE_BASE_URL', 'http://localhost:8080')
     
     def connect_user_mimikree(self, user_id: int, email: str, password: str) -> Dict[str, Any]:
         """

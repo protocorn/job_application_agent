@@ -31,8 +31,11 @@ except ImportError as e:
 
 dotenv.load_dotenv()
 
-# Mimikree API Configuration
-MIMIKREE_BASE_URL = os.getenv("MIMIKREE_BASE_URL", "http://localhost:3000")
+# Mimikree API Configuration: use development URL (localhost:8080) unless in production
+if os.getenv("FLASK_ENV") == "production":
+    MIMIKREE_BASE_URL = os.getenv("MIMIKREE_BASE_URL", "https://www.mimikree.com")
+else:
+    MIMIKREE_BASE_URL = os.getenv("MIMIKREE_BASE_URL", "http://localhost:8080")
 
 # --- Google API Setup ---
 SCOPES = [

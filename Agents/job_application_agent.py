@@ -5,7 +5,7 @@ import base64
 import os
 import sys
 import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from playwright.async_api import Page, Frame, async_playwright
 
@@ -51,7 +51,7 @@ except ImportError:
 
 class RefactoredJobAgent:
     """The main class for the refactored job application agent."""
-    def __init__(self, playwright, headless: bool = True, keep_open: bool = False, debug: bool = False, hold_seconds: int = 0, slow_mo_ms: int = 0, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False, resume_path: str = None, job_url: str = None, use_persistent_profile: bool = True, mimikree_email: str = None, mimikree_password: str = None) -> None:
+    def __init__(self, playwright, headless: bool = True, keep_open: bool = False, debug: bool = False, hold_seconds: int = 0, slow_mo_ms: int = 0, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False, resume_path: str = None, job_url: str = None, use_persistent_profile: bool = True, mimikree_email: str = None, mimikree_password: str = None, pre_fetched_description: str = None, profile_data: dict = None) -> None:
         self.playwright = playwright
         self.use_persistent_profile = use_persistent_profile  # Use persistent browser profile
 
@@ -63,6 +63,7 @@ class RefactoredJobAgent:
         self.job_url = job_url  # Store job URL for VNC app mode
         self.mimikree_email = mimikree_email
         self.mimikree_password = mimikree_password
+        self.pre_fetched_description = pre_fetched_description
         self.vnc_coordinator = None
 
         if vnc_mode and not VNC_AVAILABLE:
@@ -83,6 +84,7 @@ class RefactoredJobAgent:
         self.jobs_dict = jobs_dict  # Reference to the shared JOBS dictionary
         self.session_manager = session_manager
         self.user_id = user_id  # Store user_id for profile loading
+        self._preloaded_profile = profile_data  # Pre-loaded profile (avoids DB lookup when set)
         self.current_session = None
         self.page: Optional[Page] = None
         self.main_page: Optional[Page] = None  # Store reference to main page (not popup)
@@ -592,7 +594,7 @@ class RefactoredJobAgent:
     # -----------------------------------------------------------------
 
     async def _state_start(self, state: ApplicationState) -> str:
-        profile = _load_profile_data(user_id=self.user_id)
+        profile = _load_profile_data(user_id=self.user_id, profile_data=self._preloaded_profile)
 
         # Try to extract job context from the page if possible
         job_context = await self._extract_job_context_from_page()
@@ -672,17 +674,24 @@ class RefactoredJobAgent:
 
                     logger.info(f"🧵 [Resume Tailoring] Source resume: {resume_url}")
 
-                    # Step 2: Resolve tailoring text. Prefer extracted JD description, fallback to visible page text.
-                    tailoring_text = job_context.get('description')
-                    if not tailoring_text:
-                        try:
-                            fallback_text = await self.page.inner_text("body")
-                            fallback_text = (fallback_text or "").strip()
-                            if len(fallback_text) >= 300:
-                                tailoring_text = fallback_text[:12000]
-                                logger.info("🧵 [Resume Tailoring] Using page body text fallback for tailoring context")
-                        except Exception as fallback_err:
-                            logger.warning(f"⚠️ [Resume Tailoring] Could not extract fallback page text: {fallback_err}")
+                    # Step 2: Resolve tailoring text.
+                    # Priority: pre-fetched description (from job discovery API) > page-extracted > body text fallback.
+                    # Application form pages often contain no job description, so a pre-fetched description
+                    # (passed in from JobSpy or an HTTP pre-fetch) is the most reliable source.
+                    if self.pre_fetched_description and len(self.pre_fetched_description) >= 200:
+                        tailoring_text = self.pre_fetched_description
+                        logger.info("🧵 [Resume Tailoring] Using pre-fetched description from job discovery API")
+                    else:
+                        tailoring_text = job_context.get('description')
+                        if not tailoring_text:
+                            try:
+                                fallback_text = await self.page.inner_text("body")
+                                fallback_text = (fallback_text or "").strip()
+                                if len(fallback_text) >= 300:
+                                    tailoring_text = fallback_text[:12000]
+                                    logger.info("🧵 [Resume Tailoring] Using page body text fallback for tailoring context")
+                            except Exception as fallback_err:
+                                logger.warning(f"⚠️ [Resume Tailoring] Could not extract fallback page text: {fallback_err}")
 
                     if not tailoring_text:
                         logger.error("❌ [Resume Tailoring] No usable job description/context found for tailoring")
@@ -940,6 +949,7 @@ class RefactoredJobAgent:
         try:
             page_analysis = await self._comprehensive_page_analysis(state)
             logger.info(f"🤖 AI Analysis Result: {page_analysis}")
+            state.context['last_ai_page_analysis'] = page_analysis
             
             normalized_action = self._normalize_ai_action(page_analysis)
             page_analysis['action'] = normalized_action
@@ -1002,7 +1012,10 @@ class RefactoredJobAgent:
         """
         try:
             # Check 1: Look for form fields - if found, go to fill_form
-            form_fields = await self.form_filler._get_all_form_fields()
+            if hasattr(self.form_filler, 'interactor') and hasattr(self.form_filler.interactor, 'get_all_form_fields'):
+                form_fields = await self.form_filler.interactor.get_all_form_fields(extract_options=False)
+            else:
+                form_fields = []
             if form_fields and len(form_fields) > 0:
                 logger.info(f"📝 Deterministic: Found {len(form_fields)} form fields -> fill_form")
                 return 'fill_form'
@@ -1051,25 +1064,8 @@ class RefactoredJobAgent:
     async def _comprehensive_page_analysis(self, state: ApplicationState) -> Dict[str, Any]:
         """Uses AI to comprehensively analyze the current page and determine the best next action."""
         try:
-            # Take screenshot for AI analysis with optimized settings
-            from PIL import Image
-            from io import BytesIO
-
-            screenshot_bytes = await self.page.screenshot(quality=50, type='jpeg')
-            image = Image.open(BytesIO(screenshot_bytes))
-
-            # Resize to max 1024px width for even more token savings
-            max_width = 1024
-            if image.width > max_width:
-                ratio = max_width / image.width
-                new_size = (max_width, int(image.height * ratio))
-                image = image.resize(new_size, Image.Resampling.LANCZOS)
-                logger.debug(f"📐 Resized screenshot: {image.width}x{image.height} -> {new_size[0]}x{new_size[1]}")
-
-            # Convert back to bytes
-            buffer = BytesIO()
-            image.save(buffer, format='JPEG', quality=50)
-            screenshot = buffer.getvalue()
+            # Capture ONE screenshot from the most actionable viewport on the page.
+            screenshot, screenshot_meta = await self._capture_best_actionable_screenshot()
 
             # Get page context
             url = self.page.url
@@ -1095,6 +1091,8 @@ CONTEXT:
 - Page Title: {page_title}
 - Has clicked Apply button: {has_clicked_apply}
 - Coming from human intervention: {came_from_intervention}
+- Screenshot focus: {screenshot_meta.get('reason', 'unknown')}
+- Screenshot position: scrollY={screenshot_meta.get('selected_scroll_y', 0)} of max {screenshot_meta.get('max_scroll_y', 0)} (viewport height: {screenshot_meta.get('viewport_height', 0)})
 
 IMPORTANT CONTEXT RULES:
 - If coming from human intervention AND has_clicked_apply is False, you're likely back on the job listing after authentication
@@ -1161,6 +1159,142 @@ Return ONLY a JSON object:
                 "elements_detected": []
             }
 
+    async def _capture_best_actionable_screenshot(self) -> Tuple[bytes, Dict[str, Any]]:
+        """
+        Capture a single screenshot from the most actionable viewport.
+
+        This keeps Gemini cost at one image while reducing false "nothing to do"
+        outcomes when key form controls are below the fold.
+        """
+        from PIL import Image
+        from io import BytesIO
+
+        screenshot_meta: Dict[str, Any] = {
+            "selected_scroll_y": 0,
+            "max_scroll_y": 0,
+            "viewport_height": 0,
+            "reason": "initial_viewport"
+        }
+
+        try:
+            candidate = await self.page.evaluate("""
+                () => {
+                    const doc = document.documentElement;
+                    const body = document.body || doc;
+                    const currentScrollY = Math.max(0, Math.floor(window.scrollY || doc.scrollTop || 0));
+                    const viewportHeight = Math.max(1, Math.floor(window.innerHeight || doc.clientHeight || 900));
+                    const documentHeight = Math.max(
+                        body.scrollHeight || 0,
+                        doc.scrollHeight || 0,
+                        body.offsetHeight || 0,
+                        doc.offsetHeight || 0,
+                        viewportHeight
+                    );
+                    const maxScrollY = Math.max(0, documentHeight - viewportHeight);
+
+                    const selector = [
+                        "input",
+                        "select",
+                        "textarea",
+                        "button",
+                        "input[type='file']",
+                        "[role='button']",
+                        "[contenteditable='true']",
+                        "a[href]"
+                    ].join(",");
+
+                    function isVisible(el) {
+                        if (!el) return false;
+                        const style = window.getComputedStyle(el);
+                        if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return false;
+                        const rect = el.getBoundingClientRect();
+                        return rect.width > 6 && rect.height > 6;
+                    }
+
+                    function scoreElement(el, absY) {
+                        const tag = (el.tagName || "").toLowerCase();
+                        const type = ((el.getAttribute("type") || "") + "").toLowerCase();
+                        const role = ((el.getAttribute("role") || "") + "").toLowerCase();
+                        const text = (((el.innerText || "") + " " + (el.getAttribute("aria-label") || "") + " " + (el.getAttribute("name") || "")).trim()).toLowerCase();
+
+                        let score = 1;
+                        if (tag === "input" || tag === "select" || tag === "textarea") score += 8;
+                        if (tag === "button" || role === "button") score += 6;
+                        if (type === "file") score += 10;
+                        if (el.required || (el.getAttribute("aria-required") || "").toLowerCase() === "true") score += 6;
+                        if (/(next|continue|review|save|apply|start|upload|resume|cv)/i.test(text)) score += 7;
+                        if (/(submit|finish|complete)/i.test(text)) score += 3;
+                        if (absY > currentScrollY + viewportHeight * 0.8) score += 2;
+                        return score;
+                    }
+
+                    const nodes = Array.from(document.querySelectorAll(selector)).slice(0, 800);
+                    const windows = {};
+                    let visibleCount = 0;
+
+                    for (const el of nodes) {
+                        if (!isVisible(el)) continue;
+                        visibleCount += 1;
+                        const rect = el.getBoundingClientRect();
+                        const absY = Math.max(0, Math.floor(rect.top + currentScrollY));
+                        const rawTop = Math.max(0, Math.min(maxScrollY, Math.floor(absY - viewportHeight * 0.35)));
+                        const snappedTop = Math.floor(rawTop / 120) * 120;
+                        const score = scoreElement(el, absY);
+                        windows[snappedTop] = (windows[snappedTop] || 0) + score;
+                    }
+
+                    let bestTop = currentScrollY;
+                    let bestScore = -1;
+                    for (const [k, v] of Object.entries(windows)) {
+                        const top = Number(k);
+                        if (v > bestScore) {
+                            bestTop = top;
+                            bestScore = v;
+                        }
+                    }
+
+                    let reason = "highest_actionable_density";
+                    if (bestScore < 0) {
+                        // Fallback: if page can scroll, bias slightly downward to discover below-fold controls.
+                        bestTop = Math.min(maxScrollY, currentScrollY + Math.floor(viewportHeight * 0.65));
+                        reason = maxScrollY > 0 ? "fallback_scroll_scan" : "single_viewport_page";
+                    }
+
+                    return {
+                        selected_scroll_y: Math.max(0, Math.min(maxScrollY, bestTop)),
+                        max_scroll_y: maxScrollY,
+                        viewport_height: viewportHeight,
+                        visible_actionable_count: visibleCount,
+                        reason: reason
+                    };
+                }
+            """)
+
+            if isinstance(candidate, dict):
+                screenshot_meta.update(candidate)
+
+            target_scroll = int(screenshot_meta.get("selected_scroll_y", 0) or 0)
+            await self.page.evaluate("(y) => window.scrollTo(0, y)", target_scroll)
+            await self.page.wait_for_timeout(350)
+
+        except Exception as e:
+            logger.debug(f"Best-viewport pre-scan failed, using current viewport: {e}")
+
+        screenshot_bytes = await self.page.screenshot(quality=50, type='jpeg')
+        image = Image.open(BytesIO(screenshot_bytes))
+
+        # Resize to max 1024px width for token savings
+        max_width = 1024
+        if image.width > max_width:
+            ratio = max_width / image.width
+            new_size = (max_width, int(image.height * ratio))
+            image = image.resize(new_size, Image.Resampling.LANCZOS)
+            logger.debug(f"📐 Resized screenshot: {image.width}x{image.height} -> {new_size[0]}x{new_size[1]}")
+
+        buffer = BytesIO()
+        image.save(buffer, format='JPEG', quality=50)
+        return buffer.getvalue(), screenshot_meta
+
     def _normalize_ai_action(self, page_analysis: Dict[str, Any]) -> str:
         """Normalize AI action labels and map common consent actions to supported handlers."""
         raw_action = (page_analysis.get('action') or '').strip()
@@ -1217,9 +1351,64 @@ Return ONLY a JSON object:
         if apply_button:
             state.context['apply_button'] = apply_button
             return 'click_apply'
-        else:
-            state.context['human_intervention_reason'] = "Could not find Apply button on job listing page. Please locate and click the Apply button manually."
-            return 'human_intervention'
+
+        # If AI strongly suggested a listing/apply context, try direct label-based fallback.
+        ai_context = state.context.get('last_ai_page_analysis', {}) or {}
+        ai_confidence = float(ai_context.get('confidence', 0.0) or 0.0)
+        if ai_confidence >= 0.7 or ai_context.get('action') == 'find_apply_button':
+            fallback_button = await self._find_apply_button_by_common_labels()
+            if fallback_button:
+                logger.info("✅ Found apply button via label fallback after AI guidance")
+                state.context['apply_button'] = fallback_button
+                return 'click_apply'
+
+        state.context['human_intervention_reason'] = "Could not find Apply button on job listing page. Please locate and click the Apply button manually."
+        return 'human_intervention'
+
+    async def _find_apply_button_by_common_labels(self) -> Optional[Dict[str, Any]]:
+        """Best-effort fallback to locate an apply CTA by common labels on page/iframe."""
+        labels = [
+            "Apply to Job",
+            "Apply Now",
+            "Apply for this job",
+            "Start Applying",
+            "Start Application",
+            "Apply"
+        ]
+        selector_templates = [
+            'button:has-text("{text}")',
+            'a:has-text("{text}")',
+            '[role="button"]:has-text("{text}")',
+            'input[type="submit"][value*="{text}" i]',
+            'input[type="button"][value*="{text}" i]'
+        ]
+
+        contexts: List[Union[Page, Frame]] = [self.page]
+        try:
+            frame = await self.iframe_helper.find_actionable_frame()
+            if frame:
+                contexts.append(frame)
+        except Exception as e:
+            logger.debug(f"Apply label fallback iframe check failed: {e}")
+
+        for ctx in contexts:
+            for label in labels:
+                safe_text = label.replace('"', '\\"')
+                for template in selector_templates:
+                    selector = template.format(text=safe_text)
+                    try:
+                        locator = ctx.locator(selector).and_(ctx.locator(':visible')).first
+                        await locator.wait_for(state='visible', timeout=400)
+                        return {
+                            'element': locator,
+                            'confidence': 0.7,
+                            'reason': f"Label fallback matched '{label}' via selector {selector}",
+                            'method': 'label_fallback'
+                        }
+                    except Exception:
+                        continue
+
+        return None
 
     async def _handle_iframe_switch(self, state: ApplicationState) -> str:
         """Handle switching to iframe context."""
@@ -2022,7 +2211,7 @@ Return ONLY a JSON object:
         if self.user_id:
             try:
                 from components.executors.account_creation_handler import AccountCreationHandler
-                profile = _load_profile_data(user_id=self.user_id)
+                profile = _load_profile_data(user_id=self.user_id, profile_data=self._preloaded_profile)
                 user_email = profile.get('email', '')
                 
                 if user_email:
@@ -2046,10 +2235,11 @@ Return ONLY a JSON object:
                     if not state.context.get('account_creation_attempted'):
                         logger.info("🔍 Checking for account creation page...")
                         account_result = await account_handler.handle_account_creation(user_email)
-                        
-                        # Mark that we've attempted account creation (don't repeat in loops)
-                        state.context['account_creation_attempted'] = True
-                        
+
+                        # Only mark as attempted when this page was actually an account-creation flow.
+                        if account_result.get('handled'):
+                            state.context['account_creation_attempted'] = True
+
                         if account_result.get('handled') and account_result.get('success'):
                             logger.info(f"✅ Account creation handled: {account_result.get('message')}")
                             # Wait a bit for page to process
@@ -2102,7 +2292,8 @@ Return ONLY a JSON object:
             logger.error("🔄 Maximum iterations reached! Too many fill_form attempts. Stopping.")
             return 'fail'
         
-        profile = _load_profile_data(user_id=self.user_id)
+        profile = _load_profile_data(user_id=self.user_id, profile_data=self._preloaded_profile)
+        profile = await self._prepare_account_password_for_form(profile)
 
         # Store form_filler and profile in context for checkpoint access
         state.context['form_filler'] = self.form_filler
@@ -2176,6 +2367,84 @@ Return ONLY a JSON object:
         
         # Step 4: After form filling, let AI analyze what to do next
         return 'ai_guided_navigation'
+
+    async def _prepare_account_password_for_form(self, profile: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Prepare a saved/generated password for account-creation forms.
+
+        This enables deterministic auto-fill for password + confirm password fields
+        on create-account pages while still allowing login handler to own true login pages.
+        """
+        try:
+            if not self.user_id:
+                return profile
+
+            # If already prepared in profile, keep it.
+            existing_pw = profile.get('account_password') or profile.get('generated_account_password')
+            if existing_pw:
+                return profile
+
+            # Only do this when the page looks like account creation.
+            password_field_count = await self.current_context.locator('input[type="password"]').count()
+            if password_field_count == 0:
+                return profile
+
+            current_url = (self.current_context.url or "").lower()
+            looks_like_creation = (
+                password_field_count >= 2 or
+                'accountnew' in current_url or
+                'create' in current_url or
+                'register' in current_url
+            )
+            if not looks_like_creation:
+                return profile
+
+            user_email = (profile.get('email') or '').strip()
+            if not user_email:
+                return profile
+
+            from components.services.company_credentials_service import CompanyCredentialsService
+            from components.detectors.account_creation_detector import AccountCreationDetector
+
+            detector = AccountCreationDetector(self.current_context)
+            company_info = await detector.get_company_info_from_page()
+            company_domain = (company_info.get('company_domain') or '').strip()
+            company_name = (company_info.get('company_name') or '').strip() or company_domain or "Unknown Company"
+
+            if not company_domain:
+                return profile
+
+            credentials_service = CompanyCredentialsService()
+            try:
+                existing_credentials = credentials_service.get_credentials(
+                    user_id=self.user_id,
+                    company_domain=company_domain
+                )
+
+                if existing_credentials and existing_credentials.get('password'):
+                    generated_password = existing_credentials['password']
+                    logger.info(f"🔐 Reusing saved account password for {company_name}")
+                else:
+                    generated_password = credentials_service.generate_and_save_credentials(
+                        user_id=self.user_id,
+                        company_name=company_name,
+                        company_domain=company_domain,
+                        email=user_email,
+                        ats_type='generic'
+                    )
+                    if generated_password:
+                        logger.info(f"🔐 Generated new account password for {company_name}")
+
+                if generated_password:
+                    profile['account_password'] = generated_password
+                    profile['generated_account_password'] = generated_password
+            finally:
+                credentials_service.close()
+
+        except Exception as e:
+            logger.debug(f"Could not prepare account password for form: {e}")
+
+        return profile
 
     async def _fill_sections_if_needed(self, profile: Dict[str, Any]) -> None:
         """Check for and fill education/work experience sections before proceeding."""
@@ -3039,51 +3308,59 @@ IMPORTANT:
         return None
 
 # Load profile data from PostgreSQL database OR JSON file (based on env settings)
-def _load_profile_data(user_id=None):
+def _load_profile_data(user_id=None, profile_data=None):
+    """
+    Load user profile data for form filling.
+
+    Priority:
+      1. `profile_data` dict passed directly (e.g. pre-fetched via Launchway API) — no DB call.
+      2. JSON file (development mode, RUN_MODE=Development + DEV_SETTINGS=Dont_use_database).
+      3. PostgreSQL via AgentProfileService (legacy / direct-DB mode).
+    """
     import os
     import json
-    from agent_profile_service import AgentProfileService
 
-    # Check environment variables for development mode
-    run_mode = os.getenv('RUN_MODE', 'Production')
-    dev_settings = os.getenv('DEV_SETTINGS', 'Use_database')
-    
-    logger.info(f"🔧 RUN_MODE: {run_mode}, DEV_SETTINGS: {dev_settings}")
+    # --- Fast path: caller provided profile dict directly (API mode) ----------
+    if profile_data is not None:
+        logger.info("✅ Using pre-loaded profile data (API mode — no DB lookup)")
+        # Fall through to the shared transformation block below.
+
+    else:
+        # Check environment variables for development mode
+        from agent_profile_service import AgentProfileService
+        run_mode     = os.getenv('RUN_MODE', 'Production')
+        dev_settings = os.getenv('DEV_SETTINGS', 'Use_database')
+
+        logger.info(f"🔧 RUN_MODE: {run_mode}, DEV_SETTINGS: {dev_settings}")
 
     try:
-        # Development mode with JSON file
-        if run_mode == 'Development' and dev_settings == 'Dont_use_database':
-            logger.info("📁 Loading profile from JSON file (Development mode)")
-            
-            # Get path to profile_data.json
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            project_root = os.path.dirname(current_dir)
-            json_path = os.path.join(project_root, 'ProfileBuilder', 'profile_data.json')
-            
-            if not os.path.exists(json_path):
-                logger.error(f"❌ profile_data.json not found at: {json_path}")
-                logger.warning("🔄 Using fallback profile data...")
-                return fallback_profile
-            
-            with open(json_path, 'r', encoding='utf-8') as f:
-                profile_data = json.load(f)
-            
-            logger.info(f"✅ Loaded profile from JSON: {profile_data.get('first name', 'N/A')} {profile_data.get('last name', 'N/A')}")
-        
-        # Production mode OR Development with database
-        else:
-            logger.info("🗄️ Loading profile from PostgreSQL database")
-            
-            # Load from PostgreSQL database
-            if user_id:
-                profile_data = AgentProfileService.get_profile_by_user_id(user_id)
+        if profile_data is None:
+            # Development mode with JSON file
+            run_mode     = os.getenv('RUN_MODE', 'Production')
+            dev_settings = os.getenv('DEV_SETTINGS', 'Use_database')
+            if run_mode == 'Development' and dev_settings == 'Dont_use_database':
+                logger.info("📁 Loading profile from JSON file (Development mode)")
+                current_dir  = os.path.dirname(os.path.abspath(__file__))
+                project_root = os.path.dirname(current_dir)
+                json_path    = os.path.join(project_root, 'ProfileBuilder', 'profile_data.json')
+                if not os.path.exists(json_path):
+                    logger.error(f"❌ profile_data.json not found at: {json_path}")
+                    logger.warning("🔄 Using fallback profile data...")
+                    return fallback_profile
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    profile_data = json.load(f)
+                logger.info(f"✅ Loaded profile from JSON: {profile_data.get('first name', 'N/A')} {profile_data.get('last name', 'N/A')}")
             else:
-                # For backward compatibility, get the latest user's profile
-                profile_data = AgentProfileService.get_latest_user_profile()
-
-            if not profile_data:
-                logger.error("❌ No profile data found in database")
-                logger.warning("🔄 Using fallback profile data...")
+                # Production mode: load from PostgreSQL
+                logger.info("🗄️ Loading profile from PostgreSQL database")
+                from agent_profile_service import AgentProfileService
+                if user_id:
+                    profile_data = AgentProfileService.get_profile_by_user_id(user_id)
+                else:
+                    profile_data = AgentProfileService.get_latest_user_profile()
+                if not profile_data:
+                    logger.error("❌ No profile data found in database")
+                    logger.warning("🔄 Using fallback profile data...")
                 return fallback_profile
         
         # Get current directory for resume path

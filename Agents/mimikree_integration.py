@@ -12,8 +12,14 @@ import dotenv
 
 dotenv.load_dotenv()
 
-# Configuration
-MIMIKREE_BASE_URL = os.getenv('MIMIKREE_BASE_URL', 'http://localhost:3000')
+# Configuration: use development URL (localhost:8080) unless running in production
+def _get_mimikree_base_url() -> str:
+    if os.getenv('FLASK_ENV') == 'production':
+        return os.getenv('MIMIKREE_BASE_URL', 'https://www.mimikree.com')
+    return os.getenv('MIMIKREE_BASE_URL', 'http://localhost:8080')
+
+
+MIMIKREE_BASE_URL = _get_mimikree_base_url()
 MIMIKREE_AUTH_ENDPOINT = f'{MIMIKREE_BASE_URL}/api/external/authenticate'
 MIMIKREE_BATCH_QUESTIONS_ENDPOINT = f'{MIMIKREE_BASE_URL}/api/external/batch-questions'
 

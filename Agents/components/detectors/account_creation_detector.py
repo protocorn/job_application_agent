@@ -68,24 +68,48 @@ class AccountCreationDetector:
                 if keyword in page_text_lower
             )
             
-            # More creation keywords than login keywords = account creation
-            if creation_matches > login_matches:
-                logger.info(f"✅ Detected account creation page (creation: {creation_matches}, login: {login_matches})")
-                return True
-            
-            # Additional check: Look for password confirmation field
-            # Account creation pages almost always have "confirm password" or "verify password"
+            # Additional structural checks
             confirm_password = await self.page.locator(
                 'input[type="password"][data-automation-id*="verify"], '
                 'input[type="password"][name*="confirm"], '
                 'input[type="password"][id*="confirm"], '
                 'input[type="password"][placeholder*="confirm"]'
             ).count()
-            
+
+            password_fields = await self.page.locator('input[type="password"]').count()
+            email_fields = await self.page.locator(
+                'input[type="email"], input[name*="email" i], input[id*="email" i], input[name*="login" i], input[id*="login" i]'
+            ).count()
+
+            # Explicit login page pattern: sign-in language + no confirm field + simple email/password form
+            if login_matches >= 2 and confirm_password == 0 and password_fields <= 1 and email_fields >= 1:
+                logger.info(
+                    f"ℹ️ Not account creation page (login-like form detected: creation={creation_matches}, "
+                    f"login={login_matches}, confirm={confirm_password}, password_fields={password_fields})"
+                )
+                return False
+
+            # Strong account creation signals
             if confirm_password > 0:
                 logger.info("✅ Detected account creation page (has password confirmation field)")
                 return True
-            
+
+            # We need a stronger text margin to avoid classifying mixed auth pages as creation
+            if creation_matches >= (login_matches + 2):
+                logger.info(f"✅ Detected account creation page (creation: {creation_matches}, login: {login_matches})")
+                return True
+
+            # Additional button-level signal for creation flows
+            create_button_count = await self.page.locator(
+                'button:has-text("Create Account"), '
+                'button:has-text("Sign Up"), '
+                '[role="button"]:has-text("Create Account"), '
+                '[aria-label*="Create Account" i]'
+            ).count()
+            if create_button_count > 0 and login_matches <= 2:
+                logger.info("✅ Detected account creation page (create-account button present)")
+                return True
+
             return False
         
         except Exception as e:

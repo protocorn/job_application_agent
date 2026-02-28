@@ -17,6 +17,8 @@ class ApplyDetector:
                 'a[data-automation-id="adventureButton"]',  # Specific to Workday
                 'button:text-is("Apply Now")', # Exact, case-sensitive text match
                 'a:text-is("Apply Now")',
+                'button:text-is("Apply to Job")',
+                'a:text-is("Apply to Job")',
             ],
             'confidence': 0.95
         },
@@ -24,6 +26,8 @@ class ApplyDetector:
             'selectors': [
                 'button:text-is("Apply")',
                 'a:text-is("Apply")',
+                'button:text-is("Start Application")',
+                'a:text-is("Start Application")',
                 'button[aria-label~="Apply" i]', # Contains whole word "Apply", case-insensitive
                 'a[aria-label~="Apply" i]',
             ],
@@ -32,9 +36,14 @@ class ApplyDetector:
         'tertiary': {
             'selectors': [
                 '[role="button"]:has-text("Apply")',
+                'button:has-text("Apply")',
+                'a:has-text("Apply")',
+                'button:has-text("Start Applying")',
+                'a:has-text("Start Applying")',
                 'button[class*="apply"]',
                 'a[class*="apply"]',
                 'input[type="submit"][value*="Apply" i]',
+                'input[type="button"][value*="Apply" i]',
             ],
             'confidence': 0.6
         }
@@ -83,6 +92,12 @@ class ApplyDetector:
             logger.info(f"✅ Found apply button via pattern matching. Reason: {pattern_candidate['reason']}")
             return pattern_candidate
 
+        # 1b. Text heuristic fallback for common ATS wording variants.
+        text_candidate = await self._find_candidate_by_visible_text()
+        if text_candidate:
+            logger.info(f"✅ Found apply button via text heuristic. Reason: {text_candidate['reason']}")
+            return text_candidate
+
         # 2. Check for actionable iframes (e.g. Greenhouse, Lever)
         target_frame = None
         if hasattr(self.page, "frames"):
@@ -100,6 +115,12 @@ class ApplyDetector:
                          logger.info(f"✅ Found apply button in iframe via pattern matching. Reason: {frame_pattern_candidate['reason']}")
                          frame_pattern_candidate['reason'] = f"Iframe ({target_frame.url}): {frame_pattern_candidate['reason']}"
                          return frame_pattern_candidate
+
+                     frame_text_candidate = await frame_detector._find_candidate_by_visible_text()
+                     if frame_text_candidate:
+                         logger.info(f"✅ Found apply button in iframe via text heuristic. Reason: {frame_text_candidate['reason']}")
+                         frame_text_candidate['reason'] = f"Iframe ({target_frame.url}): {frame_text_candidate['reason']}"
+                         return frame_text_candidate
              except Exception as e:
                  logger.warning(f"Failed during iframe analysis: {e}")
 
@@ -160,24 +181,83 @@ class ApplyDetector:
                 return None
 
             selector = ai_result.get('selector')
-            if not selector:
-                logger.warning("AI found a button but did not provide a CSS selector.")
-                return None
-
-            element = self.page.locator(selector).first
-            if await element.is_visible(timeout=3000):
-                return {
-                    'element': element,
-                    'confidence': ai_result.get('confidence', 0.5),
-                    'reason': f"AI fallback: {ai_result.get('reason', 'No reason provided')}",
-                    'method': 'ai_fallback'
-                }
-            else:
+            if selector:
+                element = self.page.locator(selector).first
+                if await element.is_visible(timeout=3000):
+                    return {
+                        'element': element,
+                        'confidence': ai_result.get('confidence', 0.5),
+                        'reason': f"AI fallback: {ai_result.get('reason', 'No reason provided')}",
+                        'method': 'ai_fallback'
+                    }
                 logger.warning(f"AI-suggested element is not visible: '{selector}'")
-                return None
+            else:
+                logger.warning("AI found a button but did not provide a CSS selector.")
+
+            # AI sometimes identifies correct text but weak selector. Recover via text hint.
+            text_hint = (ai_result.get('text') or '').strip()
+            if text_hint:
+                text_candidate = await self._find_candidate_by_visible_text(text_hints=[text_hint])
+                if text_candidate:
+                    text_candidate['reason'] = f"AI text fallback ('{text_hint}'): {text_candidate['reason']}"
+                    text_candidate['confidence'] = max(text_candidate.get('confidence', 0.6), ai_result.get('confidence', 0.5))
+                    text_candidate['method'] = 'ai_text_fallback'
+                    return text_candidate
+            return None
         except Exception as e:
             logger.error(f"AI fallback process failed with an exception: {e}")
             return None
+
+    async def _find_candidate_by_visible_text(self, text_hints: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
+        """
+        Find an apply CTA by common visible text variants.
+        This is intentionally broad but constrained to clickable elements.
+        """
+        default_hints = [
+            "Apply to Job",
+            "Apply Now",
+            "Apply for this job",
+            "Start Applying",
+            "Start Application",
+            "Apply"
+        ]
+        hints = [h for h in (text_hints or []) if h] + default_hints
+
+        # Preserve order and dedupe.
+        seen = set()
+        ordered_hints: List[str] = []
+        for hint in hints:
+            normalized = hint.strip().lower()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            ordered_hints.append(hint.strip())
+
+        selector_templates = [
+            'button:has-text("{text}")',
+            'a:has-text("{text}")',
+            '[role="button"]:has-text("{text}")',
+            'input[type="submit"][value*="{text}" i]',
+            'input[type="button"][value*="{text}" i]'
+        ]
+
+        for idx, hint in enumerate(ordered_hints):
+            safe_text = hint.replace('"', '\\"')
+            for template in selector_templates:
+                selector = template.format(text=safe_text)
+                try:
+                    element = self.page.locator(selector).and_(self.page.locator(':visible')).first
+                    await element.wait_for(state='visible', timeout=450)
+                    confidence = 0.78 if idx == 0 else 0.72
+                    return {
+                        'element': element,
+                        'confidence': confidence,
+                        'reason': f"Matched visible apply CTA text '{hint}'.",
+                        'method': 'text_heuristic'
+                    }
+                except Exception:
+                    continue
+        return None
 
     async def _handle_adzuna_details_page(self) -> Optional[Dict[str, Any]]:
         """Handle Adzuna details page: close popup then click 'Apply for this job' button."""

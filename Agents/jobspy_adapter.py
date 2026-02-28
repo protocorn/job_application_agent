@@ -4,7 +4,7 @@ Integrates JobSpy library to scrape jobs from multiple sources concurrently
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from jobspy import scrape_jobs
 import pandas as pd
 
@@ -23,8 +23,8 @@ class JobSpyAdapter:
         self.requires_api_key = False
         self.proxy_manager = proxy_manager
         
-        # Default sites to search (best performers)
-        self.default_sites = ["indeed", "linkedin", "zip_recruiter", "google"]
+        # Default sites to search
+        self.default_sites = ["indeed", "linkedin", "zip_recruiter", "google", "glassdoor"]
         
         if self.proxy_manager:
             logger.info(f"JobSpy adapter initialized with {len(self.proxy_manager.get_proxy_list())} proxies")
@@ -206,86 +206,3 @@ class JobSpyAdapter:
         
         return jobs
     
-    def get_supported_sites(self) -> List[str]:
-        """Get list of supported job sites"""
-        return [
-            "indeed",
-            "linkedin", 
-            "zip_recruiter",
-            "google",
-            "glassdoor",
-            "bayt",
-            "naukri",
-            "bdjobs"
-        ]
-    
-    def get_supported_countries(self) -> Dict[str, List[str]]:
-        """Get list of supported countries by site"""
-        return {
-            "indeed": [
-                "USA", "UK", "Canada", "Australia", "Germany", "France", "India",
-                "Brazil", "Mexico", "Spain", "Italy", "Netherlands", "Japan",
-                # ... (see full list in JobSpy docs)
-            ],
-            "glassdoor": [
-                "USA", "UK", "Canada", "Australia", "Germany", "France", "India",
-                "Brazil", "Mexico", "Spain", "Italy"
-            ],
-            "linkedin": ["Global"],
-            "zip_recruiter": ["USA", "Canada"],
-            "google": ["Global"],
-            "bayt": ["International"],
-            "naukri": ["India"],
-            "bdjobs": ["Bangladesh"]
-        }
-
-
-# Convenience function for quick searches
-def search_jobs_quick(keywords: str, location: str = "", results_wanted: int = 20,
-                     sites: Optional[List[str]] = None, **kwargs) -> List[Dict[str, Any]]:
-    """
-    Quick job search function
-    
-    Example:
-        jobs = search_jobs_quick("software engineer", "San Francisco, CA", 20)
-    """
-    adapter = JobSpyAdapter()
-    
-    params = {
-        "keywords": keywords,
-        "location": location,
-        "results_wanted": results_wanted,
-        "sites": sites or ["indeed", "linkedin", "zip_recruiter"],
-        **kwargs
-    }
-    
-    result = adapter.search_jobs(params)
-    return result.get("data", [])
-
-
-if __name__ == "__main__":
-    # Test the adapter
-    logging.basicConfig(level=logging.INFO)
-    
-    print("Testing JobSpy Adapter...")
-    adapter = JobSpyAdapter()
-    
-    result = adapter.search_jobs({
-        "keywords": "software engineer",
-        "location": "San Francisco, CA",
-        "results_wanted": 10,
-        "hours_old": 72
-    })
-    
-    print(f"\nSuccess: {result['success']}")
-    print(f"Total jobs: {result['total']}")
-    print(f"Sites searched: {result.get('sites_searched', [])}")
-    
-    if result['data']:
-        print("\nFirst job:")
-        job = result['data'][0]
-        print(f"  Title: {job['title']}")
-        print(f"  Company: {job['company']}")
-        print(f"  Location: {job['location']}")
-        print(f"  URL: {job['job_url']}")
-        print(f"  Source: {job['source']}")

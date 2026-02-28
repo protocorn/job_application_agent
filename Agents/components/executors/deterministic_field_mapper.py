@@ -108,6 +108,13 @@ class DeterministicFieldMapper:
 
             # Resume
             'resume_path': ['resume', 'cv', 'curriculum vitae', 'upload resume', 'attach resume'],
+
+            # Account creation credentials
+            'account_password': [
+                'password', 'new password', 'create password', 'set password',
+                'confirm password', 'verify password', 'repeat password',
+                'password confirmation', 're-enter password'
+            ],
         }
 
     def _build_pattern_match_table(self) -> Dict[str, List[re.Pattern]]:
@@ -149,6 +156,12 @@ class DeterministicFieldMapper:
                 re.compile(r'graduat(ion|e)\s*(date|year)', re.IGNORECASE),
                 re.compile(r'expected\s*graduat', re.IGNORECASE),
                 re.compile(r'complet(ion|e)\s*date', re.IGNORECASE),
+            ],
+            'account_password': [
+                re.compile(r'password', re.IGNORECASE),
+                re.compile(r'(confirm|verify|repeat).*(password)', re.IGNORECASE),
+                re.compile(r'(password).*(confirm|verify|repeat)', re.IGNORECASE),
+                re.compile(r'txtpassword', re.IGNORECASE),
             ],
         }
 

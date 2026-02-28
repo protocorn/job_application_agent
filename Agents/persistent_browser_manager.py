@@ -63,7 +63,9 @@ class PersistentBrowserManager:
         if user_id in _active_contexts:
             context = _active_contexts[user_id]
             try:
-                # Verify context is still valid by checking pages
+                # Verify cached context is truly alive (RPC round-trip).
+                # A stale context may still expose .pages but fail on new_page().
+                await context.cookies()
                 pages = context.pages
                 logger.info(f"♻️  Reusing existing browser for user {user_id} ({len(pages)} tabs open)")
                 print(f"[INFO] ♻️  Reusing existing browser ({len(pages)} tabs)")
@@ -76,7 +78,7 @@ class PersistentBrowserManager:
                     await context.close()
                 except:
                     pass  # Already closed or invalid
-                del _active_contexts[user_id]
+                _active_contexts.pop(user_id, None)
         
         profile_path = self.get_profile_path(user_id)
         

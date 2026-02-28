@@ -165,7 +165,9 @@ class AccountCreationHandler:
                 await fields['email'].fill(email)
                 await asyncio.sleep(0.3)
             else:
-                logger.warning("⚠️ Email field not found")
+                # Guardrail: if we cannot find email, this is likely a sign-in form, not account creation.
+                logger.warning("⚠️ Email field not found - refusing to submit as account creation")
+                return False
             
             # Fill password field
             if fields.get('password'):
@@ -228,9 +230,8 @@ class AccountCreationHandler:
                 'button:has-text("Sign Up")',
                 'button[type="submit"]:has-text("Create")',
                 
-                # Fallback to any clickable element with Create Account text
-                '[role="button"]:has-text("Create Account")',
-                'button[type="submit"]'
+                # Fallback to any clickable element with explicit create-account text
+                '[role="button"]:has-text("Create Account")'
             ]
             
             for selector in selectors:

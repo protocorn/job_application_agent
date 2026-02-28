@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 # Import resume tailoring functions
 try:
     from Agents.resume_tailoring_agent import tailor_resume_and_return_url, get_google_services
+    from Agents.latex_tailoring_agent import tailor_latex_resume_from_base64, compile_latex_zip_to_pdf
     RESUME_TAILORING_AVAILABLE = True
     print("[OK] Resume tailoring module loaded")
 except Exception as e:
@@ -165,6 +166,27 @@ class CLIJobAgent:
     def _is_latex_resume_mode(self) -> bool:
         source_type = (self.current_profile or {}).get('resume_source_type', 'google_doc')
         return source_type == 'latex_zip'
+
+    def _ensure_resume_ready_for_auto_apply(self) -> bool:
+        """
+        Ensure auto-apply has a usable resume path.
+        For LaTeX mode, compile stored ZIP to a local PDF and persist resume_url.
+        """
+        if not self.current_profile:
+            self.print_error("Profile not loaded. Please log in again.")
+            return False
+
+        # LaTeX resume mode is not yet available in production — require a Google Docs URL.
+        if self._is_latex_resume_mode():
+            self.print_error("LaTeX resume auto-apply is not yet available in this version.")
+            self.print_info("Please set your resume source to Google Docs in your profile.")
+            return False
+
+        resume_url = self.current_profile.get('resume_url')
+        if not resume_url:
+            self.print_error("Please complete your profile and add a resume URL (Google Docs link) first.")
+            return False
+        return True
 
     def _get_connected_mimikree_credentials(self) -> tuple[Optional[str], Optional[str]]:
         """
@@ -867,9 +889,10 @@ class CLIJobAgent:
             self.pause()
             return
 
+        # LaTeX resume tailoring is not yet available in production
         if self._is_latex_resume_mode():
-            self.print_warning("LaTeX/Overleaf resume tailoring is currently available only on the frontend website.")
-            self.print_info("Please upload your LaTeX ZIP in the web profile page and run tailoring from the web Tailor Resume page.")
+            self.print_warning("LaTeX resume tailoring is not yet available in this version.")
+            self.print_info("Please set your resume source to Google Docs in your profile and use a Google Docs resume URL.")
             self.pause()
             return
 
@@ -941,6 +964,177 @@ class CLIJobAgent:
                 self.pause()
         else:
             return
+    
+    def _handle_latex_resume_tailoring(self):
+        """Handle LaTeX resume tailoring workflow"""
+        try:
+            # Get LaTeX ZIP from database
+            db = SessionLocal()
+            try:
+                profile = db.query(UserProfile).filter(UserProfile.user_id == self.current_user.id).first()
+                if not profile or not profile.latex_zip_base64:
+                    self.print_error("No LaTeX resume ZIP found in your profile")
+                    self.print_info("Please upload your LaTeX ZIP file in the web profile page first")
+                    self.pause()
+                    return
+                
+                latex_zip_base64 = profile.latex_zip_base64
+                main_tex_path = profile.latex_main_tex_path
+                if not main_tex_path:
+                    self.print_error("Main TeX file path not set")
+                    self.pause()
+                    return
+            finally:
+                db.close()
+            
+            self.print_info("LaTeX resume tailoring will customize your LaTeX resume")
+            self.print_info("for a specific job and generate a tailored ZIP file")
+            
+            proceed = self.get_input("\nProceed? (y/n): ").strip().lower()
+            if proceed != 'y':
+                return
+            
+            job_description = self.get_input("\nEnter job description (or paste text): ").strip()
+            if not job_description:
+                self.print_error("Job description is required")
+                self.pause()
+                return
+            
+            job_title = self.get_input("Job Title: ").strip() or "Position"
+            company = self.get_input("Company Name: ").strip() or "Company"
+            
+            self.print_info("\nStarting resume tailoring... This may take 1-2 minutes")
+            print("[INIT] Systematic tailoring modules loaded successfully")
+            
+            # Call LaTeX tailoring function
+            result = tailor_latex_resume_from_base64(
+                latex_zip_base64=latex_zip_base64,
+                main_tex_file=main_tex_path,
+                job_description=job_description,
+                job_title=job_title,
+                company=company
+            )
+            
+            print(f"{Colors.OKGREEN}[OK]{Colors.ENDC}")
+            print("Resume tailored successfully!")
+            self._display_latex_tailored_resume(result, company)
+            
+        except Exception as e:
+            self.print_error(f"LaTeX resume tailoring failed: {str(e)}")
+            logger.error(f"LaTeX tailoring error: {e}", exc_info=True)
+        finally:
+            self.pause()
+    
+    def _display_latex_tailored_resume(self, tailoring_result: dict, company: str):
+        """Display LaTeX tailored resume information and generate PDF if possible"""
+        import base64
+        import tempfile
+        import os
+        import subprocess
+        import zipfile
+        
+        print(f"\n{Colors.OKGREEN}{'='*60}{Colors.ENDC}")
+        print(f"{Colors.BOLD}{Colors.OKGREEN}✨ Resume Tailored Successfully!{Colors.ENDC}")
+        print(f"{Colors.OKGREEN}{'='*60}{Colors.ENDC}")
+        
+        # Save ZIP file
+        tailored_zip_base64 = tailoring_result.get('tailored_zip_base64')
+        if tailored_zip_base64:
+            zip_filename = tailoring_result.get('tailored_zip_filename', f'tailored_{company}.zip')
+            zip_path = os.path.join(tempfile.gettempdir(), zip_filename)
+            
+            with open(zip_path, 'wb') as f:
+                f.write(base64.b64decode(tailored_zip_base64))
+            
+            # Try to compile PDF
+            pdf_path = None
+            try:
+                # Extract ZIP to temp directory
+                extract_dir = os.path.join(tempfile.gettempdir(), f'latex_compile_{company}')
+                os.makedirs(extract_dir, exist_ok=True)
+                
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(extract_dir)
+                
+                # Find main tex file
+                main_tex = tailoring_result.get('main_tex_file', 'resume.tex')
+                main_tex_path = os.path.join(extract_dir, main_tex)
+                
+                if os.path.exists(main_tex_path):
+                    # Compile PDF using MiKTeX pdflatex (Windows)
+                    pdflatex_path = r"C:\Users\proto\AppData\Local\Programs\MiKTeX\miktex\bin\x64\pdflatex.EXE"
+                    compile_result = subprocess.run(
+                        [pdflatex_path, "-interaction=nonstopmode", "-halt-on-error", main_tex],
+                        cwd=extract_dir,
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                    )
+
+                    # If LaTeX failed, surface stdout+stderr (LaTeX often writes errors to stdout)
+                    if compile_result.returncode != 0:
+                        out = (compile_result.stdout or "") + "\n" + (compile_result.stderr or "")
+                        tail = out.strip()[-1500:] if out.strip() else "(no output)"
+                        raise Exception(
+                            f"pdflatex failed (exit {compile_result.returncode}). "
+                            f"Output tail:\n{tail}"
+                        )
+
+                    # Check if PDF was generated
+                    pdf_name = main_tex.replace('.tex', '.pdf')
+                    pdf_temp_path = os.path.join(extract_dir, pdf_name)
+
+                    if os.path.exists(pdf_temp_path):
+                        # Move PDF to temp directory with better name
+                        pdf_path = os.path.join(tempfile.gettempdir(), f"tailored_{company}.pdf")
+                        import shutil
+                        shutil.copy2(pdf_temp_path, pdf_path)
+                    else:
+                        raise Exception(f"PDF file not generated (expected at: {pdf_temp_path})")
+                        
+            except Exception as e:
+                self.print_warning("\nPDF could not be generated from tailored LaTeX.")
+                self.print_info(f"Reason: {str(e)}")
+                logger.warning(f"PDF generation failed: {e}")
+            
+            # Display results
+            if pdf_path and os.path.exists(pdf_path):
+                print(f"\n{Colors.BOLD}📄 Tailored Resume PDF:{Colors.ENDC}")
+                print(f"   Path: {Colors.OKCYAN}{pdf_path}{Colors.ENDC}")
+                
+                # Open PDF
+                download = self.get_input("\n   Open PDF now? (y/n, default: y): ").strip().lower()
+                if download != 'n':
+                    try:
+                        subprocess.run(["start", pdf_path], shell=True)
+                        self.print_success("   ✓ PDF opened in your default viewer!")
+                    except Exception as e:
+                        logger.error(f"Failed to open PDF: {e}")
+                        self.print_warning(f"   Could not open automatically. Please open manually.")
+            
+            print(f"\n{Colors.BOLD}🧾 Tailored LaTeX ZIP:{Colors.ENDC}")
+            print(f"   Path: {Colors.OKCYAN}{zip_path}{Colors.ENDC}")
+            
+            # Display stats
+            keywords = tailoring_result.get('keywords', {})
+            job_required = keywords.get('job_required', [])
+            already_present = keywords.get('already_present', [])
+            newly_added = keywords.get('newly_added', [])
+            could_not_add = keywords.get('could_not_add', [])
+            
+            print(f"\n{Colors.BOLD}📊 Tailoring Stats:{Colors.ENDC}")
+            
+            if job_required:
+                total_keywords = len(job_required)
+                present_count = len(already_present) + len(newly_added)
+                match_rate = (present_count / total_keywords * 100) if total_keywords > 0 else 0
+                
+                print(f"   Match Rate: {match_rate:.1f}%")
+                print(f"   Keywords Present: {present_count}/{total_keywords}")
+                print(f"   Keywords Added: {len(newly_added)}")
+                print(f"   Keywords Missing: {len(could_not_add)}")
+            
+            print(f"{Colors.OKGREEN}{'='*60}{Colors.ENDC}")
     
     # ============================================================================
     # Job Search
@@ -1111,16 +1305,7 @@ class CLIJobAgent:
             self.pause()
             return
 
-        if self._is_latex_resume_mode():
-            self.print_warning("LaTeX/Overleaf resume mode detected.")
-            self.print_info("CLI auto-apply currently supports Google Docs resumes only.")
-            self.print_info("Please tailor LaTeX resumes from the frontend website.")
-            self.pause()
-            return
-        
-        # Check if profile is complete
-        if not self.current_profile or not self.current_profile.get('resume_url'):
-            self.print_error("Please complete your profile and add a resume URL first")
+        if not self._ensure_resume_ready_for_auto_apply():
             self.pause()
             return
         
@@ -1254,20 +1439,39 @@ class CLIJobAgent:
                         self.print_info(f"User ID: {self.current_user.id}")
                         self.print_info(f"Persistent profile: {'Yes' if True else 'No'}")
                         
+                        # Pre-fetch job description before opening the application form.
+                        # Application form pages (Lever/Greenhouse/Workday) typically have no
+                        # description text — the listing page does.  We fetch it here so the
+                        # tailoring agent always has quality context.
+                        pre_fetched_desc = None
+                        if tailor:
+                            self.print_info("   📄 Pre-fetching job description for tailoring...")
+                            try:
+                                pre_fetched_desc = await asyncio.to_thread(
+                                    self._fetch_job_description_from_url, job_url
+                                )
+                                if pre_fetched_desc:
+                                    self.print_success(f"   ✓ Description fetched ({len(pre_fetched_desc)} chars)")
+                                else:
+                                    self.print_info("   ↳ Will extract description from page during navigation")
+                            except Exception as _pf_err:
+                                logger.debug(f"Pre-fetch description error: {_pf_err}")
+
                         # Create agent for this job
                         agent = RefactoredJobAgent(
                             playwright=playwright,
                             headless=headless,
-                            keep_open=True,  # Keep browser open
+                            keep_open=True,
                             debug=True,
                             user_id=str(self.current_user.id),
                             tailor_resume=tailor,
                             mimikree_email=self._session_mimikree_email if tailor else None,
                             mimikree_password=self._session_mimikree_password if tailor else None,
                             job_url=job_url,
-                            use_persistent_profile=True  # Use persistent browser profile
+                            use_persistent_profile=True,
+                            pre_fetched_description=pre_fetched_desc,
                         )
-                        
+
                         # Process the job application
                         await agent.process_link(job_url)
                         
@@ -1429,6 +1633,10 @@ class CLIJobAgent:
             self.print_error("Auto-apply feature is not available")
             self.pause()
             return
+
+        if not self._ensure_resume_ready_for_auto_apply():
+            self.pause()
+            return
         
         # Options
         headless = self.get_input("Run in headless mode? (y/n, default: n): ").strip().lower() == 'y'
@@ -1444,22 +1652,38 @@ class CLIJobAgent:
             self.print_info("\nStarting automated job application...")
             self.print_info("This will open a browser and fill the application")
             self.print_warning("You may need to complete CAPTCHA or final submission manually")
-            
+
+            # Pre-fetch job description before opening the application form.
+            pre_fetched_desc = None
+            if tailor:
+                self.print_info("📄 Pre-fetching job description for tailoring...")
+                try:
+                    pre_fetched_desc = await asyncio.to_thread(
+                        self._fetch_job_description_from_url, job_url
+                    )
+                    if pre_fetched_desc:
+                        self.print_success(f"✓ Description fetched ({len(pre_fetched_desc)} chars)")
+                    else:
+                        self.print_info("↳ Will extract description from page during navigation")
+                except Exception as _pf_err:
+                    logger.debug(f"Pre-fetch description error: {_pf_err}")
+
             # Start the job application agent
             async with async_playwright() as playwright:
                 agent = RefactoredJobAgent(
                     playwright=playwright,
                     headless=headless,
-                    keep_open=True,  # Keep browser open for manual intervention
+                    keep_open=True,
                     debug=True,
                     user_id=str(self.current_user.id),
                     tailor_resume=tailor,
                     mimikree_email=self._session_mimikree_email if tailor else None,
                     mimikree_password=self._session_mimikree_password if tailor else None,
                     job_url=job_url,
-                    use_persistent_profile=True  # Use persistent browser profile
+                    use_persistent_profile=True,
+                    pre_fetched_description=pre_fetched_desc,
                 )
-                
+
                 await agent.process_link(job_url)
             
             # Display tailored resume download if tailoring was enabled
@@ -1752,9 +1976,7 @@ class CLIJobAgent:
             self.pause()
             return
         
-        # Check if profile is complete
-        if not self.current_profile or not self.current_profile.get('resume_url'):
-            self.print_error("Please complete your profile and add a resume URL first")
+        if not self._ensure_resume_ready_for_auto_apply():
             self.pause()
             return
         
@@ -2161,8 +2383,9 @@ class CLIJobAgent:
                                     'url': job_url,
                                     'title': job.get('title', 'Unknown'),
                                     'company': job.get('company', 'Unknown'),
+                                    'description': job.get('description', ''),
                                     'relevance_score': job.get('relevance_score', 0),
-                                    'search_query': query_to_use  # Track which query found this job
+                                    'search_query': query_to_use
                                 })
                                 processed_urls.add(job_url)
                                 new_count += 1
@@ -2246,6 +2469,7 @@ class CLIJobAgent:
                     job_url=job['url'],
                     job_title=job['title'],
                     company=job['company'],
+                    description=job.get('description', ''),
                     tailor_resume=tailor_resume,
                     headless=headless,
                     automation_state=automation_state
@@ -2299,10 +2523,69 @@ class CLIJobAgent:
         if apply_links:
             return apply_links.get('primary') or apply_links.get('indeed') or apply_links.get('linkedin')
         return job.get('job_url') or job.get('url')
+
+    def _fetch_job_description_from_url(self, url: str) -> Optional[str]:
+        """Lightweight HTTP fetch of a job listing URL to extract its description text.
+
+        Used as a pre-flight step before the browser opens the application form,
+        because application pages (Lever, Greenhouse, Workday, etc.) often contain
+        no job description — only form fields.
+
+        Returns extracted text (≥ 200 chars) or None on failure.
+        """
+        try:
+            import requests
+            from html.parser import HTMLParser
+
+            headers = {
+                'User-Agent': (
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                    'AppleWebKit/537.36 (KHTML, like Gecko) '
+                    'Chrome/121.0.0.0 Safari/537.36'
+                ),
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+            }
+
+            response = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
+            if response.status_code != 200:
+                return None
+
+            class _TextExtractor(HTMLParser):
+                def __init__(self):
+                    super().__init__()
+                    self._chunks: list = []
+                    self._skip = False
+
+                def handle_starttag(self, tag, attrs):
+                    if tag in ('script', 'style', 'nav', 'header', 'footer', 'noscript'):
+                        self._skip = True
+
+                def handle_endtag(self, tag):
+                    if tag in ('script', 'style', 'nav', 'header', 'footer', 'noscript'):
+                        self._skip = False
+
+                def handle_data(self, data):
+                    if not self._skip:
+                        stripped = data.strip()
+                        if stripped:
+                            self._chunks.append(stripped)
+
+            extractor = _TextExtractor()
+            extractor.feed(response.text)
+            text = ' '.join(extractor._chunks)
+            text = ' '.join(text.split())  # collapse whitespace
+
+            return text[:12000] if len(text) >= 200 else None
+
+        except Exception as e:
+            logger.debug(f"Pre-fetch description failed for {url}: {e}")
+            return None
     
     async def _apply_to_single_job_automated(self, job_url: str, job_title: str, company: str,
-                                            tailor_resume: bool, headless: bool, 
-                                            automation_state: Dict[str, Any]) -> Dict[str, Any]:
+                                            tailor_resume: bool, headless: bool,
+                                            automation_state: Dict[str, Any],
+                                            description: str = '') -> Dict[str, Any]:
         """Apply to a single job in automated mode"""
         start_time = time.time()
         
@@ -2333,14 +2616,15 @@ class CLIJobAgent:
             agent = RefactoredJobAgent(
                 playwright=playwright,
                 headless=headless,
-                keep_open=False,  # Auto-close after completion
+                keep_open=False,
                 debug=False,
                 user_id=str(self.current_user.id),
                 tailor_resume=tailor_resume,
                 mimikree_email=self._session_mimikree_email if tailor_resume else None,
                 mimikree_password=self._session_mimikree_password if tailor_resume else None,
                 job_url=job_url,
-                use_persistent_profile=True  # Use persistent browser profile
+                use_persistent_profile=True,
+                pre_fetched_description=description or None,
             )
             
             # Process the application
@@ -2627,7 +2911,6 @@ class CLIJobAgent:
             self.print_info(f"   Profile exists: {profile_path.exists()}")
             
             if profile_path.exists():
-                import os
                 size_mb = sum(f.stat().st_size for f in profile_path.rglob('*') if f.is_file()) / (1024 * 1024)
                 self.print_info(f"   Profile size: {size_mb:.2f} MB")
             else:
@@ -2693,6 +2976,8 @@ class CLIJobAgent:
                 await context.close()
                 if hasattr(context, '_playwright'):
                     await context._playwright.stop()
+                # Ensure closed context is removed from reuse registry
+                PersistentBrowserManager.close_browser_for_user(str(self.current_user.id))
                 self.print_success("✓ Browser closed successfully")
             except Exception as e:
                 logger.warning(f"Error closing browser: {e}")
