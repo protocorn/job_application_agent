@@ -1,0 +1,54 @@
+{
+  "report_type": "final_report",
+  "generated_at": "2026-02-14T23:34:48.531709",
+  "session_info": {
+    "start_time": "2026-02-14T23:30:27.306525",
+    "duration_minutes": 4.35,
+    "status": "completed",
+    "original_keywords": "Entry level ML Engineering jobs in USA",
+    "optimized_keywords": "Machine Learning Engineer PostgreSQL MongoDB Redis AWS Docker",
+    "query_variations_used": [
+      "Machine Learning Engineer PostgreSQL MongoDB Redis AWS Docker",
+      "AI Engineer Machine Learning GenAI AWS Docker in",
+      "ML Engineer AWS Docker PostgreSQL GenAI in USA",
+      "Machine Learning GenAI in USA"
+    ]
+  },
+  "statistics": {
+    "applications_submitted": 0,
+    "applications_failed": 2,
+    "jobs_discovered": 2,
+    "jobs_processed": 2,
+    "rate_limit_hits": 0,
+    "success_rate": 0.0
+  },
+  "applications": [
+    {
+      "job_url": "https://deloitteus.avature.net/careers/InviteToApply?jobId=323838",
+      "job_title": "Engineering Foundry - Manager",
+      "company": "Deloitte",
+      "timestamp": "2026-02-14T23:31:44.425706",
+      "success": false,
+      "submitted": false,
+      "fields_filled": 0,
+      "field_details": [],
+      "error": "Human intervention required - application not submitted",
+      "rate_limit_error": false,
+      "duration_seconds": 121.38
+    },
+    {
+      "job_url": "https://deloitteus.avature.net/careers/InviteToApply?jobId=323837",
+      "job_title": "Engineering Foundry - Senior Manager/Specialist Leader",
+      "company": "Deloitte",
+      "timestamp": "2026-02-14T23:33:48.821785",
+      "success": false,
+      "submitted": false,
+      "fields_filled": 0,
+      "field_details": [],
+      "error": "Human intervention required - application not submitted",
+      "rate_limit_error": false,
+      "duration_seconds": 56.7
+    }
+  ],
+  "queue_remaining": 0
+}

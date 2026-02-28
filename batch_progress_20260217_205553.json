@@ -1,0 +1,23 @@
+{
+  "report_type": "batch_report",
+  "generated_at": "2026-02-17T20:55:53.946351",
+  "total_jobs": 1,
+  "successful": 0,
+  "failed": 1,
+  "incomplete": 1,
+  "applications": [
+    {
+      "number": 1,
+      "job_url": "https://careers.incyte.com/jobs/5841?lang=en-us&mode=apply&iis=LinkedIn",
+      "job_title": "Job #1",
+      "company": "Unknown",
+      "timestamp": "2026-02-17T20:54:50.127485",
+      "success": false,
+      "submitted": false,
+      "fields_filled": 0,
+      "field_details": [],
+      "error": "Application incomplete (only 0 fields filled, not submitted)",
+      "tailored": false
+    }
+  ]
+}

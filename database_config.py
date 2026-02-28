@@ -175,6 +175,11 @@ class UserProfile(Base):
     preferred_location = Column(JSON)  # Array of preferred locations
     willing_to_relocate = Column(Boolean)
 
+    # Extracted resume keywords (populated by ResumeKeywordExtractor via Gemini)
+    # Stored as: {skills, job_titles, industries, domains, education_fields,
+    #             experience_level, years_of_experience, extracted_at}
+    resume_keywords = Column(JSON)
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -337,7 +342,29 @@ def get_user_by_email(db, email: str, load_profile: bool = False):
 def create_tables():
     """Create all tables in the database"""
     Base.metadata.create_all(bind=engine)
+    _apply_incremental_migrations()
     print("All tables created successfully!")
+
+
+def _apply_incremental_migrations():
+    """
+    Apply any schema changes that cannot be handled by create_all
+    (i.e. new columns on existing tables).  Each statement is idempotent.
+    """
+    from sqlalchemy import text
+    migrations = [
+        # resume_keywords: Gemini-extracted keyword cache (added Feb 2026)
+        "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS resume_keywords JSONB",
+    ]
+    with engine.connect() as conn:
+        for sql in migrations:
+            try:
+                conn.execute(text(sql))
+            except Exception as e:
+                # Non-fatal: log and continue (may already exist in some DB versions)
+                import logging as _log
+                _log.warning(f"Migration skipped ({e.__class__.__name__}): {sql[:80]}")
+        conn.commit()
 
 def test_connection():
     """Test database connection"""

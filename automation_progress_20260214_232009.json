@@ -1,0 +1,54 @@
+{
+  "report_type": "final_report",
+  "generated_at": "2026-02-14T23:25:21.769188",
+  "session_info": {
+    "start_time": "2026-02-14T23:20:09.036203",
+    "duration_minutes": 5.21,
+    "status": "completed",
+    "original_keywords": "ML Engineer",
+    "optimized_keywords": "ML Engineer Machine Learning GenAI AWS Docker in",
+    "query_variations_used": [
+      "ML Engineer Machine Learning GenAI AWS Docker in",
+      "AI/ML Engineer GenAI AWS Docker Engineering in United",
+      "ML Engineer Machine Learning MongoDB Redis PostgreSQL in",
+      "Artificial Intelligence jobs in United States"
+    ]
+  },
+  "statistics": {
+    "applications_submitted": 0,
+    "applications_failed": 2,
+    "jobs_discovered": 17,
+    "jobs_processed": 2,
+    "rate_limit_hits": 0,
+    "success_rate": 0.0
+  },
+  "applications": [
+    {
+      "job_url": "https://jobs.bnsf.com/us/en/job/BRSBRWUS94808EXTERNALENUS/AI-Engineer-II-Remote-US?utm_source=indeed&utm_medium=phenom-feeds",
+      "job_title": "AI Engineer II (Remote - US)",
+      "company": "BNSF Railway",
+      "timestamp": "2026-02-14T23:22:51.332265",
+      "success": false,
+      "submitted": false,
+      "fields_filled": 0,
+      "field_details": [],
+      "error": "Human intervention required - application not submitted",
+      "rate_limit_error": false,
+      "duration_seconds": 91.74
+    },
+    {
+      "job_url": "https://overwatchimaging.bamboohr.com/careers/50?source=indeed&src=indeed&postedDate=2026-02-11",
+      "job_title": "Software Engineering Intern",
+      "company": "Overwatch Imaging",
+      "timestamp": "2026-02-14T23:24:26.089909",
+      "success": false,
+      "submitted": false,
+      "fields_filled": 0,
+      "field_details": [],
+      "error": "Application incomplete (only 0 fields filled, not submitted)",
+      "rate_limit_error": false,
+      "duration_seconds": 52.67
+    }
+  ],
+  "queue_remaining": 15
+}

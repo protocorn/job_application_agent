@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import sys
 from datetime import datetime
 from launchway.cli.utils import Colors
 
@@ -18,6 +19,56 @@ except Exception as e:
 
 class JobSearchMixin:
 
+    def _ensure_resume_keywords(self) -> bool:
+        """
+        Check whether the current profile has Gemini-extracted resume keywords.
+        If not, offer to extract them now (improves job relevance matching).
+        Returns True to proceed, False to abort (user opted out or extraction failed).
+        """
+        rk = (self.current_profile or {}).get("resume_keywords") or {}
+        if rk and (rk.get("skills") or rk.get("domains")):
+            return True  # already extracted — nothing to do
+
+        print(
+            f"\n{Colors.WARNING}Tip:{Colors.ENDC} Your profile doesn't have Gemini-extracted "
+            "resume keywords yet.\n"
+            "  Extracting them once improves job relevance matching for any profession."
+        )
+        ans = self.get_input("  Extract keywords from your resume now? (y/n, default: y): ").strip().lower()
+        if ans == 'n':
+            return True  # user skipped — still proceed with search
+
+        # Check resume URL
+        resume_url = (self.current_profile or {}).get("resume_url", "")
+        if not resume_url:
+            self.print_warning(
+                "No resume URL saved in your profile. "
+                "Add it under Profile > Resume URL first."
+            )
+            return True  # proceed without keywords
+
+        sys.stdout.write(f"\n  {Colors.OKCYAN}Extracting keywords from your resume...{Colors.ENDC} ")
+        sys.stdout.flush()
+        try:
+            keywords = self.api.extract_resume_keywords()
+            self.current_profile["resume_keywords"] = keywords
+            total = sum(
+                len(keywords.get(k, []))
+                for k in ("skills", "job_titles", "industries", "domains")
+            )
+            sys.stdout.write(f"{Colors.OKGREEN}done.{Colors.ENDC}\n")
+            self.print_success(
+                f"Extracted {total} keywords "
+                f"({len(keywords.get('skills', []))} skills, "
+                f"{len(keywords.get('domains', []))} domains)"
+            )
+        except Exception as e:
+            sys.stdout.write(f"{Colors.WARNING}skipped.{Colors.ENDC}\n")
+            self.print_warning(f"Could not extract keywords: {e}")
+            logger.warning(f"Keyword extraction failed: {e}")
+
+        return True
+
     def job_search_menu(self):
         self.clear_screen()
         self.print_header("JOB SEARCH")
@@ -27,6 +78,8 @@ class JobSearchMixin:
             self.print_info("Missing dependencies or configuration.")
             self.pause()
             return
+
+        self._ensure_resume_keywords()
 
         self.print_info("Search for jobs across multiple sources (Indeed, LinkedIn, etc.)")
         print(f"\n{Colors.BOLD}Search Parameters:{Colors.ENDC}")

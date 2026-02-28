@@ -151,12 +151,13 @@ def initialize_production_infrastructure():
     """Initialize all production infrastructure components"""
     try:
         # Initialize database tables if they don't exist
-        from database_config import Base, engine, test_connection
+        from database_config import Base, engine, test_connection, _apply_incremental_migrations
         logging.info("Checking database connection...")
         if test_connection():
             logging.info("✅ Database connection successful")
             logging.info("Initializing database tables...")
             Base.metadata.create_all(bind=engine)
+            _apply_incremental_migrations()
             logging.info("✅ Database tables initialized")
         else:
             raise Exception("Database connection failed")
@@ -747,6 +748,65 @@ def save_profile():
     except Exception as e:
         logging.error(f"Error saving profile: {e}")
         return jsonify({"error": f"Failed to save profile: {str(e)}"}), 500
+
+@app.route("/api/profile/keywords/extract", methods=['POST'])
+@require_auth
+def extract_profile_keywords():
+    """
+    Extract structured keywords from the authenticated user's resume using Gemini.
+    Fetches the resume URL from the user's profile, calls ResumeKeywordExtractor,
+    saves the result back to the profile, and returns the extracted keywords.
+
+    Optional JSON body:
+        { "resume_text": "..." }   — supply raw text instead of fetching from URL
+    """
+    try:
+        from resume_keyword_extractor import ResumeKeywordExtractor
+
+        user_id = request.current_user['id']
+        body = request.json or {}
+
+        keywords = None
+
+        # Option 1: caller supplies raw resume text
+        raw_text = body.get("resume_text", "").strip()
+        if raw_text:
+            api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+            extractor = ResumeKeywordExtractor(api_key=api_key)
+            keywords = extractor.extract_from_text(raw_text)
+
+        # Option 2: fetch from the user's saved resume URL
+        if not keywords:
+            profile_result = ProfileService.get_complete_profile(user_id)
+            if not profile_result.get("success"):
+                return jsonify({"error": "Profile not found"}), 404
+
+            resume_url = profile_result.get("profile", {}).get("resume_url", "")
+            if not resume_url:
+                return jsonify({"error": "No resume URL saved in your profile"}), 400
+
+            resume_text = extract_google_doc_with_oauth(resume_url, user_id)
+            if not resume_text:
+                return jsonify({
+                    "error": "Could not fetch resume. Make sure it is shared as 'Anyone with the link can view'."
+                }), 400
+
+            api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+            extractor = ResumeKeywordExtractor(api_key=api_key)
+            keywords = extractor.extract_from_text(resume_text)
+
+        if not keywords:
+            return jsonify({"error": "Keyword extraction failed"}), 500
+
+        # Persist keywords back to the profile
+        ProfileService.create_or_update_profile(user_id, {"resume_keywords": keywords})
+
+        return jsonify({"success": True, "resume_keywords": keywords}), 200
+
+    except Exception as e:
+        logging.error(f"Error extracting resume keywords: {e}", exc_info=True)
+        return jsonify({"error": f"Keyword extraction failed: {str(e)}"}), 500
+
 
 @app.route("/api/process-resume", methods=['POST'])
 @require_auth

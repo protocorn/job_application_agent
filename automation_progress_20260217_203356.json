@@ -1,0 +1,67 @@
+{
+  "report_type": "final_report",
+  "generated_at": "2026-02-17T20:41:01.316266",
+  "session_info": {
+    "start_time": "2026-02-17T20:33:56.908356",
+    "duration_minutes": 7.07,
+    "status": "completed",
+    "original_keywords": "Entry Level AI Engineer",
+    "optimized_keywords": "AI engineer Machine Learning GenAI AWS Docker in",
+    "query_variations_used": [
+      "AI engineer Machine Learning GenAI AWS Docker in",
+      "Machine Learning engineer GenAI AWS in United States",
+      "AI engineer PostgreSQL MongoDB Redis Docker in United",
+      "artificial intelligence engineering in United States"
+    ]
+  },
+  "statistics": {
+    "applications_submitted": 0,
+    "applications_failed": 3,
+    "jobs_discovered": 3,
+    "jobs_processed": 3,
+    "rate_limit_hits": 0,
+    "success_rate": 0.0
+  },
+  "applications": [
+    {
+      "job_url": "https://ltimindtree.ripplehire.com/candidate/?token=q994dU0Su7qEgswLI3WE&lang=en&source=INDEED&ref=INDEED#detail/job/843876",
+      "job_title": "Specialist - Data Sciences",
+      "company": "LTIMindtree",
+      "timestamp": "2026-02-17T20:34:50.088760",
+      "success": false,
+      "submitted": false,
+      "fields_filled": 0,
+      "field_details": [],
+      "error": "Application incomplete (only 0 fields filled, not submitted)",
+      "rate_limit_error": false,
+      "duration_seconds": 121.47
+    },
+    {
+      "job_url": "https://arangodb.applytojob.com/apply/2WlZbdqk6d/Solutions-Engineer-Greater-West-Coast?source=INDE&~",
+      "job_title": "Solutions Engineer - Greater West Coast",
+      "company": "ARANGO",
+      "timestamp": "2026-02-17T20:36:54.577331",
+      "success": false,
+      "submitted": false,
+      "fields_filled": 0,
+      "field_details": [],
+      "error": "Human intervention required - application not submitted",
+      "rate_limit_error": false,
+      "duration_seconds": 67.62
+    },
+    {
+      "job_url": "https://candidateportalnew.ceipal.com/job-details/KFpzKUj75rELWhBbgnAEDnAYoljBRdGGWcO966jFNxM#.job_boards.Indeed",
+      "job_title": "Director of AI Solutions",
+      "company": "Openkyber",
+      "timestamp": "2026-02-17T20:38:05.206061",
+      "success": false,
+      "submitted": false,
+      "fields_filled": 0,
+      "field_details": [],
+      "error": "Human intervention required - application not submitted",
+      "rate_limit_error": false,
+      "duration_seconds": 53.08
+    }
+  ],
+  "queue_remaining": 0
+}

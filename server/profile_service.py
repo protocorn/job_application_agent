@@ -165,7 +165,8 @@ class ProfileService:
             'latex_file_manifest': 'latex_file_manifest',
             'gender': 'gender',
             'nationality': 'nationality',
-            'preferred language': 'preferred_language'
+            'preferred language': 'preferred_language',
+            'resume_keywords': 'resume_keywords',
         }
         return field_mapping.get(frontend_field, frontend_field)
 
@@ -206,7 +207,8 @@ class ProfileService:
             'visa sponsorship': profile.visa_sponsorship or '',
             'preferred location': profile.preferred_location or [''],
             'willing to relocate': profile.willing_to_relocate if profile.willing_to_relocate is not None else '',
-            'cover_letter_template': profile.cover_letter_template or ''
+            'cover_letter_template': profile.cover_letter_template or '',
+            'resume_keywords': profile.resume_keywords or None,
         }
 
     @staticmethod

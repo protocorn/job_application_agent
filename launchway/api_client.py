@@ -212,6 +212,23 @@ class LaunchwayClient:
     def connect_mimikree(self, email: str, password: str) -> Dict[str, Any]:
         return self._post("/api/mimikree/connect", {"email": email, "password": password})
 
+    def extract_resume_keywords(self, resume_text: str = None) -> Dict[str, Any]:
+        """
+        Ask the server to extract structured keywords from the user's resume
+        and store them in the profile.
+
+        If `resume_text` is supplied it will be used directly; otherwise the
+        server fetches the resume from the URL stored in the user's profile.
+
+        Returns the extracted keyword dict on success.
+        Raises LaunchwayAPIError on failure.
+        """
+        body: Dict[str, Any] = {}
+        if resume_text:
+            body["resume_text"] = resume_text
+        data = self._post("/api/profile/keywords/extract", body)
+        return data.get("resume_keywords", {})
+
     def get_mimikree_credentials(self) -> Tuple[Optional[str], Optional[str]]:
         """
         Fetch the decrypted Mimikree credentials stored for the current user.

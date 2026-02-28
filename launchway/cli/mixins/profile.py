@@ -7,12 +7,49 @@ so that data round-trips correctly through POST /api/profile.
 """
 
 import logging
+from datetime import datetime
 from launchway.api_client import LaunchwayAPIError
 from launchway.cli.utils import Colors
 
 logger = logging.getLogger(__name__)
 
 # ── helpers ──────────────────────────────────────────────────────────────────
+
+def _parse_date(raw: str):
+    """
+    Accept several common date formats from user input and return a
+    datetime object, or None if the string is unrecognisable.
+
+    Accepted: DD/MM/YYYY  DD-MM-YYYY  MM/DD/YYYY  YYYY-MM-DD
+    """
+    for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%m/%d/%Y", "%Y-%m-%d", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(raw.strip(), fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _to_iso_date(raw: str) -> str:
+    """
+    Convert any supported date string to YYYY-MM-DD (required by the
+    HTML <input type="date"> on the frontend).
+    Returns the original string unchanged if it cannot be parsed.
+    """
+    dt = _parse_date(raw)
+    return dt.strftime("%Y-%m-%d") if dt else raw
+
+
+def _display_date(iso: str) -> str:
+    """
+    Format a stored YYYY-MM-DD date as the friendlier DD/MM/YYYY for
+    display in the terminal.  Falls back to the raw value.
+    """
+    try:
+        return datetime.strptime(iso, "%Y-%m-%d").strftime("%d/%m/%Y")
+    except Exception:
+        return iso or "Not set"
+
 
 def _yn(val) -> str:
     """Render a boolean / string value as Yes / No / the raw string."""
@@ -110,7 +147,7 @@ class ProfileMixin:
         section("Basic Information")
         row("Name",               "first name",  lambda v: f"{v} {p.get('last name','')}")
         row("Email",              "email")
-        row("Date of Birth",      "date of birth")
+        row("Date of Birth",      "date of birth", _display_date)
         row("Gender",             "gender")
         row("Nationality",        "nationality")
         row("Preferred Language", "preferred language")
@@ -185,14 +222,34 @@ class ProfileMixin:
 
     # ── save helper ───────────────────────────────────────────────────────
 
-    def _save_profile_changes(self, changes: dict):
-        """Merge changes into current_profile and POST to API."""
+    def _save_profile_changes(self, changes: dict) -> bool:
+        """
+        Merge changes into current_profile, POST to the API, and refresh.
+
+        Shows a live "Saving..." indicator while the request is in flight.
+        Prints the outcome inline (done / failed) so every caller gets
+        consistent feedback without duplicating any print logic.
+
+        Returns True on success, False on failure.
+        """
+        import sys
+
         self.current_profile = {**(self.current_profile or {}), **changes}
+
+        sys.stdout.write(f"\n  {Colors.OKCYAN}Saving to your profile...{Colors.ENDC} ")
+        sys.stdout.flush()
+
         try:
             self.api.update_profile(self.current_profile)
             self.current_profile = self.api.get_profile()
+            sys.stdout.write(f"{Colors.OKGREEN}done.{Colors.ENDC}\n")
+            sys.stdout.flush()
+            return True
         except LaunchwayAPIError as e:
-            raise RuntimeError(str(e))
+            sys.stdout.write(f"{Colors.FAIL}failed.{Colors.ENDC}\n")
+            sys.stdout.write(f"  {Colors.FAIL}Error: {e}{Colors.ENDC}\n")
+            sys.stdout.flush()
+            return False
 
     # ── section editors ───────────────────────────────────────────────────
 
@@ -204,8 +261,16 @@ class ProfileMixin:
         p = self.current_profile or {}
         changes = {}
 
-        val = _ask("Date of Birth (DD/MM/YYYY)", p.get("date of birth"))
-        if val: changes["date of birth"] = val
+        current_dob = _display_date(p.get("date of birth", ""))
+        val = _ask("Date of Birth (DD/MM/YYYY)", current_dob)
+        if val:
+            iso = _to_iso_date(val)
+            if iso == val and not _parse_date(val):
+                # Unrecognised format — warn but don't block
+                self.print_warning(f"Could not parse '{val}' as a date. Please use DD/MM/YYYY.")
+                self.pause()
+                return
+            changes["date of birth"] = iso
 
         val = _ask("Gender", p.get("gender"))
         if val: changes["gender"] = val
@@ -220,11 +285,8 @@ class ProfileMixin:
             self.print_warning("No changes made.")
             self.pause()
             return
-        try:
-            self._save_profile_changes(changes)
+        if self._save_profile_changes(changes):
             self.print_success("Basic info updated!")
-        except RuntimeError as e:
-            self.print_error(str(e))
         self.pause()
 
     def update_contact_info(self):
@@ -255,11 +317,8 @@ class ProfileMixin:
             self.print_warning("No changes made.")
             self.pause()
             return
-        try:
-            self._save_profile_changes(changes)
+        if self._save_profile_changes(changes):
             self.print_success("Contact info updated!")
-        except RuntimeError as e:
-            self.print_error(str(e))
         self.pause()
 
     def update_resume_url(self):
@@ -275,11 +334,8 @@ class ProfileMixin:
             self.print_warning("No changes made.")
             self.pause()
             return
-        try:
-            self._save_profile_changes({"resume_url": url, "resume_source_type": "google_doc"})
+        if self._save_profile_changes({"resume_url": url, "resume_source_type": "google_doc"}):
             self.print_success("Resume URL updated!")
-        except RuntimeError as e:
-            self.print_error(str(e))
         self.pause()
 
     def update_summary(self):
@@ -300,11 +356,8 @@ class ProfileMixin:
             self.print_warning("No changes made.")
             self.pause()
             return
-        try:
-            self._save_profile_changes({"summary": val})
+        if self._save_profile_changes({"summary": val}):
             self.print_success("Summary updated!")
-        except RuntimeError as e:
-            self.print_error(str(e))
         self.pause()
 
     def update_education(self):
@@ -343,11 +396,8 @@ class ProfileMixin:
                 "gpa":             gpa or None,
                 "relevant_courses": courses,
             })
-            try:
-                self._save_profile_changes({"education": education})
+            if self._save_profile_changes({"education": education}):
                 self.print_success("Education entry added!")
-            except RuntimeError as e:
-                self.print_error(str(e))
 
         elif choice == "2":
             if not education:
@@ -366,11 +416,8 @@ class ProfileMixin:
                 self.print_warning("No entries to remove.")
             else:
                 removed = education.pop()
-                try:
-                    self._save_profile_changes({"education": education})
+                if self._save_profile_changes({"education": education}):
                     self.print_success(f"Removed: {removed.get('degree','')} from {removed.get('institution','')}")
-                except RuntimeError as e:
-                    self.print_error(str(e))
 
         self.pause()
 
@@ -412,11 +459,8 @@ class ProfileMixin:
                 "description":  description,
                 "achievements": achievements,
             })
-            try:
-                self._save_profile_changes({"work experience": work_exp})
+            if self._save_profile_changes({"work experience": work_exp}):
                 self.print_success("Work experience entry added!")
-            except RuntimeError as e:
-                self.print_error(str(e))
 
         elif choice == "2":
             if not work_exp:
@@ -437,11 +481,8 @@ class ProfileMixin:
                 self.print_warning("No entries to remove.")
             else:
                 removed = work_exp.pop()
-                try:
-                    self._save_profile_changes({"work experience": work_exp})
+                if self._save_profile_changes({"work experience": work_exp}):
                     self.print_success(f"Removed: {removed.get('title','')} at {removed.get('company','')}")
-                except RuntimeError as e:
-                    self.print_error(str(e))
 
         self.pause()
 
@@ -484,11 +525,8 @@ class ProfileMixin:
                 "live_url":     live_url or None,
                 "features":     features,
             })
-            try:
-                self._save_profile_changes({"projects": projects})
+            if self._save_profile_changes({"projects": projects}):
                 self.print_success("Project added!")
-            except RuntimeError as e:
-                self.print_error(str(e))
 
         elif choice == "2":
             if not projects:
@@ -509,11 +547,8 @@ class ProfileMixin:
                 self.print_warning("No projects to remove.")
             else:
                 removed = projects.pop()
-                try:
-                    self._save_profile_changes({"projects": projects})
+                if self._save_profile_changes({"projects": projects}):
                     self.print_success(f"Removed: {removed.get('name','')}")
-                except RuntimeError as e:
-                    self.print_error(str(e))
 
         self.pause()
 
@@ -545,11 +580,8 @@ class ProfileMixin:
             self.print_warning("No changes made.")
             self.pause()
             return
-        try:
-            self._save_profile_changes({"skills": skills})
+        if self._save_profile_changes({"skills": skills}):
             self.print_success("Skills updated!")
-        except RuntimeError as e:
-            self.print_error(str(e))
         self.pause()
 
     def update_cover_letter(self):
@@ -579,11 +611,8 @@ class ProfileMixin:
             self.print_warning("No changes made.")
             self.pause()
             return
-        try:
-            self._save_profile_changes({"cover_letter_template": template})
+        if self._save_profile_changes({"cover_letter_template": template}):
             self.print_success("Cover letter template saved!")
-        except RuntimeError as e:
-            self.print_error(str(e))
         self.pause()
 
     def update_job_preferences(self):
@@ -616,11 +645,8 @@ class ProfileMixin:
             self.print_warning("No changes made.")
             self.pause()
             return
-        try:
-            self._save_profile_changes(changes)
+        if self._save_profile_changes(changes):
             self.print_success("Job preferences updated!")
-        except RuntimeError as e:
-            self.print_error(str(e))
         self.pause()
 
     def update_eeo_info(self):
@@ -656,11 +682,8 @@ class ProfileMixin:
             self.print_warning("No changes made.")
             self.pause()
             return
-        try:
-            self._save_profile_changes(changes)
+        if self._save_profile_changes(changes):
             self.print_success("EEO / compliance info updated!")
-        except RuntimeError as e:
-            self.print_error(str(e))
         self.pause()
 
     def update_other_links(self):
@@ -687,11 +710,8 @@ class ProfileMixin:
                 self.pause()
                 return
             other_links.append({"label": label, "url": url})
-            try:
-                self._save_profile_changes({"other links": other_links})
+            if self._save_profile_changes({"other links": other_links}):
                 self.print_success("Link added!")
-            except RuntimeError as e:
-                self.print_error(str(e))
 
         elif choice == "2":
             if not other_links:
@@ -708,11 +728,8 @@ class ProfileMixin:
                 self.print_warning("No links to remove.")
             else:
                 removed = other_links.pop()
-                try:
-                    self._save_profile_changes({"other links": other_links})
-                    label = removed.get("label", "") if isinstance(removed, dict) else ""
+                label = removed.get("label", "") if isinstance(removed, dict) else ""
+                if self._save_profile_changes({"other links": other_links}):
                     self.print_success(f"Removed: {label}")
-                except RuntimeError as e:
-                    self.print_error(str(e))
 
         self.pause()
