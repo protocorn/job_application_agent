@@ -234,7 +234,14 @@ class JobRelevanceScorer:
         return score
 
     def _score_description_match(self, description: str, requirements: str) -> int:
-        """Keyword overlap against job description + requirements (0-25)."""
+        """
+        Keyword overlap against job description + requirements (0-25).
+
+        Thresholds are intentionally conservative — a job description for ANY
+        tech-adjacent role will naturally contain common words like "data", "cloud",
+        "development" that appear in a software/AI profile. We require a higher bar
+        of specific keyword overlap before awarding significant points.
+        """
         combined = f"{description} {requirements}"
         if not combined.strip():
             return 0
@@ -246,15 +253,18 @@ class JobRelevanceScorer:
         matches = len(job_tokens.intersection(self.user_keywords))
 
         if matches == 0:    return 0
-        if matches <= 3:    return 5
-        if matches <= 7:    return 10
-        if matches <= 12:   return 17
+        if matches <= 4:    return 5
+        if matches <= 9:    return 10
+        if matches <= 16:   return 17
         return 25
 
     def _score_experience_match(self, job_experience_level: str) -> int:
-        """Experience level alignment (0-15).  7 default when level unknown."""
+        """
+        Experience level alignment (0-15).
+        Returns 0 when the job's level is unknown — no free points for missing data.
+        """
         if not job_experience_level:
-            return 7
+            return 0
 
         # Prefer resume_keywords-derived level if available
         rk = self.profile.get("resume_keywords") or {}
@@ -325,18 +335,21 @@ class JobRelevanceScorer:
         return 0
 
     def _score_job_type_match(self, job_type: str) -> int:
-        """Job type alignment (0-5)."""
+        """
+        Job type alignment (0-5).
+        Returns 0 when no preferences are set — no free points for missing data.
+        """
         desired = self.profile.get("desired_job_types", [])
         if not desired:
-            return 3  # slight positive — most jobs are full-time
+            return 0
         if job_type and job_type.lower() in [t.lower() for t in desired]:
             return 5
         return 0
 
     def _score_recency(self, posted_date: str) -> int:
-        """Posting recency bonus (0-5)."""
+        """Posting recency bonus (0-5). Returns 0 when date is unknown."""
         if not posted_date:
-            return 2
+            return 0
         try:
             from dateutil import parser
             days = (datetime.utcnow() - parser.parse(posted_date)).days

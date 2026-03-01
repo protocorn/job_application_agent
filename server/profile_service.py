@@ -161,6 +161,10 @@ class ProfileService:
             'willing to relocate': 'willing_to_relocate',
             'resume_url': 'resume_url',
             'resume_source_type': 'resume_source_type',
+            'resume_text': 'resume_text',
+            'api_primary_mode': 'api_primary_mode',
+            'api_secondary_mode': 'api_secondary_mode',
+            'custom_gemini_api_key': 'custom_gemini_api_key',
             'latex_main_tex_path': 'latex_main_tex_path',
             'latex_file_manifest': 'latex_file_manifest',
             'gender': 'gender',
@@ -174,8 +178,13 @@ class ProfileService:
     def _profile_to_dict(profile: UserProfile) -> Dict[str, Any]:
         """Convert database profile to frontend format"""
         return {
+            'api_primary_mode': profile.api_primary_mode or None,   # None = not yet configured → triggers setup modal
+            'api_secondary_mode': profile.api_secondary_mode or None,
+            # custom_gemini_api_key is intentionally NOT included here —
+            # the encrypted blob is only returned via the dedicated /api/settings/ai-keys endpoint.
             'resume_url': profile.resume_url or '',
             'resume_source_type': profile.resume_source_type or 'google_doc',
+            'resume_text': profile.resume_text or '',
             'latex_main_tex_path': profile.latex_main_tex_path or '',
             'latex_file_manifest': profile.latex_file_manifest or [],
             'first name': '',  # Will be populated from User table
@@ -261,8 +270,11 @@ class ProfileService:
     def _get_default_profile_structure() -> Dict[str, Any]:
         """Return default profile structure for new users"""
         return {
+            'api_primary_mode': None,   # NULL until user explicitly configures
+            'api_secondary_mode': None,
             'resume_url': '',
             'resume_source_type': 'google_doc',
+            'resume_text': '',
             'latex_main_tex_path': '',
             'latex_file_manifest': [],
             'first name': '',

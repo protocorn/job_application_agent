@@ -18,7 +18,6 @@ def initialize_system():
     """
     Initialize all system components:
     - Resource Manager (thread pool, retry logic)
-    - VNC Connection Pool
     - Health Monitor
     """
     global _initialized
@@ -33,23 +32,15 @@ def initialize_system():
         logger.info("=" * 80)
         
         # Initialize Resource Manager
-        from resource_manager import get_resource_manager, shutdown_resource_manager
+        from resource_manager import get_resource_manager
         resource_manager = get_resource_manager()
         logger.info("✅ Resource Manager initialized")
         logger.info(f"   Max workers: {resource_manager.max_workers}")
         logger.info(f"   Retry config: max_attempts={resource_manager.retry_handler.config.max_attempts}")
         logger.info(f"   Circuit breaker threshold: {resource_manager.circuit_breaker.config.failure_threshold}")
         
-        # Initialize VNC Connection Pool
-        from vnc_connection_pool import get_connection_pool, shutdown_connection_pool
-        connection_pool = get_connection_pool()
-        logger.info("✅ VNC Connection Pool initialized")
-        logger.info(f"   Max connections: {connection_pool.max_total_connections}")
-        logger.info(f"   Connection timeout: {connection_pool.connection_timeout}s")
-        logger.info(f"   Idle timeout: {connection_pool.idle_timeout}s")
-        
         # Initialize Health Monitor
-        from health_monitor import get_health_monitor, shutdown_health_monitor
+        from health_monitor import get_health_monitor
         health_monitor = get_health_monitor()
         logger.info("✅ Health Monitor initialized")
         logger.info(f"   Check interval: {health_monitor.check_interval}s")
@@ -92,16 +83,13 @@ def shutdown_system():
         # Get final stats before shutdown
         try:
             from resource_manager import get_resource_manager
-            from vnc_connection_pool import get_connection_pool
             from health_monitor import get_health_monitor
             
             rm = get_resource_manager()
-            pool = get_connection_pool()
             hm = get_health_monitor()
             
             logger.info("📊 Final Statistics:")
             logger.info(f"   Resource Manager: {rm.get_stats()}")
-            logger.info(f"   Connection Pool: {pool.get_stats()}")
             logger.info(f"   Health: Total errors: {hm.total_errors}, Recoveries: {hm.total_recoveries}")
         except:
             pass
@@ -110,11 +98,6 @@ def shutdown_system():
         from health_monitor import shutdown_health_monitor
         shutdown_health_monitor()
         logger.info("✅ Health Monitor shutdown")
-        
-        # Shutdown VNC Connection Pool
-        from vnc_connection_pool import shutdown_connection_pool
-        shutdown_connection_pool()
-        logger.info("✅ VNC Connection Pool shutdown")
         
         # Shutdown Resource Manager
         from resource_manager import shutdown_resource_manager
@@ -168,26 +151,9 @@ def _register_recovery_callbacks(health_monitor):
         except Exception as e:
             logger.error(f"Thread recovery failed: {e}")
     
-    def recover_vnc_error(error):
-        """Recover from VNC-specific errors"""
-        logger.info(f"🔧 Attempting VNC error recovery for session {error.session_id}")
-        try:
-            from vnc_connection_pool import get_connection_pool
-            pool = get_connection_pool()
-            
-            # Remove problematic session
-            if error.session_id:
-                pool.remove_session(error.session_id)
-                logger.info(f"   Removed session {error.session_id} from pool")
-            
-            logger.info("✅ VNC error recovery completed")
-        except Exception as e:
-            logger.error(f"VNC recovery failed: {e}")
-    
     # Register callbacks
     health_monitor.register_recovery_callback("connection_closed", recover_connection_error)
     health_monitor.register_recovery_callback("thread_exhaustion", recover_thread_exhaustion)
-    health_monitor.register_recovery_callback("vnc_error", recover_vnc_error)
     
     logger.info("✅ Registered error recovery callbacks")
 
@@ -207,17 +173,14 @@ def get_system_status() -> dict:
     
     try:
         from resource_manager import get_resource_manager
-        from vnc_connection_pool import get_connection_pool
         from health_monitor import get_health_monitor
         
         rm = get_resource_manager()
-        pool = get_connection_pool()
         hm = get_health_monitor()
         
         return {
             'initialized': True,
             'resource_manager': rm.get_stats(),
-            'connection_pool': pool.get_stats(),
             'health': hm.get_health_report()
         }
     except Exception as e:

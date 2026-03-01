@@ -582,6 +582,10 @@ class DeterministicFieldMapper:
             space_key = profile_key.replace('_', ' ')
             value = profile.get(space_key)
 
+        # Unwrap single-element lists (e.g. disability_status stored as ['No disability'])
+        if isinstance(value, list):
+            value = value[0] if value else None
+
         return value
 
     def map_dropdown_value(self, field_type: str, profile_value: Any, available_options: List[str]) -> Optional[str]:

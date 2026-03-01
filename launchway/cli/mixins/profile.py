@@ -87,7 +87,7 @@ class ProfileMixin:
             ("View Full Profile",           self.view_profile),
             ("Basic Info",                  self.update_basic_info),
             ("Contact Info",                self.update_contact_info),
-            ("Resume URL",                  self.update_resume_url),
+            ("Resume",                       self.update_resume),
             ("Summary / Bio",               self.update_summary),
             ("Education",                   self.update_education),
             ("Work Experience",             self.update_work_experience),
@@ -97,6 +97,7 @@ class ProfileMixin:
             ("Job Preferences",             self.update_job_preferences),
             ("EEO / Compliance Info",       self.update_eeo_info),
             ("Other Links / Portfolio",     self.update_other_links),
+            ("AI Engine",                   self.update_ai_engine),
             ("Back to Main Menu",           None),
         ]
 
@@ -321,21 +322,219 @@ class ProfileMixin:
             self.print_success("Contact info updated!")
         self.pause()
 
-    def update_resume_url(self):
+    def update_resume(self):
+        """Let the user provide either a Google Doc URL or upload a PDF/DOCX."""
         self.clear_screen()
-        self.print_header("RESUME URL")
+        self.print_header("RESUME")
 
         p = self.current_profile or {}
-        print(f"  Current URL: {p.get('resume_url') or '—'}\n")
-        print("  Note: Only Google Docs resume URLs are supported in this version.\n")
+        current_url = p.get('resume_url') or ''
+        current_type = p.get('resume_source_type') or 'google_doc'
 
-        url = _ask("New Resume URL (Google Docs sharing link)")
+        # Show current state
+        if current_url:
+            print(f"  Current resume: {current_url}  [{current_type}]")
+        else:
+            print(f"  Current resume: {'—'} (type: {current_type})")
+        print()
+
+        print("  How would you like to provide your resume?\n")
+        print("  1. Google Docs URL   (enables resume tailoring ✅)")
+        print("  2. Upload PDF / DOCX (tailoring disabled ⚠️ )")
+        print("  3. Cancel\n")
+
+        choice = input("  Choose [1/2/3]: ").strip()
+
+        if choice == '1':
+            self._update_resume_google_doc()
+        elif choice == '2':
+            self._update_resume_file()
+        else:
+            self.print_warning("No changes made.")
+            self.pause()
+
+    def _update_resume_google_doc(self):
+        self.clear_screen()
+        self.print_header("RESUME — GOOGLE DOCS URL")
+        print("  Paste the sharing link of your Google Doc resume.")
+        print("  The document must be set to 'Anyone with the link can view'.\n")
+        url = _ask("Google Docs URL")
         if not url:
             self.print_warning("No changes made.")
             self.pause()
             return
+        if 'docs.google.com' not in url:
+            self.print_warning("That doesn't look like a Google Docs URL. Please try again.")
+            self.pause()
+            return
         if self._save_profile_changes({"resume_url": url, "resume_source_type": "google_doc"}):
-            self.print_success("Resume URL updated!")
+            self.print_success("Resume URL saved. Resume tailoring is now enabled.")
+        self.pause()
+
+    def _update_resume_file(self):
+        import os
+
+        self.clear_screen()
+        self.print_header("RESUME — UPLOAD PDF / DOCX")
+        print(f"  {Colors.YELLOW}⚠️  WARNING: Resume tailoring is NOT available for PDF/DOCX uploads.{Colors.RESET}")
+        print("  Your profile will be populated from the file, but AI tailoring")
+        print("  requires a Google Docs URL. To enable tailoring, go back and")
+        print("  choose 'Google Docs URL' instead.\n")
+
+        file_path = _ask("Full path to PDF or DOCX file (or blank to cancel)").strip()
+        if not file_path:
+            self.print_warning("No changes made.")
+            self.pause()
+            return
+
+        file_path = os.path.expanduser(file_path)
+        if not os.path.isfile(file_path):
+            self.print_error(f"File not found: {file_path}")
+            self.pause()
+            return
+
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext not in ('.pdf', '.docx'):
+            self.print_error("Only .pdf and .docx files are supported.")
+            self.pause()
+            return
+
+        file_size = os.path.getsize(file_path)
+        if file_size > 10 * 1024 * 1024:
+            self.print_error("File is too large (maximum 10 MB).")
+            self.pause()
+            return
+        if file_size == 0:
+            self.print_error("File is empty.")
+            self.pause()
+            return
+
+        print("\n  Uploading and extracting profile data...", end="", flush=True)
+        try:
+            with open(file_path, 'rb') as fh:
+                import requests as _req
+                backend_url = self.api.base_url.rstrip('/')
+                headers = {"Authorization": f"Bearer {self.api.token}"}
+                resp = _req.post(
+                    f"{backend_url}/api/upload-resume",
+                    files={"resume": (os.path.basename(file_path), fh,
+                                      "application/pdf" if ext == '.pdf'
+                                      else "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+                    headers=headers,
+                    timeout=60,
+                )
+            data = resp.json()
+        except Exception as e:
+            print(f" failed.\n")
+            self.print_error(f"Upload error: {e}")
+            self.pause()
+            return
+
+        if not data.get("success"):
+            print(" failed.\n")
+            self.print_error(data.get("error", "Upload failed."))
+            self.pause()
+            return
+
+        print(" done.\n")
+        self.print_success(
+            f"{ext.upper()[1:]} resume uploaded. Profile has been populated."
+        )
+        print(f"\n  {Colors.YELLOW}⚠️  Remember: resume tailoring is disabled for this format.{Colors.RESET}")
+        print("  To enable tailoring, add your Google Docs resume URL.")
+
+        # Refresh cached profile so the user sees updated data
+        try:
+            self.current_profile = self.api.get_profile().get("profile", self.current_profile)
+        except Exception:
+            pass
+        self.pause()
+
+    def update_ai_engine(self):
+        """Configure primary and optional secondary Gemini API key method."""
+        self.clear_screen()
+        self.print_header("AI ENGINE SETUP")
+
+        # Show current config
+        try:
+            data = self.api.get_ai_key_settings()
+            current_primary = data.get("api_primary_mode") or "launchway"
+            current_secondary = data.get("api_secondary_mode") or "none"
+            has_key = data.get("has_custom_key", False)
+            masked = data.get("masked_custom_key") or ""
+            print(f"  Current primary  : {current_primary}")
+            print(f"  Current secondary: {current_secondary}")
+            if has_key:
+                print(f"  Custom key       : {masked}")
+        except Exception:
+            current_primary = "launchway"
+            current_secondary = "none"
+            has_key = False
+            masked = ""
+        print()
+
+        print("  Choose PRIMARY method (used first):\n")
+        print("  1. Launchway's shared keys (free, may be slower under high load)")
+        print("  2. My own Gemini key      (private quota, faster)")
+        print()
+        primary_choice = input("  Primary [1/2]: ").strip()
+        if primary_choice == '1':
+            primary_mode = 'launchway'
+        elif primary_choice == '2':
+            primary_mode = 'custom'
+        else:
+            self.print_warning("No changes made.")
+            self.pause()
+            return
+
+        print(f"\n  Choose SECONDARY / fallback method (optional):\n")
+        print("  1. None (stop when primary quota runs out)")
+        if primary_mode != 'launchway':
+            print("  2. Launchway's shared keys (fallback to shared when your key runs out)")
+        if primary_mode != 'custom':
+            print("  2. My own Gemini key      (fallback to your key when shared runs out)")
+        print()
+        secondary_choice = input("  Secondary [1/2]: ").strip()
+
+        secondary_mode = None
+        if secondary_choice == '2':
+            secondary_mode = 'launchway' if primary_mode == 'custom' else 'custom'
+
+        custom_key = None
+        if primary_mode == 'custom' or secondary_mode == 'custom':
+            print()
+            if has_key:
+                print(f"  A key is already saved ({masked}). Press Enter to keep it.")
+            else:
+                print("  Get a free key at: https://aistudio.google.com/app/apikey")
+            raw = input("  Gemini API Key (starts with AIza): ").strip()
+            if raw:
+                if not raw.startswith("AIza"):
+                    self.print_error("That doesn't look like a valid Gemini API key (should start with 'AIza'). Try again.")
+                    self.pause()
+                    return
+                custom_key = raw
+            elif not has_key:
+                self.print_error("A Gemini API key is required when using 'custom' mode.")
+                self.pause()
+                return
+
+        print("\n  Saving AI Engine settings...", end="", flush=True)
+        try:
+            self.api.save_ai_key_settings(
+                primary_mode=primary_mode,
+                secondary_mode=secondary_mode,
+                custom_api_key=custom_key,
+            )
+            print(" done.\n")
+            self.print_success(
+                f"AI Engine saved — primary: {primary_mode}"
+                + (f", secondary: {secondary_mode}" if secondary_mode else ", no secondary")
+            )
+            print(f"\n  Fallback order: primary → secondary → retry primary → 60s cooldown → final retry.")
+        except Exception as e:
+            print(" failed.\n")
+            self.print_error(f"Could not save: {e}")
         self.pause()
 
     def update_summary(self):

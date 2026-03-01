@@ -12,7 +12,6 @@ import getpass
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 import bcrypt
-from uuid import UUID
 import time
 from collections import deque
 import signal

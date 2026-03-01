@@ -51,9 +51,10 @@ except ImportError:
 
 class RefactoredJobAgent:
     """The main class for the refactored job application agent."""
-    def __init__(self, playwright, headless: bool = True, keep_open: bool = False, debug: bool = False, hold_seconds: int = 0, slow_mo_ms: int = 0, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False, resume_path: str = None, job_url: str = None, use_persistent_profile: bool = True, mimikree_email: str = None, mimikree_password: str = None, pre_fetched_description: str = None, profile_data: dict = None) -> None:
+    def __init__(self, playwright, headless: bool = True, keep_open: bool = False, debug: bool = False, hold_seconds: int = 0, slow_mo_ms: int = 0, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False, resume_path: str = None, job_url: str = None, use_persistent_profile: bool = True, mimikree_email: str = None, mimikree_password: str = None, pre_fetched_description: str = None, profile_data: dict = None, full_auto_mode: bool = False) -> None:
         self.playwright = playwright
         self.use_persistent_profile = use_persistent_profile  # Use persistent browser profile
+        self.full_auto_mode = full_auto_mode
 
         # VNC mode setup (for cloud streaming)
         self.vnc_mode = vnc_mode and VNC_AVAILABLE
@@ -268,10 +269,10 @@ class RefactoredJobAgent:
         self.nav_validator = NavValidator(context)
         # Create form filler with action recorder if available
         if hasattr(self, 'action_recorder') and self.action_recorder:
-            self.form_filler = GenericFormFiller(context, self.action_recorder)
+            self.form_filler = GenericFormFiller(context, self.action_recorder, full_auto_mode=getattr(self, 'full_auto_mode', False))
             logger.info(f"🎬 Form filler initialized with action recorder for context: {type(context).__name__}")
         else:
-            self.form_filler = GenericFormFiller(context)
+            self.form_filler = GenericFormFiller(context, full_auto_mode=getattr(self, 'full_auto_mode', False))
             logger.warning("⚠️ Form filler initialized WITHOUT action recorder")
         self.submit_detector = SubmitDetector(context)
         self.next_button_detector = NextButtonDetector(context)
@@ -562,11 +563,12 @@ class RefactoredJobAgent:
                     self._log_to_jobs("info", f"🖥️ Browser ready for review at VNC port {self.vnc_port}")
                     # Browser stays open - don't close!
                     
-                # PERSISTENT PROFILE MODE: Only close the tab, keep browser open
+                # PERSISTENT PROFILE MODE: Leave the tab open for the user to review.
+                # The user may want to check the application, complete a step the agent
+                # missed, or simply confirm the submission. Tabs are only closed manually.
                 elif self.use_persistent_profile and self.page and not self.page.is_closed():
-                    await self.page.close()  # Close only this tab
-                    self._log_to_jobs("info", "🔒 Tab closed (browser kept open for reuse)")
-                    logger.info("✓ Tab closed, persistent browser remains open for reuse")
+                    self._log_to_jobs("info", "📋 Tab left open for review — close it manually when done")
+                    logger.info("✓ Application tab left open (persistent profile mode — user closes manually)")
                     
                 # STANDARD MODE: Close entire browser
                 elif self.page and not self.page.is_closed():
@@ -3360,8 +3362,7 @@ def _load_profile_data(user_id=None, profile_data=None):
                     profile_data = AgentProfileService.get_latest_user_profile()
                 if not profile_data:
                     logger.error("❌ No profile data found in database")
-                    logger.warning("🔄 Using fallback profile data...")
-                return fallback_profile
+                    raise ValueError(f"No profile found for user_id={user_id!r}. Check the user exists in the database.")
         
         # Get current directory for resume path
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -3467,8 +3468,7 @@ def _load_profile_data(user_id=None, profile_data=None):
         
     except Exception as e:
         logger.error(f"❌ Failed to load profile data: {e}")
-        logger.warning("🔄 Using fallback profile data...")
-        return fallback_profile
+        raise
 
 # Global playwright instance for persistent browser reuse
 _global_playwright_instance = None
@@ -3488,7 +3488,7 @@ async def _get_or_create_playwright():
             logger.info("🎭 Created global Playwright instance for browser reuse")
         return _global_playwright_instance
 
-async def run_links_with_refactored_agent(links: list[str], headless: bool, keep_open: bool, debug: bool, hold_seconds: int, slow_mo_ms: int, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False, resume_path: str = None):
+async def run_links_with_refactored_agent(links: list[str], headless: bool, keep_open: bool, debug: bool, hold_seconds: int, slow_mo_ms: int, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False, resume_path: str = None, full_auto_mode: bool = False):
     """
     Run job application agent with optional VNC streaming
 
@@ -3537,7 +3537,8 @@ async def run_links_with_refactored_agent(links: list[str], headless: bool, keep
             vnc_port=vnc_port,
             tailor_resume=tailor_resume,
             resume_path=resume_path,
-            job_url=job_url  # Pass job URL for app mode and tab restrictions
+            job_url=job_url,
+            full_auto_mode=full_auto_mode,
         )
 
         for link in links:
@@ -3640,6 +3641,7 @@ def main():
     parser.add_argument("--hold-seconds", type=int, default=10, help="Seconds to keep browser open")
     parser.add_argument("--slowmo", type=int, default=0, help="Slow motion in milliseconds")
     parser.add_argument("--user-id", type=str, default=None, help="User ID to load profile from database")
+    parser.add_argument("--auto-mode", action="store_true", help="Full auto mode: AI fills all answerable fields without prompting humans (used by continuous auto-apply)")
     args = parser.parse_args()
 
     links = args.links.split(',') if ',' in args.links else [args.links]
@@ -3651,7 +3653,8 @@ def main():
         debug=args.debug,
         hold_seconds=args.hold_seconds,
         slow_mo_ms=args.slowmo,
-        user_id=args.user_id
+        user_id=args.user_id,
+        full_auto_mode=args.auto_mode,
     ))
 
 if __name__ == "__main__":

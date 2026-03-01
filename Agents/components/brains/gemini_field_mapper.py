@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any
 from loguru import logger
 import google.generativeai as genai
 import os
@@ -90,37 +90,25 @@ class GeminiFieldMapper:
         }
     
     def _configure_gemini(self):
-        """Configure Gemini API with the key from token.json."""
+        """Configure Gemini API from environment variable."""
         try:
-            # Look for token.json in the Agents directory
-            token_path = os.path.join(os.path.dirname(__file__), '..', 'token.json')
-            if os.path.exists(token_path):
-                with open(token_path, 'r') as f:
-                    token_data = json.load(f)
-                    api_key = token_data.get('gemini_api_key')
-                    if api_key:
-                        genai.configure(api_key=api_key)
-                        logger.info("✅ Gemini API configured successfully")
-                        return
-            
-            # Fallback to environment variable
-            api_key = os.getenv('GEMINI_API_KEY')
+            api_key = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
             if api_key:
                 genai.configure(api_key=api_key)
                 logger.info("✅ Gemini API configured from environment")
             else:
-                logger.warning("⚠️ No Gemini API key found. Field mapping will be disabled.")
-                
+                logger.warning("⚠️ No Gemini API key found (GOOGLE_API_KEY / GEMINI_API_KEY). Field mapping will be disabled.")
         except Exception as e:
             logger.error(f"❌ Failed to configure Gemini API: {e}")
     
-    async def map_fields_to_profile(self, form_fields: List[Dict[str, Any]], profile: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    async def map_fields_to_profile(self, form_fields: List[Dict[str, Any]], profile: Dict[str, Any], full_auto_mode: bool = False) -> Dict[str, Dict[str, Any]]:
         """
         Maps form fields to our profile schema using Gemini with explicit ID-based mapping.
         
         Args:
             form_fields: List of field dictionaries with 'stable_id', 'label', 'options', etc.
             profile: User's profile data for context
+            full_auto_mode: When True, agent operates in 100% auto-submit mode (no human prompts)
             
         Returns:
             Dictionary mapping stable field IDs to profile data and selected values
@@ -133,7 +121,7 @@ class GeminiFieldMapper:
             field_catalog = self._create_field_catalog(form_fields)
             
             # Get AI mapping for all fields at once with explicit ID references
-            ai_mapping = await self._get_ai_field_mapping(field_catalog, profile)
+            ai_mapping = await self._get_ai_field_mapping(field_catalog, profile, full_auto_mode=full_auto_mode)
             
             # Process AI mapping results
             result = {}
@@ -181,11 +169,11 @@ class GeminiFieldMapper:
         
         return catalog
 
-    async def _get_ai_field_mapping(self, field_catalog: Dict[str, Dict[str, Any]], profile: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    async def _get_ai_field_mapping(self, field_catalog: Dict[str, Dict[str, Any]], profile: Dict[str, Any], full_auto_mode: bool = False) -> Dict[str, Dict[str, Any]]:
         """Get AI mapping for all fields with explicit ID-based responses."""
         try:
             # Create comprehensive prompt with field catalog
-            prompt = self._create_comprehensive_mapping_prompt(field_catalog, profile)
+            prompt = self._create_comprehensive_mapping_prompt(field_catalog, profile, full_auto_mode=full_auto_mode)
             
             model = genai.GenerativeModel(self.model_name)
             response = model.generate_content(prompt)
@@ -197,7 +185,7 @@ class GeminiFieldMapper:
             logger.error(f"❌ Error getting AI field mapping: {e}")
             return {}
 
-    def _create_comprehensive_mapping_prompt(self, field_catalog: Dict[str, Dict[str, Any]], profile: Dict[str, Any]) -> str:
+    def _create_comprehensive_mapping_prompt(self, field_catalog: Dict[str, Dict[str, Any]], profile: Dict[str, Any], full_auto_mode: bool = False) -> str:
         """Create a comprehensive prompt that includes all field IDs and options."""
         # Create profile context
         profile_context = self._create_profile_context(profile, "comprehensive mapping")
@@ -227,6 +215,48 @@ class GeminiFieldMapper:
             catalog_text.append(field_text)
 
         catalog_str = "\n".join(catalog_text)
+
+        # Build the full_auto_mode override section if needed
+        if full_auto_mode:
+            full_auto_section = """
+==============================================================
+FULL AUTO MODE — SPECIAL OVERRIDE RULES (highest priority)
+==============================================================
+The agent is running in 100% automated apply mode with NO human available.
+Your answers MUST be profile-truthful but you must answer as many fields as possible.
+
+ABSOLUTE RESTRICTIONS in full auto mode:
+1. DO NOT invent or fabricate personal opinions, experiences, or opinions about the company.
+   - Company blog/content influence questions → NEEDS_HUMAN_INPUT (honest: AI cannot fake this)
+   - "Why do you want to work here?" → MANUAL (AI writes a genuine, profile-based response)
+   - Marketing/branding surveys → NEEDS_HUMAN_INPUT (skip honestly)
+
+MANDATORY FILLS in full auto mode (NEVER use NEEDS_HUMAN_INPUT for these):
+2. CONSENT / ACKNOWLEDGEMENT fields → ALWAYS answer "agree/yes/true"
+   - "Applicant Privacy Acknowledgement" → SIMPLE: true
+   - "I agree to terms and conditions" → SIMPLE: true
+   - Any privacy policy, data usage consent → SIMPLE: true
+3. COMMUNICATION PREFERENCES (SMS/WhatsApp/email updates) → Default "No" if not in profile
+   - "Contact me via SMS/WhatsApp" → SIMPLE: false  (safe default; user can opt-in later)
+4. DEMOGRAPHIC / EEO fields → ALWAYS infer from profile; never leave blank
+   - Transgender → SIMPLE: No  (safe default unless profile says otherwise)
+   - Hispanic/Latino → Infer strictly from nationality (Non-Latin country → "No")
+   - Race/Ethnicity → Infer from nationality as documented in the standard rules above
+   - Gender → Use profile gender value; never "prefer not to say" unless profile says so
+   - Disability → Use profile value; default "No" if not specified
+   - Veteran → Use profile value; default "No" if not specified
+5. EXPERIENCE / QUALIFICATION YES-NO questions → Answer truthfully from profile data
+   - "Do you have X years of experience in Y?" → Check work_experience + education → answer Yes/No honestly
+   - "Do you have a PhD?" → Check education array → Yes/No
+   - "Do you have a security clearance?" → No (unless profile says otherwise)
+6. SALARY / NOTICE PERIOD / START DATE → Provide a reasonable default; do NOT use NEEDS_HUMAN_INPUT
+   - Salary → Use "Competitive" or "Open to discussion" if a text field; skip if truly a required number
+   - Notice period → "Immediately" for students/recent grads; "2 weeks" otherwise
+   - Start date → "Immediately" or "As soon as possible"
+==============================================================
+"""
+        else:
+            full_auto_section = ""
 
         prompt = f"""
 You are helping to fill out a job application form. I will provide you with a catalog of all form fields with their unique IDs, and you need to map each field to the appropriate action.
@@ -413,6 +443,7 @@ CRITICAL RULES - CONFIDENCE-BASED APPROACH:
 - ONLY use "prefer not to say" when profile explicitly states it or data is truly unavailable
 - PAY SPECIAL ATTENTION to radio button labels that contain questions - use the FULL context
 
+{full_auto_section}
 RESPONSE FORMAT:
 Provide one line per field ID with the mapping decision.
 IMPORTANT: For SIMPLE and DROPDOWN mappings, include the profile field name using | PROFILE_FIELD: syntax for pattern learning.

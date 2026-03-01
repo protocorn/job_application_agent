@@ -112,73 +112,111 @@ class FieldInteractorV2:
         if profile:
             self.profile = profile
             
-        # Get element attributes for creating a fresh locator
-        element_id = field_data.get('id', '')
+        # ── Locator resolution (4-phase waterfall) ─────────────────────────
+        # Builds the most reliable locator possible from the most to least stable
+        # attribute.  Works across all ATS types (Greenhouse, Workday, Lever, etc.)
+        element_id   = field_data.get('id', '')
         element_name = field_data.get('name', '')
-        category = field_data.get('field_category', 'text_input')
-        field_label = field_data.get('label', 'Unknown')
-        stable_id = field_data.get('stable_id', '')
-        
-        # If no ID/name directly stored, try to extract from stable_id
-        # stable_id format: tagname_actualid (e.g., "textarea_question_13373426004")
-        if not element_id and not element_name and stable_id and '_' in stable_id:
-            # Extract the ID from stable_id (everything after first underscore)
-            parts = stable_id.split('_', 1)
-            if len(parts) == 2:
-                potential_id = parts[1]
-                # Verify this isn't just a hash (hashes are 8 chars)
-                if len(potential_id) > 8:
-                    element_id = potential_id
-                    logger.debug(f"📌 Extracted ID '{element_id}' from stable_id '{stable_id}'")
+        aria_label   = field_data.get('aria_label', '')
+        placeholder  = field_data.get('placeholder', '')
+        category     = field_data.get('field_category', 'text_input')
+        field_label  = field_data.get('label', 'Unknown')
+        stable_id    = field_data.get('stable_id', '')
+        element      = None
 
-        # Create a fresh locator based on ID/name to avoid position-based issues
-        # This ensures we always target the correct element even if DOM order changes
-        element = None
-        if element_id:
-            # Use ID attribute for most reliable targeting
-            element = self.page.locator(f'[id="{element_id}"]').first
-            logger.debug(f"🎯 Using ID-based locator: [id=\"{element_id}\"]")
-        elif element_name:
-            # Fall back to name attribute
-            tag_name = field_data.get('tag_name', 'input')
+        def _name_loc(name_val: str):
             if category == 'textarea':
-                element = self.page.locator(f'textarea[name="{element_name}"]').first
-            elif category == 'dropdown' or 'dropdown' in category:
-                element = self.page.locator(f'select[name="{element_name}"], input[name="{element_name}"]').first
-            else:
-                element = self.page.locator(f'input[name="{element_name}"]').first
-            logger.debug(f"🎯 Using name-based locator: name=\"{element_name}\"")
-        else:
-            # Last resort: Try to get ID/name directly from the stored element
+                return self.page.locator(f'textarea[name="{name_val}"]').first
+            if 'dropdown' in category:
+                return self.page.locator(f'select[name="{name_val}"], input[name="{name_val}"]').first
+            return self.page.locator(f'input[name="{name_val}"]').first
+
+        # Phase 1: Parse the new stable_id prefix format and build a direct locator.
+        # Format: <prefix>:<value>  e.g. aria_label:First Name, name:email, id:q123
+        # The OLD format was "tagname_xxx" — handled below by falling through to
+        # phase 3 (live attribute reading) when no prefix matches.
+        if stable_id:
+            if stable_id.startswith('name:'):
+                v = stable_id[5:]
+                element = _name_loc(v)
+                logger.debug(f"🎯 stable_id → name locator: [{v}]")
+            elif stable_id.startswith('aria_label:'):
+                v = stable_id[11:]
+                element = self.page.locator(f'[aria-label="{v}"]').first
+                logger.debug(f"🎯 stable_id → aria-label locator: [{v}]")
+            elif stable_id.startswith('placeholder:'):
+                v = stable_id[12:]
+                element = self.page.locator(f'[placeholder="{v}"]').first
+                logger.debug(f"🎯 stable_id → placeholder locator: [{v}]")
+            elif stable_id.startswith('id:'):
+                v = stable_id[3:]
+                element = self.page.locator(f'[id="{v}"]').first
+                logger.debug(f"🎯 stable_id → id locator: [{v}]")
+            # label_hash: and pos: have no direct CSS equivalent → fall through
+
+        # Phase 2: Explicit field-data attributes (name → aria-label → placeholder → id)
+        if not element:
+            if element_name:
+                element = _name_loc(element_name)
+                logger.debug(f"🎯 field attr → name locator: [{element_name}]")
+            elif aria_label:
+                element = self.page.locator(f'[aria-label="{aria_label}"]').first
+                logger.debug(f"🎯 field attr → aria-label locator: [{aria_label}]")
+            elif placeholder:
+                element = self.page.locator(f'[placeholder="{placeholder}"]').first
+                logger.debug(f"🎯 field attr → placeholder locator: [{placeholder}]")
+            elif element_id:
+                element = self.page.locator(f'[id="{element_id}"]').first
+                logger.debug(f"🎯 field attr → id locator: [{element_id}]")
+
+        # Phase 3: Read live attributes directly from the stored (possibly stale) element.
+        # This handles old-style stable_ids ("tagname_xxx") and any edge case where
+        # stored attributes were empty but the live DOM has them.
+        if not element:
             try:
-                original_element = field_data['element']
-                live_id = await original_element.get_attribute('id')
-                live_name = await original_element.get_attribute('name')
-                
-                if live_id:
-                    # Found a live ID! Use it to create a fresh locator
+                orig = field_data['element']
+                live_id          = await orig.get_attribute('id')
+                live_name        = await orig.get_attribute('name')
+                live_aria        = await orig.get_attribute('aria-label')
+                live_placeholder = await orig.get_attribute('placeholder')
+
+                if live_name:
+                    element = _name_loc(live_name)
+                    logger.debug(f"🔍 Live name attr → locator: [{live_name}]")
+                elif live_aria:
+                    element = self.page.locator(f'[aria-label="{live_aria}"]').first
+                    logger.debug(f"🔍 Live aria-label attr → locator: [{live_aria}]")
+                elif live_placeholder:
+                    element = self.page.locator(f'[placeholder="{live_placeholder}"]').first
+                    logger.debug(f"🔍 Live placeholder attr → locator: [{live_placeholder}]")
+                elif live_id:
                     element = self.page.locator(f'[id="{live_id}"]').first
-                    logger.debug(f"🔍 Retrieved live ID '{live_id}' from element")
-                    logger.debug(f"🎯 Using live ID-based locator: [id=\"{live_id}\"]")
-                elif live_name:
-                    # Found a live name! Use it
-                    tag_name = field_data.get('tag_name', 'input')
-                    if category == 'textarea':
-                        element = self.page.locator(f'textarea[name="{live_name}"]').first
-                    elif category == 'dropdown' or 'dropdown' in category:
-                        element = self.page.locator(f'select[name="{live_name}"], input[name="{live_name}"]').first
-                    else:
-                        element = self.page.locator(f'input[name="{live_name}"]').first
-                    logger.debug(f"🔍 Retrieved live name '{live_name}' from element")
-                    logger.debug(f"🎯 Using live name-based locator: name=\"{live_name}\"")
+                    logger.debug(f"🔍 Live id attr → locator: [{live_id}]")
                 else:
-                    # No ID or name even on live element - must use positional
-                    element = field_data['element']
-                    logger.warning(f"⚠️ Field '{field_label}' has no ID or name - using positional locator (may be unreliable)")
+                    element = orig
+                    logger.warning(f"⚠️ '{field_label}': no stable attr found — using original ref")
             except Exception as e:
-                logger.debug(f"Failed to retrieve live ID/name: {e}")
-                element = field_data['element']
-                logger.warning(f"⚠️ Field '{field_label}' has no ID or name - using positional locator (may be unreliable)")
+                logger.debug(f"Phase-3 live attr read failed: {e}")
+                element = field_data.get('element')
+
+        # Phase 4: Position-based absolute last resort
+        if not element:
+            pos_idx = field_data.get('position_index')
+            if pos_idx is not None:
+                try:
+                    _sel = (
+                        'input:not([type="hidden"]):not([type="submit"])'
+                        ':not([type="button"]):visible, select:visible, textarea:visible'
+                    )
+                    all_inputs = await self.page.locator(_sel).all()
+                    if pos_idx < len(all_inputs):
+                        element = all_inputs[pos_idx]
+                        logger.debug(f"🗂️ '{field_label}': position-based locator (index {pos_idx})")
+                except Exception as e:
+                    logger.debug(f"Phase-4 position fallback failed: {e}")
+            if not element:
+                element = field_data.get('element')
+                logger.warning(f"⚠️ '{field_label}': exhausted all locator strategies — stale ref")
 
         logger.debug(f"🔧 Filling '{field_label}' (Category: {category})")
 
@@ -380,8 +418,8 @@ class FieldInteractorV2:
         Returns False if failed (for AI batch fallback).
         """
         try:
-            # Fast timeout - we type immediately, no slow extraction
-            timeout = 8.0  # 8 seconds is enough for type + select + verify
+            # Generous timeout to allow AI fallback (Gemini call can take ~10s)
+            timeout = 25.0
             
             # Extract location context from profile for context-aware matching
             profile_context = None
@@ -769,54 +807,91 @@ class FieldInteractorV2:
             matched_radio = None
             best_match_score = 0
             
-            # STEP 1: Try exact matches first (most reliable)
+            # Collect (radio_field, label_text) pairs for matching
+            radio_options = []
             for radio_field in individual_radios:
-                option_label = radio_field.get('option_label', '').lower().strip()
-                # Fallback to regular label if option_label is empty
-                if not option_label:
-                    option_label = radio_field.get('label', '').lower().strip()
-                
-                logger.debug(f"   Comparing '{value_lower}' with '{option_label}'")
-                
-                if option_label == value_lower:
+                opt_label = radio_field.get('option_label', '').strip()
+                if not opt_label:
+                    opt_label = radio_field.get('label', '').strip()
+                radio_options.append((radio_field, opt_label))
+
+            stop_words = {"of", "the", "in", "a", "an", "(", ")", ".", ",", "-", "i", "am", "not"}
+
+            def _toks(s: str):
+                return {w for w in s.lower().split() if w not in stop_words and len(w) > 1}
+
+            def _radio_score(target: str, candidate: str) -> float:
+                tl, cl = target.lower().strip(), candidate.lower().strip()
+                if tl == cl:
+                    return 1.0
+                t_toks, c_toks = _toks(tl), _toks(cl)
+                score = 0.0
+                if t_toks and c_toks:
+                    score = len(t_toks & c_toks) / len(t_toks | c_toks)
+                if tl in cl:
+                    score = max(score, len(tl) / max(len(cl), 1))
+                elif cl in tl:
+                    score = max(score, len(cl) / max(len(tl), 1))
+                return score
+
+            # STEP 1: Exact match
+            for radio_field, opt_label in radio_options:
+                if opt_label.lower().strip() == value_lower:
                     matched_radio = radio_field
-                    logger.debug(f"   ✅ Exact match found: '{radio_field.get('option_label', radio_field.get('label', ''))}'")
+                    logger.debug(f"   ✅ Exact match: '{opt_label}'")
                     break
-            
-            # STEP 2: If no exact match, try smart partial matching
+
+            # STEP 2: Best fuzzy match (threshold 0.45 to handle paraphrases)
             if not matched_radio:
-                for radio_field in individual_radios:
-                    option_label = radio_field.get('option_label', '').lower().strip()
-                    radio_label = radio_field.get('label', '').lower().strip()
-                    
-                    # Calculate match score (prefer longer, more specific matches)
-                    match_score = 0
-                    
-                    # Check if value is contained in option (e.g., "Master's" in "Master's Degree")
-                    if value_lower in option_label:
-                        # Penalize if option is much longer (likely a false positive)
-                        length_ratio = len(value_lower) / len(option_label) if option_label else 0
-                        if length_ratio > 0.5:  # Value is at least 50% of option length
-                            match_score = length_ratio * 100
-                    
-                    # Check if option is contained in value (e.g., "Yes" in "Yes, I agree")
-                    elif option_label in value_lower:
-                        # Penalize if value is much longer
-                        length_ratio = len(option_label) / len(value_lower) if value_lower else 0
-                        if length_ratio > 0.5:
-                            match_score = length_ratio * 80
-                    
-                    # Keep the best match
-                    if match_score > best_match_score:
-                        best_match_score = match_score
+                for radio_field, opt_label in radio_options:
+                    score = _radio_score(value, opt_label)
+                    if score > best_match_score:
+                        best_match_score = score
                         matched_radio = radio_field
-                
-                if matched_radio and best_match_score > 0:
-                    logger.debug(f"   ✅ Partial match found (score={best_match_score:.1f}): '{matched_radio.get('option_label', '')}'")
-            
+
+                if matched_radio and best_match_score >= 0.45:
+                    best_label = matched_radio.get('option_label', matched_radio.get('label', ''))
+                    logger.debug(f"   ✅ Fuzzy match (score={best_match_score:.2f}): '{best_label}'")
+                else:
+                    matched_radio = None  # below threshold
+
+            # STEP 3: AI pick from short list (≤ 10 options, fuzzy failed)
+            if not matched_radio and len(radio_options) <= 10:
+                try:
+                    from google import genai as _genai
+                    import os as _os
+                    _client = _genai.Client(api_key=_os.getenv('GOOGLE_API_KEY'))
+                    option_texts = [lbl for _, lbl in radio_options if lbl]
+                    prompt = (
+                        f'Job application radio button question.\n'
+                        f'Question: "{field_label}"\nDesired answer: "{value}"\n\n'
+                        f'Available options:\n' + "\n".join(f"- {t}" for t in option_texts)
+                        + '\n\nReply with ONLY the exact option text. If nothing fits, reply NO_MATCH.'
+                    )
+                    resp = _client.models.generate_content(model="gemini-2.0-flash-lite", contents=prompt)
+                    ai_choice = resp.text.strip().strip('"').strip("'")
+                    logger.info(f"   AI radio pick: '{ai_choice}'")
+                    if ai_choice != "NO_MATCH":
+                        for radio_field, opt_label in radio_options:
+                            if opt_label.lower().strip() == ai_choice.lower().strip():
+                                matched_radio = radio_field
+                                logger.debug(f"   ✅ AI exact: '{opt_label}'")
+                                break
+                        if not matched_radio:
+                            # fuzzy against AI answer
+                            for radio_field, opt_label in radio_options:
+                                score = _radio_score(ai_choice, opt_label)
+                                if score > best_match_score:
+                                    best_match_score = score
+                                    matched_radio = radio_field
+                            if matched_radio and best_match_score < 0.4:
+                                matched_radio = None
+                except Exception as ai_err:
+                    logger.warning(f"   Radio AI pick error: {ai_err}")
+
             if not matched_radio:
                 logger.warning(f"❌ No radio button matches value '{value}' in group '{field_label}'")
-                logger.debug(f"   Available options: {[r.get('option_label', '') for r in individual_radios]}")
+                logger.debug(f"   Available options: {[lbl for _, lbl in radio_options]}")
                 result.update({
                     "success": False,
                     "error": f"No radio button matches desired value '{value}'"
@@ -919,23 +994,55 @@ class FieldInteractorV2:
             # Multi-select checkbox group - check specific options
             checked_count = 0
             
+            # Build a single helper for fuzzy token-overlap scoring
+            _cb_stop = {"of", "the", "in", "a", "an", "(", ")", ".", ",", "-"}
+
+            def _cb_score(target: str, candidate: str) -> float:
+                tl, cl = target.lower().strip(), candidate.lower().strip()
+                if tl == cl:
+                    return 1.0
+                t_toks = {w for w in tl.split() if w not in _cb_stop and len(w) > 1}
+                c_toks = {w for w in cl.split() if w not in _cb_stop and len(w) > 1}
+                score = 0.0
+                if t_toks and c_toks:
+                    score = len(t_toks & c_toks) / len(t_toks | c_toks)
+                if tl in cl:
+                    score = max(score, len(tl) / max(len(cl), 1))
+                elif cl in tl:
+                    score = max(score, len(cl) / max(len(tl), 1))
+                return score
+
             for option_to_check in options_to_check:
                 option_lower = option_to_check.lower().strip()
-                
-                # Find matching checkbox
+
+                # Find matching checkbox — exact first, then fuzzy
                 matched_checkbox = None
+                best_cb_score = 0.0
                 for cb_field in individual_checkboxes:
-                    cb_label = cb_field.get('option_label', cb_field.get('label', '')).lower().strip()
-                    cb_name = cb_field.get('name', '').lower().strip()
-                    
-                    # Try exact or partial match
-                    if cb_label == option_lower or cb_name == option_lower:
+                    cb_label = cb_field.get('option_label', cb_field.get('label', '')).strip()
+                    cb_name = cb_field.get('name', '').strip()
+
+                    # Exact
+                    if cb_label.lower() == option_lower or cb_name.lower() == option_lower:
                         matched_checkbox = cb_field
+                        best_cb_score = 1.0
                         break
-                    elif option_lower in cb_label or cb_label in option_lower:
+
+                    # Fuzzy (label preferred, then name)
+                    score = max(_cb_score(option_to_check, cb_label),
+                                _cb_score(option_to_check, cb_name))
+                    if score > best_cb_score:
+                        best_cb_score = score
                         matched_checkbox = cb_field
-                        break
-                
+
+                # Apply threshold
+                if matched_checkbox and best_cb_score < 0.4:
+                    logger.warning(
+                        f"   ⚠️  Low confidence checkbox match for '{option_to_check}' "
+                        f"(score={best_cb_score:.2f}) — skipping"
+                    )
+                    matched_checkbox = None
+
                 if matched_checkbox:
                     cb_element = matched_checkbox.get('element')
                     cb_label = matched_checkbox.get('option_label', matched_checkbox.get('label', ''))
@@ -1132,26 +1239,95 @@ class FieldInteractorV2:
         field_label: str,
         result: Dict[str, Any]
     ) -> None:
-        """Fill Ashby-style button group."""
+        """
+        Fill Ashby-style (and similar) button-group selectors.
+        These are groups of styled <button> or <div role='button'> elements
+        that act like radio buttons.  Strategy:
+          1. Collect all sibling / nearby buttons in the same container.
+          2. Token-overlap fuzzy-match the desired value against button text.
+          3. Click the best match (≥ 0.4 score) or fall back to exact/partial.
+        """
         try:
-            # Import the Ashby handler
-            from components.executors.ats_dropdown_handlers import AshbyButtonGroupHandler
+            stop_words = {"of", "the", "in", "a", "an", "(", ")", ".", ",", "-"}
 
-            handler = AshbyButtonGroupHandler(self.page)
-            success = await handler.fill(element, value, field_label)
+            def _toks(s: str):
+                return {w for w in s.lower().split() if w not in stop_words and len(w) > 1}
 
-            if success:
+            def _score(target: str, candidate: str) -> float:
+                tl, cl = target.lower().strip(), candidate.lower().strip()
+                if tl == cl:
+                    return 1.0
+                tt, ct = _toks(tl), _toks(cl)
+                s = len(tt & ct) / len(tt | ct) if (tt and ct) else 0.0
+                if tl in cl:
+                    s = max(s, len(tl) / max(len(cl), 1))
+                elif cl in tl:
+                    s = max(s, len(cl) / max(len(tl), 1))
+                return s
+
+            # Walk up to find a grouping container then collect all buttons in it
+            page = self.page
+            candidates_selectors = [
+                '[role="group"] button',
+                '[role="group"] [role="button"]',
+                '[data-testid*="button-group"] button',
+                '[class*="ButtonGroup"] button',
+                '[class*="button-group"] button',
+                '[class*="segmented"] button',
+                '[class*="pill"] button',
+            ]
+            buttons: List[tuple] = []  # (locator, text)
+            for sel in candidates_selectors:
+                try:
+                    locs = page.locator(sel)
+                    count = await locs.count()
+                    if count == 0:
+                        continue
+                    batch = []
+                    for i in range(min(count, 20)):
+                        loc = locs.nth(i)
+                        try:
+                            if not await loc.is_visible(timeout=200):
+                                continue
+                            text = (await loc.text_content(timeout=300) or "").strip()
+                            if text:
+                                batch.append((loc, text))
+                        except Exception:
+                            continue
+                    if batch:
+                        buttons = batch
+                        break
+                except Exception:
+                    continue
+
+            if not buttons:
+                # Fall back to clicking the element itself
+                await element.click(timeout=2000)
+                result.update({"success": True, "method": "button_group_direct_click", "final_value": value})
+                return
+
+            # Pick best match
+            best_loc, best_text, best_score = None, None, 0.0
+            for loc, text in buttons:
+                s = _score(value, text)
+                if s > best_score:
+                    best_score, best_loc, best_text = s, loc, text
+
+            if best_loc and best_score >= 0.4:
+                await best_loc.scroll_into_view_if_needed(timeout=1000)
+                await best_loc.click(timeout=2000)
+                logger.info(f"✅ Button group selected: '{best_text}' (score {best_score:.2f})")
                 result.update({
                     "success": True,
-                    "method": "ashby_button_group",
-                    "final_value": value
+                    "method": "button_group_fuzzy",
+                    "final_value": best_text
                 })
             else:
                 raise DropdownInteractionError(
                     field_label=field_label,
                     value=value,
-                    dropdown_type='ashby_button_group',
-                    reason="Button group handler failed"
+                    dropdown_type='button_group',
+                    reason=f"No button matched '{value}' (best score {best_score:.2f})"
                 )
 
         except Exception as e:
@@ -1462,16 +1638,30 @@ class FieldInteractorV2:
                     # Note: greenhouse_dropdown options are extracted dynamically when filling
                     # because they're rendered in portals only after opening the dropdown
                     
-                    # Create stable ID for tracking (DETERMINISTIC - must not change across iterations!)
-                    # Use id/name if available, otherwise hash the label
-                    if id_attr:
-                        stable_id = f"{tag_name}_{id_attr}"
-                    elif name:
-                        stable_id = f"{tag_name}_{name}"
-                    else:
-                        # Use hash of label for consistency (same label = same ID across iterations)
+                    # Build a stable_id that SURVIVES DOM re-renders.
+                    #
+                    # Priority (most → least stable):
+                    #   name        — set by form author, never changes
+                    #   aria_label  — semantic text attribute, never changes
+                    #   placeholder — visible hint text, never changes
+                    #   label hash  — derived from visible label, never changes
+                    #   id_attr     — LAST: React/Workday regenerate ids on every render
+                    #
+                    # Each variant uses an explicit prefix so _get_fresh_element can
+                    # reconstruct the right CSS selector without guessing.
+                    if name:
+                        stable_id = f"name:{name}"
+                    elif aria_label:
+                        stable_id = f"aria_label:{aria_label}"
+                    elif placeholder:
+                        stable_id = f"placeholder:{placeholder}"
+                    elif label_text:
                         label_hash = hashlib.md5(label_text.encode()).hexdigest()[:8]
-                        stable_id = f"{tag_name}_{label_hash}"
+                        stable_id = f"label_hash:{label_hash}"
+                    elif id_attr:
+                        stable_id = f"id:{id_attr}"
+                    else:
+                        stable_id = f"pos:{len(fields)}"
                     
                     field_data = {
                         'element': element,
@@ -1484,7 +1674,10 @@ class FieldInteractorV2:
                         'aria_label': aria_label,
                         'stable_id': stable_id,
                         'available_options': available_options,
-                        'tag_name': tag_name
+                        'tag_name': tag_name,
+                        # Scan-order index — used as last-resort position-based locator
+                        # when all attribute-based lookups fail after a DOM re-render.
+                        'position_index': len(fields),
                     }
                     
                     fields.append(field_data)

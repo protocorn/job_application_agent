@@ -229,6 +229,31 @@ class LaunchwayClient:
         data = self._post("/api/profile/keywords/extract", body)
         return data.get("resume_keywords", {})
 
+    def get_ai_key_settings(self) -> Dict[str, Any]:
+        """Fetch the user's AI Engine configuration (masked key, modes)."""
+        return self._get("/api/settings/ai-keys")
+
+    def save_ai_key_settings(
+        self,
+        primary_mode: str,
+        secondary_mode: Optional[str] = None,
+        custom_api_key: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Save the user's AI Engine configuration.
+
+        primary_mode  : 'launchway' | 'custom'
+        secondary_mode: 'launchway' | 'custom' | None
+        custom_api_key: plain-text Gemini key (required when any mode == 'custom')
+        """
+        body: Dict[str, Any] = {
+            "primary_mode": primary_mode,
+            "secondary_mode": secondary_mode,
+        }
+        if custom_api_key:
+            body["custom_api_key"] = custom_api_key
+        return self._post("/api/settings/ai-keys", body)
+
     def get_mimikree_credentials(self) -> Tuple[Optional[str], Optional[str]]:
         """
         Fetch the decrypted Mimikree credentials stored for the current user.

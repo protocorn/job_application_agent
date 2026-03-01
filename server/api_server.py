@@ -3,9 +3,6 @@ import os
 import sys
 import requests
 from google import genai
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import Flow
-from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 import json
 from flask_cors import CORS
@@ -24,7 +21,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'Agents'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))  # For logging_config
 
 # Original imports
-from resume_tailoring_agent import get_google_services, get_doc_id_from_url, copy_google_doc, read_google_doc_content, apply_json_replacements_to_doc, tailor_resume as tailor_resume_with_agent, tailor_resume_and_return_url
+from resume_tailoring_agent import get_google_services, get_doc_id_from_url, read_google_doc_content, tailor_resume_and_return_url
 from latex_tailoring_agent import parse_latex_zip, get_main_tex_preview_from_base64, compile_latex_zip_to_pdf
 from job_application_agent import run_links_with_refactored_agent
 from logging_config import setup_file_logging
@@ -36,9 +33,9 @@ from google_oauth_service import GoogleOAuthService
 
 # Production infrastructure imports
 from rate_limiter import rate_limiter, rate_limit, get_rate_limit_status
-from job_queue import job_queue, JobPriority, submit_resume_tailoring_job, submit_job_application_job, submit_job_search_job
+from job_queue import job_queue, JobPriority
 from security_manager import security_manager, require_secure_headers, validate_input, get_security_status
-from database_optimizer import db_optimizer, setup_database_optimizations, get_database_health
+from database_optimizer import setup_database_optimizations, get_database_health
 from backup_manager import backup_manager, run_full_backup, schedule_backups
 from job_handlers import submit_job_with_validation
 from mimikree_service import mimikree_service
@@ -522,9 +519,6 @@ def extract_google_doc_with_oauth(resume_url: str, user_id: int) -> str:
                 logging.info(f"User {user_id} has OAuth connected, using authenticated access")
                 credentials = GoogleOAuthService.get_credentials(user_id)
 
-                # Use the same functions from resume_tailoring_agent
-                from resume_tailoring_agent import get_doc_id_from_url, get_google_services, read_google_doc_content
-
                 doc_id = get_doc_id_from_url(resume_url)
                 docs_service, _ = get_google_services(credentials)
                 resume_text = read_google_doc_content(docs_service, doc_id)
@@ -749,6 +743,113 @@ def save_profile():
         logging.error(f"Error saving profile: {e}")
         return jsonify({"error": f"Failed to save profile: {str(e)}"}), 500
 
+@app.route("/api/settings/ai-keys", methods=['GET'])
+@require_auth
+def get_ai_key_settings():
+    """
+    Return the user's current AI Engine configuration.
+    The custom key is masked — only its last 4 chars are returned to the client.
+    """
+    try:
+        user_id = request.current_user['id']
+        result = ProfileService.get_complete_profile(user_id)
+        if not result.get("success"):
+            return jsonify({"error": "Profile not found"}), 404
+
+        profile = result["profile"]
+        primary_mode = profile.get("api_primary_mode") or "launchway"
+        secondary_mode = profile.get("api_secondary_mode") or None
+
+        # Determine whether a custom key is saved (mask it for the client)
+        has_custom_key = False
+        masked_key = None
+        try:
+            from database_config import SessionLocal, UserProfile
+            db = SessionLocal()
+            db_profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+            if db_profile and db_profile.custom_gemini_api_key:
+                has_custom_key = True
+                decrypted = security_manager.decrypt_sensitive_data(db_profile.custom_gemini_api_key)
+                masked_key = "•" * (len(decrypted) - 4) + decrypted[-4:]
+            db.close()
+        except Exception as key_err:
+            logging.warning(f"Could not check custom key: {key_err}")
+
+        return jsonify({
+            "success": True,
+            "api_primary_mode": primary_mode,
+            "api_secondary_mode": secondary_mode,
+            "has_custom_key": has_custom_key,
+            "masked_custom_key": masked_key,
+            "configured": primary_mode is not None,
+        }), 200
+
+    except Exception as e:
+        logging.error(f"Error getting AI key settings: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/settings/ai-keys", methods=['POST'])
+@require_auth
+def save_ai_key_settings():
+    """
+    Save the user's AI Engine configuration.
+
+    Body (JSON):
+        primary_mode   : 'launchway' | 'custom'   (required)
+        secondary_mode : 'launchway' | 'custom' | null  (optional)
+        custom_api_key : plain-text Gemini API key  (required when either mode == 'custom')
+    """
+    try:
+        user_id = request.current_user['id']
+        body = request.json or {}
+
+        primary_mode = body.get("primary_mode", "").strip()
+        secondary_mode = body.get("secondary_mode") or None
+        custom_api_key_plain = (body.get("custom_api_key") or "").strip()
+
+        # Validate
+        valid_modes = {"launchway", "custom"}
+        if primary_mode not in valid_modes:
+            return jsonify({"error": "primary_mode must be 'launchway' or 'custom'"}), 400
+        if secondary_mode and secondary_mode not in valid_modes:
+            return jsonify({"error": "secondary_mode must be 'launchway', 'custom', or null"}), 400
+        if primary_mode == secondary_mode and primary_mode:
+            return jsonify({"error": "primary_mode and secondary_mode cannot be the same"}), 400
+        if "custom" in {primary_mode, secondary_mode} and not custom_api_key_plain:
+            return jsonify({"error": "A Gemini API key is required when using 'custom' mode"}), 400
+
+        # Encrypt the key if provided
+        encrypted_key = None
+        if custom_api_key_plain:
+            # Basic sanity check — Gemini keys start with "AIza"
+            if not custom_api_key_plain.startswith("AIza"):
+                return jsonify({"error": "That doesn't look like a valid Gemini API key (should start with 'AIza')"}), 400
+            encrypted_key = security_manager.encrypt_sensitive_data(custom_api_key_plain)
+
+        # Persist to profile
+        update_payload = {
+            "api_primary_mode": primary_mode,
+            "api_secondary_mode": secondary_mode,
+        }
+        if encrypted_key is not None:
+            update_payload["custom_gemini_api_key"] = encrypted_key
+
+        ProfileService.create_or_update_profile(user_id, update_payload)
+
+        return jsonify({
+            "success": True,
+            "message": "AI Engine settings saved.",
+            "api_primary_mode": primary_mode,
+            "api_secondary_mode": secondary_mode,
+            "has_custom_key": bool(custom_api_key_plain),
+        }), 200
+
+    except Exception as e:
+        logging.error(f"Error saving AI key settings: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/profile/keywords/extract", methods=['POST'])
 @require_auth
 def extract_profile_keywords():
@@ -775,20 +876,29 @@ def extract_profile_keywords():
             extractor = ResumeKeywordExtractor(api_key=api_key)
             keywords = extractor.extract_from_text(raw_text)
 
-        # Option 2: fetch from the user's saved resume URL
+        # Option 2: fetch from the user's saved resume (URL or extracted text)
         if not keywords:
             profile_result = ProfileService.get_complete_profile(user_id)
             if not profile_result.get("success"):
                 return jsonify({"error": "Profile not found"}), 404
 
-            resume_url = profile_result.get("profile", {}).get("resume_url", "")
-            if not resume_url:
-                return jsonify({"error": "No resume URL saved in your profile"}), 400
+            profile = profile_result.get("profile", {})
+            resume_url = profile.get("resume_url", "")
+            stored_text = profile.get("resume_text", "")
 
-            resume_text = extract_google_doc_with_oauth(resume_url, user_id)
-            if not resume_text:
+            if resume_url:
+                # Google Doc path
+                resume_text = extract_google_doc_with_oauth(resume_url, user_id)
+                if not resume_text:
+                    return jsonify({
+                        "error": "Could not fetch resume. Make sure it is shared as 'Anyone with the link can view'."
+                    }), 400
+            elif stored_text:
+                # PDF/DOCX path — text was extracted at upload time
+                resume_text = stored_text
+            else:
                 return jsonify({
-                    "error": "Could not fetch resume. Make sure it is shared as 'Anyone with the link can view'."
+                    "error": "No resume found in your profile. Please upload a resume first."
                 }), 400
 
             api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
@@ -860,152 +970,104 @@ def process_resume():
 @app.route("/api/upload-resume", methods=['POST'])
 @require_auth
 def upload_resume():
-    """Handle PDF/DOCX resume file upload, convert to Google Doc, and process"""
+    """
+    Handle PDF/DOCX resume file upload.
+    - Extracts text directly (no Google account required).
+    - Processes profile data with Gemini.
+    - Stores extracted text + source type in the profile.
+    - Resume tailoring is NOT available for PDF/DOCX — only Google Doc URLs support tailoring.
+    """
     try:
         user_id = request.current_user['id']
 
-        # Check if user has connected Google account
-        if not GoogleOAuthService.is_connected(user_id):
-            return jsonify({
-                "error": "Please connect your Google account first to upload resumes. The resume will be converted to Google Docs for easy editing and tailoring.",
-                "needs_google_auth": True
-            }), 403
-
-        # Check if file was provided
         if 'resume' not in request.files:
             return jsonify({"error": "No file provided"}), 400
 
         file = request.files['resume']
-
         if file.filename == '':
             return jsonify({"error": "No file selected"}), 400
 
-        # Get file extension
         filename = file.filename.lower()
-        original_filename = file.filename
-
-        # Validate file type
         if not (filename.endswith('.pdf') or filename.endswith('.docx')):
             return jsonify({"error": "Only PDF and DOCX files are supported"}), 400
 
-        # Validate file size (max 10MB)
-        file.seek(0, 2)  # Seek to end
+        file.seek(0, 2)
         file_size = file.tell()
-        file.seek(0)  # Seek back to beginning
-
-        if file_size > 10 * 1024 * 1024:  # 10MB
+        file.seek(0)
+        if file_size > 10 * 1024 * 1024:
             return jsonify({"error": "File too large (maximum 10MB)"}), 400
-
         if file_size == 0:
             return jsonify({"error": "File is empty"}), 400
 
-        # Get user's Google credentials
-        credentials = GoogleOAuthService.get_credentials(user_id)
-        if not credentials:
+        # ── Extract text directly from the uploaded file ──────────────────
+        file_bytes = file.read()
+        resume_text = ""
+        source_type = ""
+
+        if filename.endswith('.pdf'):
+            source_type = 'pdf'
+            try:
+                import io
+                from PyPDF2 import PdfReader
+                reader = PdfReader(io.BytesIO(file_bytes))
+                pages = [p.extract_text() or "" for p in reader.pages]
+                resume_text = "\n".join(pages).strip()
+            except Exception as pdf_err:
+                logging.error(f"PDF text extraction failed: {pdf_err}")
+                return jsonify({"error": f"Could not read PDF: {pdf_err}"}), 400
+
+        elif filename.endswith('.docx'):
+            source_type = 'docx'
+            try:
+                import io
+                try:
+                    import docx
+                except ImportError:
+                    return jsonify({
+                        "error": "python-docx is not installed on the server. Please contact support or upload a PDF instead."
+                    }), 500
+                doc = docx.Document(io.BytesIO(file_bytes))
+                resume_text = "\n".join(p.text for p in doc.paragraphs if p.text.strip()).strip()
+            except Exception as docx_err:
+                logging.error(f"DOCX text extraction failed: {docx_err}")
+                return jsonify({"error": f"Could not read DOCX: {docx_err}"}), 400
+
+        if not resume_text or len(resume_text) < 50:
             return jsonify({
-                "error": "Failed to retrieve Google credentials. Please reconnect your account.",
-                "needs_google_auth": True
-            }), 403
+                "error": (
+                    "Could not extract enough text from the file. "
+                    "Please ensure it contains selectable text (not a scanned image)."
+                )
+            }), 400
 
-        # Upload file to Google Drive and convert to Google Docs
-        try:
-            from googleapiclient.discovery import build
-            from googleapiclient.http import MediaIoBaseUpload
-            from werkzeug.utils import secure_filename
-            import io
+        logging.info(f"Extracted {len(resume_text)} chars from {source_type.upper()} for user {user_id}")
 
-            drive_service = build('drive', 'v3', credentials=credentials)
-            
-            # Prepare file metadata
-            safe_filename = secure_filename(original_filename)
-            file_name_without_ext = safe_filename.rsplit('.', 1)[0]
-            
-            file_metadata = {
-                'name': file_name_without_ext,
-                'mimeType': 'application/vnd.google-apps.document'  # Convert to Google Docs format
-            }
-
-            # Determine MIME type for upload
-            if filename.endswith('.pdf'):
-                mime_type = 'application/pdf'
-            elif filename.endswith('.docx'):
-                mime_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-            
-            # Read file content
-            file.seek(0)
-            file_content = file.read()
-            media = MediaIoBaseUpload(
-                io.BytesIO(file_content),
-                mimetype=mime_type,
-                resumable=True
-            )
-
-            # Upload and convert to Google Docs
-            logging.info(f"Uploading {original_filename} to Google Drive and converting to Google Docs...")
-            uploaded_file = drive_service.files().create(
-                body=file_metadata,
-                media_body=media,
-                fields='id, name, webViewLink'
-            ).execute()
-
-            google_doc_id = uploaded_file['id']
-            google_doc_url = f"https://docs.google.com/document/d/{google_doc_id}/edit"
-            
-            logging.info(f"Successfully uploaded and converted to Google Doc: {google_doc_url}")
-
-        except Exception as upload_err:
-            logging.error(f"Error uploading to Google Drive: {upload_err}")
-            return jsonify({
-                "error": f"Failed to upload to Google Drive: {str(upload_err)}",
-                "success": False
-            }), 500
-
-        # Extract text from the Google Doc
-        try:
-            from resume_tailoring_agent import get_google_services, read_google_doc_content
-            
-            docs_service, _ = get_google_services(credentials)
-            resume_text = read_google_doc_content(docs_service, google_doc_id)
-            
-            if not resume_text or len(resume_text.strip()) < 50:
-                return jsonify({
-                    "error": "Could not extract enough text from the converted Google Doc. Please ensure the file contains selectable text (not scanned images)."
-                }), 400
-
-        except Exception as extract_err:
-            logging.error(f"Error extracting text from Google Doc: {extract_err}")
-            return jsonify({
-                "error": f"Failed to extract text from Google Doc: {str(extract_err)}",
-                "success": False
-            }), 500
-
-        # Process with LLM
-        logging.info(f"Processing uploaded resume with LLM (length: {len(resume_text)} chars)")
+        # ── Process with LLM ──────────────────────────────────────────────
         profile_data = process_resume_with_llm(resume_text)
-
         if profile_data is None:
-            return jsonify({
-                "error": "Failed to process resume with Gemini",
-                "success": False
-            }), 500
+            return jsonify({"error": "Failed to process resume with Gemini", "success": False}), 500
 
-        # Save Google Doc URL to profile
+        # ── Persist extracted text + source type (no resume_url) ─────────
         try:
-            from profile_service import ProfileService
             ProfileService.create_or_update_profile(user_id, {
-                'resume_url': google_doc_url,
-                'resume_source_type': 'google_doc'
+                'resume_url': '',
+                'resume_source_type': source_type,
+                'resume_text': resume_text,
             })
         except Exception as persist_err:
-            logging.warning(f"Could not persist resume URL: {persist_err}")
+            logging.warning(f"Could not persist resume data: {persist_err}")
 
         return jsonify({
-            "profile_data": profile_data,
-            "resume_url": google_doc_url,
-            "google_doc_id": google_doc_id,
             "success": True,
-            "message": f"Resume uploaded and converted to Google Doc successfully! You can now edit and tailor it.",
-            "file_type": "PDF" if filename.endswith('.pdf') else "DOCX"
+            "profile_data": profile_data,
+            "resume_url": "",          # no Google Doc — tailoring disabled
+            "source_type": source_type,
+            "tailoring_available": False,
+            "message": (
+                f"{source_type.upper()} resume uploaded and profile populated successfully. "
+                "⚠️ Resume tailoring is not available for PDF/DOCX uploads. "
+                "To enable tailoring, please upload your resume as a Google Doc URL."
+            ),
         }), 200
 
     except Exception as e:
@@ -1285,8 +1347,6 @@ def delete_action_history_api():
 def search_jobs():
     """ Search for jobs using Multi-Source Job Discovery Agent and save to PostgreSQL"""
     try:
-        import sys
-        sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
         from Agents.multi_source_job_discovery_agent import MultiSourceJobDiscoveryAgent
 
         user_id = request.current_user['id']
@@ -3733,8 +3793,6 @@ def analyze_projects():
     try:
         from database_config import SessionLocal
         from migrate_add_projects import Project
-        import sys
-        sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'Agents'))
         from project_selection.relevance_engine import ProjectRelevanceEngine
         from project_selection.mimikree_project_discovery import MimikreeProjectDiscovery
         from mimikree_integration import MimikreeClient
@@ -3865,8 +3923,6 @@ def analyze_projects():
 def generate_project_bullets():
     """Generate tailored bullets for a project"""
     try:
-        import sys
-        sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'Agents'))
         from bullet_generation.project_bullet_generator import ProjectBulletGenerator
 
         data = request.json

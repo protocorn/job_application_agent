@@ -11,12 +11,6 @@ from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 from google import genai
 
-# Add parent directory to path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from logging_config import setup_file_logging
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Import our new modules

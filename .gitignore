@@ -415,6 +415,14 @@ terraform.rc
 # PROJECT SPECIFIC
 # ============================================================
 
+# Runtime progress/state artifacts (generated during automation runs)
+automation_progress_*.json
+batch_progress_*.json
+stress_test_urls.txt
+
+# LaTeX debug artifacts
+Resumes/latex_debug/
+
 # Playwright browsers
 .playwright/
 

@@ -510,11 +510,17 @@ class ContinuousApplyMixin:
                 except Exception as e:
                     self.print_error(f"Failed to setup proxies: {e}")
 
-        max_apps_str = self.get_input("Max applications per session (default: 50): ").strip()
+        goal_str = self.get_input("Round goal — jobs to apply per round (max 10, default: 5): ").strip()
         try:
-            max_apps = int(max_apps_str) if max_apps_str else 50
+            session_goal = min(10, max(1, int(goal_str))) if goal_str else 5
         except ValueError:
-            max_apps = 50
+            session_goal = 5
+
+        cooldown_str = self.get_input("Cooldown between rounds in minutes (default: 60): ").strip()
+        try:
+            cooldown_minutes = max(1, int(cooldown_str)) if cooldown_str else 60
+        except ValueError:
+            cooldown_minutes = 60
 
         print(f"\n{Colors.BOLD}Summary:{Colors.ENDC}")
         print(f"  Keywords:         {keywords}")
@@ -525,8 +531,8 @@ class ContinuousApplyMixin:
         print(f"  Tailor Resume:    {'Yes' if tailor_all else 'No'}")
         print(f"  Headless:         {'Yes' if headless else 'No'}")
         print(f"  Proxies:          {proxy_manager.get_stats()['active_proxies'] if proxy_manager else 'None (direct)'}")
-        print(f"  Max Applications: {max_apps}")
-        print(f"  Job Discovery:    Every 1 hour")
+        print(f"  Round Goal:       {session_goal} jobs per round")
+        print(f"  Cooldown:         {cooldown_minutes} min after each completed round")
 
         confirm = self.get_input(
             f"\n{Colors.WARNING}Start continuous automation? (type 'START' to confirm): {Colors.ENDC}"
@@ -544,31 +550,41 @@ class ContinuousApplyMixin:
             hours_old=hours_old,
             tailor_resume=tailor_all,
             headless=headless,
-            max_applications=max_apps,
+            session_goal=session_goal,
+            cooldown_minutes=cooldown_minutes,
             proxy_manager=proxy_manager,
         )
 
     async def run_continuous_automation(
         self,
-        keywords:         str,
-        location:         str,
-        remote:           bool,
-        easy_apply:       bool,
-        hours_old:        Optional[int],
-        tailor_resume:    bool,
-        headless:         bool,
-        max_applications: int,
+        keywords:          str,
+        location:          str,
+        remote:            bool,
+        easy_apply:        bool,
+        hours_old:         Optional[int],
+        tailor_resume:     bool,
+        headless:          bool,
+        session_goal:      int   = 5,
+        cooldown_minutes:  int   = 60,
         proxy_manager=None,
     ):
+        """
+        Goal-based continuous automation:
+        - Each round tries to apply to `session_goal` jobs.
+        - Excess jobs found beyond the goal are held for the next round.
+        - After a round completes (goal met or queue exhausted), enter `cooldown_minutes` cooldown.
+        - If not enough jobs found after all query variations, prompt to wait 5 min or change params.
+        """
         self.print_header("🚀 STARTING AUTOMATION ENGINE")
 
         if proxy_manager:
             stats = proxy_manager.get_stats()
             self.print_success(f"✓ Proxy rotation enabled: {stats['active_proxies']} proxies ready")
 
-        optimized_keywords   = keywords
-        query_variations     = [keywords]
-        profile_dict         = None
+        # ── Query optimisation ───────────────────────────────────────────────
+        optimized_keywords     = keywords
+        query_variations       = [keywords]
+        profile_dict           = None
         enriched_search_params = {
             "keywords":   keywords,
             "location":   location,
@@ -590,8 +606,7 @@ class ContinuousApplyMixin:
                 if opt_result and opt_result.get('success'):
                     raw_primary    = opt_result['primary_query']
                     raw_variations = [raw_primary] + opt_result.get('variations', [])
-                    seen = set()
-                    normalized = []
+                    seen, normalized = set(), []
                     for q in raw_variations:
                         n = self._sanitize_search_query(q, keywords)
                         if n and n.lower() not in seen:
@@ -603,9 +618,8 @@ class ContinuousApplyMixin:
                     prefix = "🤖 AI-optimized" if method == 'gemini_ai' else "✓ Rule-based optimized"
                     self.print_success(f"{prefix} query: '{keywords}' → '{optimized_keywords}'")
                     if len(query_variations) > 1:
-                        self.print_info(f"✓ Generated {len(query_variations)-1} alternative queries")
+                        self.print_info(f"✓ Generated {len(query_variations) - 1} alternative queries")
 
-                # Enrich search parameters
                 param_result = optimizer.enrich_jobspy_parameters(
                     user_keywords=optimized_keywords,
                     location=location,
@@ -626,27 +640,27 @@ class ContinuousApplyMixin:
                 self.print_warning(f"⚠️  Query optimization error: {str(e)}")
                 logger.error(f"Query optimization error: {e}", exc_info=True)
 
+        # ── State ────────────────────────────────────────────────────────────
         automation_state = {
-            'start_time':              datetime.now(),
-            'applications_submitted':  0,
-            'applications_failed':     0,
-            'jobs_discovered':         0,
-            'jobs_processed':          0,
-            'rate_limit_hits':         0,
-            'running':                 True,
-            'progress_log':            [],
-            'original_keywords':       keywords,
-            'optimized_keywords':      optimized_keywords,
-            'query_variations':        query_variations,
-            'enriched_search_params':  enriched_search_params,
-            'current_query_index':     0,
-            'last_job_discovery':      None,
-            'job_discovery_interval_seconds': 3600,
+            'start_time':             datetime.now(),
+            'applications_submitted': 0,
+            'applications_failed':    0,
+            'jobs_discovered':        0,
+            'jobs_processed':         0,
+            'rate_limit_hits':        0,
+            'running':                True,
+            'progress_log':           [],
+            'original_keywords':      keywords,
+            'optimized_keywords':     optimized_keywords,
+            'query_variations':       query_variations,
+            'enriched_search_params': enriched_search_params,
+            'round_number':           0,
         }
 
-        report_filename = f"automation_progress_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        job_queue       = deque()
-        processed_urls  = set()
+        report_filename         = f"automation_progress_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        job_queue               = deque()          # jobs ready to apply (current + overflow)
+        processed_urls          = set()
+        overflow_queue          = deque()          # jobs beyond this round's goal
 
         self.print_info("📋 Loading application history for deduplication...")
         previously_applied_urls = self.get_applied_job_urls()
@@ -665,135 +679,124 @@ class ContinuousApplyMixin:
             pass
 
         self.print_success("✓ Automation engine initialized")
+        self.print_info(f"✓ Goal: {session_goal} jobs per round, {cooldown_minutes} min cooldown")
         self.print_info(f"✓ Progress report: {report_filename}")
         self.print_info("✓ Press Ctrl+C to stop gracefully\n")
 
-        try:
-            while automation_state['running'] and automation_state['applications_submitted'] < max_applications:
+        # ── Helpers ──────────────────────────────────────────────────────────
 
-                current_time  = datetime.now()
-                should_search = automation_state['last_job_discovery'] is None
+        def _enqueue_jobs(new_jobs: list) -> tuple:
+            """Add new jobs to job_queue up to goal, remainder to overflow."""
+            added, skipped_applied, skipped_dup = 0, 0, 0
+            for job in new_jobs:
+                url = self._extract_job_url(job)
+                if not url:
+                    continue
+                if url in previously_applied_urls:
+                    skipped_applied += 1
+                    continue
+                if url in processed_urls:
+                    skipped_dup += 1
+                    continue
+                entry = {
+                    'url':             url,
+                    'title':           job.get('title', 'Unknown'),
+                    'company':         job.get('company', 'Unknown'),
+                    'description':     job.get('description', ''),
+                    'relevance_score': job.get('relevance_score', 0),
+                }
+                processed_urls.add(url)
+                needed = session_goal - len(job_queue)
+                if needed > 0:
+                    job_queue.append(entry)
+                else:
+                    overflow_queue.append(entry)
+                added += 1
+            return added, skipped_applied, skipped_dup
 
-                if not should_search and automation_state['last_job_discovery']:
-                    elapsed = (current_time - automation_state['last_job_discovery']).total_seconds()
-                    if elapsed >= automation_state['job_discovery_interval_seconds']:
-                        should_search = True
+        async def _fill_queue_to_goal() -> bool:
+            """
+            Search all query variations until job_queue reaches session_goal.
+            Returns True if goal met, False otherwise.
+            """
+            all_queries = automation_state['query_variations']
+            self.print_info(f"\n{'='*60}")
+            self.print_info(f"🔍 ROUND {automation_state['round_number']} — DISCOVERING JOBS (goal: {session_goal})")
+            self.print_info(f"{'='*60}")
 
-                if should_search:
-                    self.print_info(f"\n{'='*60}")
-                    self.print_info("🔍 DISCOVERING NEW JOBS...")
-                    self.print_info(f"{'='*60}")
+            # First: drain overflow from last round
+            while overflow_queue and len(job_queue) < session_goal:
+                job_queue.append(overflow_queue.popleft())
+            if overflow_queue:
+                self.print_info(f"  ↳ Carried over {session_goal - len(overflow_queue)} jobs from previous round")
 
-                    all_queries   = automation_state.get('query_variations', [optimized_keywords])
-                    current_idx   = automation_state.get('current_query_index', 0)
-                    if current_idx >= len(all_queries):
-                        current_idx = 0
-                    queries_to_try = all_queries[current_idx:]
+            if len(job_queue) >= session_goal:
+                self.print_success(f"✓ Queue already at goal ({len(job_queue)}) from overflow")
+                return True
 
+            total_added = 0
+            try:
+                agent = MultiSourceJobDiscoveryAgent(
+                    user_id=str(self.current_user['id']),
+                    proxy_manager=proxy_manager,
+                    profile_data=self.current_profile,
+                )
+                for idx, q in enumerate(all_queries):
+                    if len(job_queue) >= session_goal:
+                        break
+                    self.print_info(f"  Query {idx + 1}/{len(all_queries)}: '{q}'")
+                    search_overrides = dict(enriched_search_params)
+                    search_overrides["keywords"] = q
+                    if not search_overrides.get("location") and location:
+                        search_overrides["location"] = location
                     try:
-                        agent = MultiSourceJobDiscoveryAgent(
-                            user_id=str(self.current_user['id']),
-                            proxy_manager=proxy_manager,
-                            profile_data=self.current_profile,
+                        result   = agent.search_all_sources(
+                            min_relevance_score=30,
+                            manual_keywords=q,
+                            manual_location=search_overrides.get("location") or None,
+                            manual_remote=remote,
+                            manual_search_overrides=search_overrides,
                         )
-                        new_count              = 0
-                        skipped_applied        = 0
-                        skipped_dup            = 0
-                        found_with_query_index = None
-
-                        for idx, q in enumerate(queries_to_try, start=current_idx):
-                            self.print_info(f"Using query #{idx}: '{q}'")
-                            search_overrides = dict(enriched_search_params)
-                            search_overrides["keywords"] = q
-                            if not search_overrides.get("location") and location:
-                                search_overrides["location"] = location
-
-                            result   = agent.search_all_sources(
-                                min_relevance_score=30,
-                                manual_keywords=q,
-                                manual_location=search_overrides.get("location") or None,
-                                manual_remote=remote,
-                                manual_search_overrides=search_overrides,
-                            )
-                            new_jobs = result.get('data', [])
-
-                            if not new_jobs:
-                                if idx < len(all_queries) - 1:
-                                    self.print_warning("No jobs, trying next query variation...")
-                                    continue
-                                self.print_warning("No jobs found with any query variation.")
-                                break
-
-                            found_with_query_index = idx
-                            for job in new_jobs:
-                                job_url = self._extract_job_url(job)
-                                if not job_url:
-                                    continue
-                                if job_url in previously_applied_urls:
-                                    skipped_applied += 1
-                                    continue
-                                if job_url in processed_urls:
-                                    skipped_dup += 1
-                                    continue
-                                job_queue.append({
-                                    'url':             job_url,
-                                    'title':           job.get('title', 'Unknown'),
-                                    'company':         job.get('company', 'Unknown'),
-                                    'description':     job.get('description', ''),
-                                    'relevance_score': job.get('relevance_score', 0),
-                                    'search_query':    q,
-                                })
-                                processed_urls.add(job_url)
-                                new_count += 1
-
-                            if new_count > 0:
-                                break
-
-                        automation_state['current_query_index'] = found_with_query_index or 0
-                        automation_state['jobs_discovered']    += new_count
-                        automation_state['last_job_discovery']  = datetime.now()
-
-                        self.print_success(f"✓ Found {new_count} new jobs (Queue: {len(job_queue)})")
-                        if skipped_applied: self.print_info(f"  ↳ Skipped {skipped_applied} already-applied jobs")
-                        if skipped_dup:     self.print_info(f"  ↳ Skipped {skipped_dup} duplicate jobs")
-
-                        next_search = automation_state['last_job_discovery'] + timedelta(
-                            seconds=automation_state['job_discovery_interval_seconds']
+                        new_jobs = result.get('data', [])
+                        added, s_app, s_dup = _enqueue_jobs(new_jobs)
+                        total_added += added
+                        automation_state['jobs_discovered'] += added
+                        self.print_info(
+                            f"    → {added} new  |  queue: {len(job_queue)}/{session_goal}"
+                            + (f"  ({s_app} prev-applied, {s_dup} dup skipped)" if s_app or s_dup else "")
                         )
-                        self.print_info(f"📅 Next job search at: {next_search.strftime('%I:%M %p')}")
-
-                    except Exception as e:
-                        self.print_error(f"Job discovery error: {str(e)}")
-                        logger.error(f"Job discovery error: {e}", exc_info=True)
-                        if self._is_rate_limit_error(e):
+                    except Exception as qe:
+                        self.print_warning(f"    ⚠ Query error: {str(qe)[:80]}")
+                        if self._is_rate_limit_error(qe):
                             automation_state['rate_limit_hits'] += 1
                             await self._handle_rate_limit(automation_state)
-                        continue
 
-                    await asyncio.sleep(2)
+            except Exception as e:
+                self.print_error(f"Discovery error: {str(e)[:100]}")
+                logger.error(f"Job discovery error: {e}", exc_info=True)
 
-                if not job_queue:
-                    if automation_state['last_job_discovery']:
-                        next_search      = automation_state['last_job_discovery'] + timedelta(
-                            seconds=automation_state['job_discovery_interval_seconds']
-                        )
-                        time_until_next  = (next_search - datetime.now()).total_seconds()
-                        if time_until_next > 0:
-                            minutes_until = int(time_until_next / 60)
-                            self.print_info(f"📭 Queue empty. Next search in {minutes_until} min.")
-                            await asyncio.sleep(min(60, time_until_next))
-                        else:
-                            await asyncio.sleep(2)
-                    else:
-                        await asyncio.sleep(5)
-                    continue
+            if len(job_queue) >= session_goal:
+                self.print_success(f"✓ Goal reached — {len(job_queue)} jobs queued"
+                                   + (f" (+{len(overflow_queue)} overflow for next round)" if overflow_queue else ""))
+                return True
 
+            self.print_warning(f"  Only {len(job_queue)}/{session_goal} jobs found after all queries.")
+            return len(job_queue) > 0
+
+        async def _run_round() -> int:
+            """Apply to up to session_goal jobs. Returns count submitted."""
+            round_submitted = 0
+            round_goal      = min(session_goal, len(job_queue))
+            while job_queue and round_submitted < session_goal and automation_state['running']:
                 job = job_queue.popleft()
                 automation_state['jobs_processed'] += 1
 
-                self.print_header(f"JOB {automation_state['jobs_processed']} — {job['company']}")
+                self.print_header(
+                    f"ROUND {automation_state['round_number']}  •  "
+                    f"JOB {round_submitted + 1}/{round_goal}  —  {job['company']}"
+                )
                 self.print_info(f"Title:     {job['title']}")
-                self.print_info(f"URL:       {job['url'][:60]}...")
+                self.print_info(f"URL:       {job['url'][:70]}...")
                 self.print_info(f"Relevance: {job['relevance_score']:.1f}%")
 
                 job_result = await self._apply_to_single_job_automated(
@@ -809,6 +812,7 @@ class ContinuousApplyMixin:
 
                 if job_result.get('success') or job_result.get('submitted'):
                     previously_applied_urls.add(job['url'])
+                    round_submitted += 1
 
                 self._save_progress_report(report_filename, automation_state, job_queue)
 
@@ -817,6 +821,76 @@ class ContinuousApplyMixin:
                     await self._handle_rate_limit(automation_state)
 
                 await asyncio.sleep(3)
+
+            return round_submitted
+
+        async def _cooldown():
+            """Sleep for cooldown_minutes, showing a live countdown."""
+            total_secs   = cooldown_minutes * 60
+            wake_at      = datetime.now() + timedelta(seconds=total_secs)
+            self.print_info(
+                f"\n😴 Round complete — cooldown until {wake_at.strftime('%I:%M %p')} "
+                f"({cooldown_minutes} min)"
+            )
+            while True:
+                remaining = (wake_at - datetime.now()).total_seconds()
+                if remaining <= 0 or not automation_state['running']:
+                    break
+                mins = int(remaining // 60)
+                secs = int(remaining % 60)
+                print(f"\r  ⏳ Cooldown: {mins:02d}:{secs:02d} remaining … (Ctrl+C to stop)", end='', flush=True)
+                await asyncio.sleep(15)
+            print()
+            self.print_success("✓ Cooldown finished — starting next round")
+
+        # ── Main loop ────────────────────────────────────────────────────────
+        try:
+            while automation_state['running']:
+                automation_state['round_number'] += 1
+
+                # Fill queue to goal (uses all query variations + overflow)
+                goal_met = await _fill_queue_to_goal()
+
+                if not job_queue:
+                    # Nothing found at all — ask user what to do
+                    self.print_warning("\n📭 No jobs found. Options:")
+                    self.print_info("  1. Wait 5 minutes and retry automatically")
+                    self.print_info("  2. Change search parameters (restart)")
+                    self.print_info("  3. Stop")
+                    choice = self.get_input("Choice [1/2/3, default 1]: ").strip()
+                    if choice == '2':
+                        self.print_info("Returning to menu — re-run to change parameters.")
+                        break
+                    if choice == '3':
+                        break
+                    # Default: wait 5 minutes
+                    self.print_info("Retrying in 5 minutes...")
+                    for _ in range(30):
+                        if not automation_state['running']:
+                            break
+                        await asyncio.sleep(10)
+                    continue
+
+                if not goal_met:
+                    # Partial queue — inform user but proceed with what we have
+                    self.print_warning(
+                        f"⚠  Proceeding with {len(job_queue)} job(s) (goal was {session_goal})."
+                    )
+
+                # Apply to jobs in this round
+                round_submitted = await _run_round()
+
+                self.print_success(
+                    f"\n🏁 Round {automation_state['round_number']} done — "
+                    f"{round_submitted} submitted | "
+                    f"total: {automation_state['applications_submitted']}"
+                )
+
+                if not automation_state['running']:
+                    break
+
+                # Cooldown before next round
+                await _cooldown()
 
             self.print_header("🎉 AUTOMATION COMPLETED")
 
@@ -827,8 +901,8 @@ class ContinuousApplyMixin:
             logger.error(f"Automation error: {e}", exc_info=True)
         finally:
             self._save_progress_report(report_filename, automation_state, job_queue, final=True)
-            self._should_open_incomplete   = False
-            self._incomplete_report_file   = None
+            self._should_open_incomplete  = False
+            self._incomplete_report_file  = None
             self._display_automation_summary(automation_state, report_filename)
             if self._should_open_incomplete and self._incomplete_report_file:
                 await self._open_incomplete_applications(self._incomplete_report_file)

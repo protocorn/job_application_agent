@@ -130,9 +130,15 @@ class UserProfile(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("public.users.id"), unique=True, nullable=False)
 
+    # AI Engine — primary/secondary Gemini key configuration
+    api_primary_mode = Column(String)                         # 'launchway' | 'custom' | NULL = not yet configured
+    api_secondary_mode = Column(String)                       # 'launchway' | 'custom' | NULL (optional)
+    custom_gemini_api_key = Column(Text)                      # Fernet-encrypted; shared across primary/secondary slots
+
     # Basic Information
     resume_url = Column(String)
-    resume_source_type = Column(String, default='google_doc')  # google_doc, latex_zip
+    resume_source_type = Column(String, default='google_doc')  # google_doc, pdf, docx, latex_zip
+    resume_text = Column(Text)  # Raw extracted text from uploaded PDF/DOCX (no Google Doc needed)
     latex_zip_base64 = Column(Text)  # Base64-encoded source ZIP (Overleaf export)
     latex_main_tex_path = Column(String)  # Relative path of main tex within ZIP
     latex_file_manifest = Column(JSON)  # [{path,size,extension}, ...]
@@ -355,6 +361,12 @@ def _apply_incremental_migrations():
     migrations = [
         # resume_keywords: Gemini-extracted keyword cache (added Feb 2026)
         "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS resume_keywords JSONB",
+        # resume_text: raw extracted text from PDF/DOCX uploads (added Mar 2026)
+        "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS resume_text TEXT",
+        # AI Engine key config (added Mar 2026)
+        "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS api_primary_mode VARCHAR(20)",
+        "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS api_secondary_mode VARCHAR(20)",
+        "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS custom_gemini_api_key TEXT",
     ]
     with engine.connect() as conn:
         for sql in migrations:

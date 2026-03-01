@@ -102,7 +102,14 @@ class AgentProfileService:
                 "visa status": profile.visa_status if profile and profile.visa_status else "",
                 "visa sponsorship": profile.visa_sponsorship if profile and profile.visa_sponsorship else "",
                 "preferred location": profile.preferred_location if profile and profile.preferred_location else [""],
-                "willing to relocate": profile.willing_to_relocate if profile and profile.willing_to_relocate is not None else ""
+                "willing to relocate": profile.willing_to_relocate if profile and profile.willing_to_relocate is not None else "",
+                # AI Engine — included so agents can build a GeminiKeyManager
+                "api_primary_mode": profile.api_primary_mode if profile and profile.api_primary_mode else "launchway",
+                "api_secondary_mode": profile.api_secondary_mode if profile and profile.api_secondary_mode else None,
+                # Decrypted key (server-side only; never sent to CLI clients)
+                "custom_gemini_api_key_decrypted": AgentProfileService._decrypt_api_key(
+                    profile.custom_gemini_api_key if profile else None
+                ),
             }
 
             return profile_data
@@ -112,6 +119,36 @@ class AgentProfileService:
             return None
         finally:
             db.close()
+
+    @staticmethod
+    def _decrypt_api_key(encrypted: Optional[str]) -> Optional[str]:
+        """Decrypt the stored Gemini API key using the server's security manager."""
+        if not encrypted:
+            return None
+        try:
+            import sys, os
+            sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'server'))
+            from security_manager import security_manager
+            return security_manager.decrypt_sensitive_data(encrypted)
+        except Exception as e:
+            logging.warning(f"Could not decrypt custom API key: {e}")
+            return None
+
+    @staticmethod
+    def get_gemini_key_manager(user_id: Union[str, UUID]) -> Optional[Any]:
+        """
+        Return a fully configured GeminiKeyManager for the given user.
+        Falls back to Launchway shared key if nothing is configured.
+        """
+        try:
+            profile = AgentProfileService.get_profile_by_user_id(user_id)
+            if not profile:
+                return None
+            from gemini_key_manager import GeminiKeyManager
+            return GeminiKeyManager.from_profile(profile)
+        except Exception as e:
+            logging.warning(f"Could not build GeminiKeyManager for {user_id}: {e}")
+            return None
 
     @staticmethod
     def get_profile_by_email(email: str) -> Optional[Dict[str, Any]]:

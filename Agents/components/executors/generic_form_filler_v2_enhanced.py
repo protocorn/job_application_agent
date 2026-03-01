@@ -8,12 +8,12 @@ Enhanced Generic Form Filler V2 with:
 """
 import asyncio
 import re
-from typing import Any, Dict, List, Optional, Tuple, Set
+from typing import Any, Dict, List, Optional, Set
 from playwright.async_api import Page, Frame
 from loguru import logger
 
 from components.executors.field_interactor_v2 import FieldInteractorV2
-from components.executors.deterministic_field_mapper import DeterministicFieldMapper, FieldMappingConfidence
+from components.executors.deterministic_field_mapper import DeterministicFieldMapper
 from components.executors.learned_patterns_mapper import LearnedPatternsMapper
 from components.brains.gemini_field_mapper import GeminiFieldMapper
 from components.exceptions.field_exceptions import RequiresHumanInputError
@@ -82,7 +82,7 @@ class GenericFormFillerV2Enhanced:
     MAX_ITERATIONS = 5
     DYNAMIC_CONTENT_WAIT_MS = 1000
 
-    def __init__(self, page: Page | Frame, action_recorder=None, user_id=None):
+    def __init__(self, page: Page | Frame, action_recorder=None, user_id=None, full_auto_mode: bool = False):
         self.page = page
         self.action_recorder = action_recorder
         self.user_id = user_id
@@ -95,6 +95,70 @@ class GenericFormFillerV2Enhanced:
         self.attempt_tracker = FieldAttemptTracker()
         self.pre_filled_values = {}  # Track original values of fields before agent touches them
         self.gemini_flagged_fields = set()  # Track fields flagged as incorrect by Gemini reviewer
+        self.full_auto_mode = full_auto_mode  # 100% auto-apply: no human input prompts
+
+        # AI-fill lock: once AI fills a field label on a page, it is NEVER sent to AI again.
+        # Keyed by base page URL → set of lowercase-stripped field labels.
+        # More stable than stable_id which can change after DOM re-renders (React, Workday, etc.)
+        self._ai_filled_labels: dict = {}  # {page_key: {normalized_label, ...}}
+
+        # Failure-exhaustion lock: after MAX_FIELD_FAILURES consecutive failures for the
+        # same field label+category, we stop retrying it (it most likely needs human input).
+        self._field_failure_counts: dict = {}  # {page_key: {fingerprint: int}}
+        self._MAX_FIELD_FAILURES = 3
+
+    # ── AI-fill label lock helpers ─────────────────────────────────────────
+
+    def _page_key(self) -> str:
+        """Stable page identifier — strip query params so Workday-style URLs are consistent."""
+        url = self.page.url
+        return url.split("?")[0] if "?" in url else url
+
+    def _lock_ai_filled(self, field_label: str, field_category: str = "") -> None:
+        """Permanently record that AI has filled this field on the current page.
+
+        Uses a composite fingerprint of ``label|category`` so two fields that happen
+        to share the same label but are of different types (e.g. a text input and a
+        dropdown both labelled "State") are tracked independently.
+        """
+        key = self._page_key()
+        if key not in self._ai_filled_labels:
+            self._ai_filled_labels[key] = set()
+        fingerprint = f"{field_label.lower().strip()}|{field_category.lower().strip()}"
+        self._ai_filled_labels[key].add(fingerprint)
+        logger.info(f"🔒 AI-fill lock set: '{field_label}' [{field_category}] — will not be re-filled on this page")
+
+    def _is_locked_by_ai(self, field_label: str, field_category: str = "") -> bool:
+        """Return True if AI has already filled this field on the current page."""
+        fingerprint = f"{field_label.lower().strip()}|{field_category.lower().strip()}"
+        return fingerprint in self._ai_filled_labels.get(self._page_key(), set())
+
+    # ── Failure-exhaustion lock helpers ────────────────────────────────────
+
+    def _record_field_failure(self, field_label: str, field_category: str = "") -> int:
+        """Increment failure count for this field. Returns the new count."""
+        key = self._page_key()
+        if key not in self._field_failure_counts:
+            self._field_failure_counts[key] = {}
+        fingerprint = f"{field_label.lower().strip()}|{field_category.lower().strip()}"
+        self._field_failure_counts[key][fingerprint] = (
+            self._field_failure_counts[key].get(fingerprint, 0) + 1
+        )
+        count = self._field_failure_counts[key][fingerprint]
+        if count >= self._MAX_FIELD_FAILURES:
+            logger.warning(
+                f"🚫 Field '{field_label}' [{field_category}] exhausted after "
+                f"{count} failures — will not retry"
+            )
+        return count
+
+    def _is_exhausted(self, field_label: str, field_category: str = "") -> bool:
+        """Return True if this field has failed too many times and should be skipped."""
+        fingerprint = f"{field_label.lower().strip()}|{field_category.lower().strip()}"
+        count = self._field_failure_counts.get(self._page_key(), {}).get(fingerprint, 0)
+        return count >= self._MAX_FIELD_FAILURES
+
+    # ── main fill loop ────────────────────────────────────────────────────
 
     async def fill_form(self, profile: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -873,7 +937,7 @@ class GenericFormFillerV2Enhanced:
         try:
             # Make ONE batch Gemini call for all fields
             logger.info(f"🧠 Making batch Gemini call for {len(fields)} fields...")
-            ai_mappings = await self.ai_mapper.map_fields_to_profile(fields, profile)
+            ai_mappings = await self.ai_mapper.map_fields_to_profile(fields, profile, full_auto_mode=self.full_auto_mode)
             logger.info(f"✅ Received {len(ai_mappings)} mappings from Gemini")
             
             # Apply each mapping
@@ -1051,6 +1115,7 @@ class GenericFormFillerV2Enhanced:
                     result["fields_by_method"]["ai"] += 1
                     result["filled_fields"][field_label] = value
                     self.completion_tracker.mark_field_completed(field_id, field_label, value)
+                    self._lock_ai_filled(field_label, field.get('field_category', ''))
                     filled_count += 1
 
                     # NEW: Record successful AI mapping as learned pattern (except manual/essay fields)
@@ -1068,6 +1133,7 @@ class GenericFormFillerV2Enhanced:
                             logger.debug(f"📝 Recorded pattern: '{field_label}' → {profile_field}")
                 else:
                     logger.debug(f"⏭️ AI batch fill failed for '{field_label}'")
+                    self._record_field_failure(field_label, field.get('field_category', ''))
                     result['skipped_fields'].append({
                         "field": field_label,
                         "reason": f"AI provided value but fill failed: {fill_result.get('error', 'Unknown')}"
@@ -1095,7 +1161,7 @@ class GenericFormFillerV2Enhanced:
         try:
             # Get AI mapping
             field_id = self._get_field_id(field)
-            ai_mappings = await self.ai_mapper.map_fields_to_profile([field], profile)
+            ai_mappings = await self.ai_mapper.map_fields_to_profile([field], profile, full_auto_mode=self.full_auto_mode)
 
             if field_id not in ai_mappings:
                 logger.debug(f"⏭️ No AI mapping for '{field_label}'")
@@ -1140,6 +1206,7 @@ class GenericFormFillerV2Enhanced:
                 result["filled_fields"][field_label] = value
 
                 self.completion_tracker.mark_field_completed(field_id, field_label, value)
+                self._lock_ai_filled(field_label, field.get('field_category', ''))
                 return True
             else:
                 logger.debug(f"⏭️ AI fill failed for '{field_label}'")
@@ -1216,7 +1283,7 @@ class GenericFormFillerV2Enhanced:
             comprehensive_profile_context = field_mapper._create_profile_context(profile, context_type="correction")
 
             prompt = f"""
-You identified these issues with a job application form:
+You previously flagged these issues with a job application form:
 {issues_text}
 
 Current filled fields:
@@ -1224,28 +1291,31 @@ Current filled fields:
 
 {comprehensive_profile_context}
 
-For EACH issue, provide a correction. Respond in JSON format:
+CRITICAL RULES - YOU MUST FOLLOW THESE EXACTLY:
+1. The profile is ABSOLUTE TRUTH. A correction is ONLY valid if the filled value directly contradicts a specific value stated in the profile.
+
+2. ONLY suggest a correction when you can point to a specific profile field that has a DIFFERENT value than what was filled.
+
+Allowed correction types (with examples):
+- Profile says first_name="John" but form filled "Jane" → correct to "John"
+- Profile says email="john@gmail.com" but form filled "wrong@email.com" → correct to profile email
+- Graduation date field: if graduation date is in the FUTURE, person IS currently enrolled; provide actual date from education data
+- LinkedIn URLs: ensure they start with "https://www.linkedin.com/in/"
+- Phone Extension field filled with a full phone number → correct to empty string ""
+
+Respond in JSON format:
 {{
   "corrections": [
     {{
       "field_name": "exact field name from filled fields",
-      "current_value": "current incorrect value",
-      "corrected_value": "what it should be",
-      "reason": "why this correction is needed"
+      "current_value": "current value in form",
+      "corrected_value": "the exact value from the profile",
+      "reason": "Profile field X says Y but form has Z"
     }}
   ]
 }}
 
-IMPORTANT:
-- Only include fields that actually need correction
-- Use EXACT field names as they appear in "Current filled fields"
-- For "Phone Extension" with full phone number, set corrected_value to empty string "" (not the extension)
-- For redundant duplicate fields, mark them for removal by setting corrected_value to ""
-- For graduation date fields:
-  * If graduation date is in the FUTURE relative to Current Date, the person IS currently enrolled
-  * Provide the actual graduation date from education data (e.g., "May 2025", "December 2025")
-  * DO NOT use "No" or "I am not currently enrolled" when graduation is in the future
-- For LinkedIn URLs, ensure they start with "https://www.linkedin.com/in/"
+If none of the flagged issues represent a true contradiction with the profile, return an empty corrections list.
 """
 
             response = client.models.generate_content(
@@ -1368,28 +1438,40 @@ IMPORTANT:
             comprehensive_profile_context = field_mapper._create_profile_context(profile, context_type="final_review")
 
             prompt = f"""
-You are reviewing a job application form that has been filled out. Please verify that the inputs make sense and are appropriate.
+You are reviewing a completed job application form. Your ONLY job is to verify that the values filled in the form match what is stated in the applicant's profile.
+
+CRITICAL RULES - YOU MUST FOLLOW THESE EXACTLY:
+1. The profile is ABSOLUTE TRUTH. Never question, second-guess, or flag any data that comes directly from the profile.
+2. You may ONLY flag a field if what was FILLED IN THE FORM directly contradicts a specific value in the profile.
+3. You must NEVER flag something based on your own reasoning or general knowledge (e.g., "F-1 visa holders usually can't work" or "Indian nationality with US phone is unusual"). If the profile says it, it's correct.
+4. You must NEVER flag formatting issues (phone number hyphens, country codes, etc.) - those are intentional.
+5. You must NEVER flag missing fields - your job is only to check accuracy of what IS filled.
+6. You must NEVER make inferences about what "should" be true based on other fields. Treat each filled field independently against the profile.
+
+EXAMPLES OF WHAT YOU SHOULD FLAG (contradicts profile):
+- Profile says name is "John Smith" but form was filled with "Jane Smith" → flag it
+- Profile says email is "john@gmail.com" but form was filled with "jane@yahoo.com" → flag it
+
+EXAMPLES OF WHAT YOU MUST NOT FLAG (these are fine):
+- Profile has Indian nationality but US phone number → NOT a contradiction, both values are in the profile
+- Profile says "authorized to work: Yes" and "requires sponsorship: Yes" → NOT contradictory, the profile explicitly has both values
+- Phone number without hyphens → NOT a problem
+- Visa type and work authorization both answering yes → trust the profile completely
 
 {comprehensive_profile_context}
 
 Filled Fields:
 {filled_list}
 
-Review Requirements:
-1. Check if field values match the profile data
-2. Look for any obvious errors or inconsistencies
-3. Verify that dropdown selections make sense
-4. Check that required information is present
-
 Respond in JSON format:
 {{
   "approved": true/false,
-  "issues": ["issue1", "issue2", ...],
+  "issues": ["field_name: filled_value vs profile_value explanation"],
   "confidence": 0.0-1.0
 }}
 
-If everything looks good, set approved=true with empty issues list.
-If there are problems, set approved=false and list specific issues.
+Only set approved=false if a filled value DIRECTLY contradicts a specific profile field value.
+If everything matches the profile (even if it seems unusual to you), set approved=true with empty issues list.
 """
 
             response = client.models.generate_content(
@@ -1424,7 +1506,19 @@ If there are problems, set approved=false and list specific issues.
             field_id = self._get_field_id(field)
             field_label = field.get('label', 'Unknown')
 
-            # Check if already completed by agent in previous iteration
+            field_category = field.get('field_category', '')
+
+            # AI-fill lock: if AI already filled this field on this page, never retry it.
+            if self._is_locked_by_ai(field_label, field_category):
+                logger.info(f"🔒 Skipping AI-locked field: '{field_label}' [{field_category}]")
+                continue
+
+            # Exhaustion lock: skip fields that have failed too many times already.
+            if self._is_exhausted(field_label, field_category):
+                logger.info(f"🚫 Skipping exhausted field: '{field_label}' [{field_category}]")
+                continue
+
+            # Check if already completed by agent in previous iteration (stable_id based)
             if self.completion_tracker.should_skip_field(field_id, field_label):
                 continue
 
@@ -1444,27 +1538,94 @@ If there are problems, set approved=false and list specific issues.
         return unfilled
 
     async def _get_fresh_element(self, field: Dict[str, Any]) -> Optional[Any]:
-        """Get fresh element reference using stable_id."""
-        stable_id = field.get('stable_id', '')
+        """
+        Re-locate the DOM element after a potential React/Workday re-render.
 
-        if not stable_id:
-            return field.get('element')
+        Uses a waterfall of strategies ordered from most to least stable:
+          1. stable_id prefix  (name: / aria_label: / placeholder: / id:)
+          2. raw field attributes as fallback (name, aria_label, placeholder, id)
+          3. position_index — nth visible form field captured at scan time
+          4. original stale element reference — absolute last resort
+        """
+        _input_sel = (
+            'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):visible,'
+            ' select:visible, textarea:visible'
+        )
+
+        async def _try_locator(selector: str):
+            try:
+                loc = self.page.locator(selector).first
+                if await loc.count() > 0:
+                    return loc
+            except Exception:
+                pass
+            return None
 
         try:
-            if stable_id.startswith('id:'):
-                element_id = stable_id[3:]
-                # Use attribute selector to handle IDs with special characters (dots, colons, etc.)
-                return self.page.locator(f'[id="{element_id}"]').first
-            elif stable_id.startswith('name:'):
-                name = stable_id[5:]
-                return self.page.locator(f'[name="{name}"]').first
+            stable_id = field.get('stable_id', '')
+
+            # ── Phase 1: parse stable_id prefix ──────────────────────────────
+            if stable_id.startswith('name:'):
+                name_val = stable_id[5:]
+                el = await _try_locator(f'[name="{name_val}"]')
+                if el:
+                    return el
+
             elif stable_id.startswith('aria_label:'):
-                aria_label = stable_id[11:]
-                return self.page.locator(f'[aria-label="{aria_label}"]').first
-            else:
-                return field.get('element')
+                al_val = stable_id[11:]
+                el = await _try_locator(f'[aria-label="{al_val}"]')
+                if el:
+                    return el
+
+            elif stable_id.startswith('placeholder:'):
+                ph_val = stable_id[12:]
+                el = await _try_locator(f'[placeholder="{ph_val}"]')
+                if el:
+                    return el
+
+            elif stable_id.startswith('id:'):
+                id_val = stable_id[3:]
+                el = await _try_locator(f'[id="{id_val}"]')
+                if el:
+                    return el
+
+            # label_hash: and pos: prefixes can't be used directly for DOM lookup;
+            # fall through to Phase 2.
+
+            # ── Phase 2: raw field attribute waterfall ────────────────────────
+            # Try each stable attribute in order (name is most stable; id is least).
+            for attr, css_attr in [
+                ('name',        'name'),
+                ('aria_label',  'aria-label'),
+                ('placeholder', 'placeholder'),
+                ('id',          'id'),
+            ]:
+                val = field.get(attr, '')
+                if val:
+                    el = await _try_locator(f'[{css_attr}="{val}"]')
+                    if el:
+                        logger.debug(f"🔍 Re-located '{field.get('label', '?')}' via [{css_attr}]")
+                        return el
+
+            # ── Phase 3: position-based fallback ─────────────────────────────
+            pos_idx = field.get('position_index')
+            if pos_idx is not None:
+                try:
+                    all_inputs = await self.page.locator(_input_sel).all()
+                    if pos_idx < len(all_inputs):
+                        logger.debug(
+                            f"🗂️ Re-located '{field.get('label', '?')}' by position index {pos_idx}"
+                        )
+                        return all_inputs[pos_idx]
+                except Exception as e:
+                    logger.debug(f"Position-based lookup failed: {e}")
+
+            # ── Phase 4: original stale reference ────────────────────────────
+            logger.debug(f"⚠️ Falling back to stale element ref for '{field.get('label', '?')}'")
+            return field.get('element')
+
         except Exception as e:
-            logger.debug(f"Error getting fresh element: {e}")
+            logger.debug(f"Error in _get_fresh_element: {e}")
             return field.get('element')
 
     def _get_field_id(self, field: Dict[str, Any]) -> str:
