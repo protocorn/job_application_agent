@@ -79,6 +79,9 @@ class JobSearchMixin:
             self.pause()
             return
 
+        if not self._require_ai_engine():
+            return
+
         self._ensure_resume_keywords()
 
         self.print_info("Search for jobs across multiple sources (Indeed, LinkedIn, etc.)")

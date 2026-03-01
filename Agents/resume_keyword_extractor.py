@@ -16,6 +16,11 @@ from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
+# Lazy import to avoid circular deps — imported only when needed
+def _get_key_manager():
+    from gemini_key_manager import GeminiKeyManager
+    return GeminiKeyManager
+
 # Lightweight model for fast, cheap keyword extraction.
 # gemini-2.0-flash-lite is the stable default; swap to gemini-2.5-flash-lite
 # when it becomes generally available via the API.
@@ -93,16 +98,11 @@ class ResumeKeywordExtractor:
         self,
         api_key: str = None,
         model_name: str = _DEFAULT_MODEL,
+        key_manager=None,      # GeminiKeyManager instance (preferred)
     ):
-        self.api_key = (
-            api_key
-            or os.getenv("GOOGLE_API_KEY")
-            or os.getenv("GEMINI_API_KEY")
-        )
-        if not self.api_key:
-            raise ValueError(
-                "A Gemini API key is required. Set GOOGLE_API_KEY or pass api_key=..."
-            )
+        self.key_manager = key_manager
+        # Legacy direct-key path (server-side uses this with its own GOOGLE_API_KEY)
+        self.api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
         self.model_name = model_name
 
     # ── public interface ───────────────────────────────────────────────────
@@ -146,7 +146,29 @@ class ResumeKeywordExtractor:
     # ── internal ───────────────────────────────────────────────────────────
 
     def _call_gemini(self, prompt: str) -> Optional[str]:
-        """Call Gemini and return raw text, trying fallback model on failure."""
+        """Call Gemini via GeminiKeyManager (preferred) or direct api_key (legacy)."""
+        if self.key_manager is not None:
+            # Route through the user's configured key manager (respects primary/secondary)
+            for model_name in [self.model_name, _FALLBACK_MODEL]:
+                try:
+                    resp = self.key_manager.generate_content(model_name, prompt)
+                    text = getattr(resp, 'text', None) or (
+                        resp.candidates[0].content.parts[0].text
+                        if hasattr(resp, 'candidates') else str(resp)
+                    )
+                    logger.debug(f"Gemini keyword extraction succeeded via key_manager (model={model_name})")
+                    return text.strip()
+                except Exception as e:
+                    from gemini_key_manager import AiEngineNotConfiguredError
+                    if isinstance(e, AiEngineNotConfiguredError):
+                        raise   # propagate immediately — no fallback makes sense
+                    logger.warning(f"Model {model_name!r} failed via key_manager: {e}")
+            logger.error("All Gemini models failed during keyword extraction (key_manager path)")
+            return None
+
+        # Legacy path: direct api_key (used by server-side code with its own shared key)
+        if not self.api_key:
+            raise ValueError("No Gemini API key available. Configure AI Engine in your profile.")
         for model_name in [self.model_name, _FALLBACK_MODEL]:
             try:
                 import google.generativeai as genai

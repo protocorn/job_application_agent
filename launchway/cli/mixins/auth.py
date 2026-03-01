@@ -137,6 +137,9 @@ class AuthMixin:
         # Prompt to complete the profile if it is empty
         self._check_and_prompt_profile_setup()
 
+        # Prompt to configure AI Engine if not done yet
+        self._check_and_prompt_ai_engine_setup()
+
         return True
 
     # ------------------------------------------------------------------
@@ -181,6 +184,8 @@ class AuthMixin:
 
         # Prompt for profile setup if empty (e.g. brand-new account)
         self._check_and_prompt_profile_setup()
+        # Prompt to configure AI Engine if not done yet
+        self._check_and_prompt_ai_engine_setup()
         return True
 
     # ------------------------------------------------------------------
@@ -221,6 +226,78 @@ class AuthMixin:
             print(f"  {_app_url()}\n")
             print("  Once your profile is complete you can start applying for jobs.")
             self.pause()
+
+    # ------------------------------------------------------------------
+    # AI Engine configuration guard
+    # ------------------------------------------------------------------
+
+    def _check_and_prompt_ai_engine_setup(self):
+        """
+        Called right after login / session restore.
+        If the user has never configured their AI Engine, show a banner and
+        immediately redirect them to the AI Engine setup screen.
+        """
+        try:
+            data = self.api.get_ai_key_settings()
+            if data.get("api_primary_mode"):
+                return   # already configured — nothing to do
+        except Exception:
+            return   # can't check → don't block startup
+
+        self.clear_screen()
+        self.print_header("AI ENGINE SETUP REQUIRED")
+        print("\n  ┌─────────────────────────────────────────────────────────┐")
+        print("  │  ⚠️  You haven't configured your AI Engine yet.          │")
+        print("  │                                                         │")
+        print("  │  All AI-powered features (job search, auto-apply,       │")
+        print("  │  keyword extraction) require a Gemini API key method.   │")
+        print("  │                                                         │")
+        print("  │  You can use Launchway's shared free keys or provide    │")
+        print("  │  your own Gemini API key for a private quota.           │")
+        print("  └─────────────────────────────────────────────────────────┘\n")
+
+        choice = self.get_input("  Set up AI Engine now? (y/n, default: y): ").strip().lower()
+        if choice in ("", "y", "yes"):
+            self.update_ai_engine()
+        else:
+            print("\n  ⚠️  AI features will be unavailable until you configure the AI Engine.")
+            print("     You can do this any time via: Profile Management → AI Engine\n")
+            self.pause()
+
+    def _require_ai_engine(self) -> bool:
+        """
+        Gate for any menu action that needs Gemini.
+
+        Returns True if the user is configured and can proceed.
+        Returns False (after showing a banner) if not configured,
+        giving the user a chance to set it up immediately.
+        """
+        try:
+            data = self.api.get_ai_key_settings()
+            if data.get("api_primary_mode"):
+                return True   # configured — all good
+        except Exception:
+            return True   # can't verify → let it through; the server will guard
+
+        # Not configured
+        self.clear_screen()
+        print("\n  ╔══════════════════════════════════════════════════════════╗")
+        print("  ║  ⛔  AI ENGINE NOT CONFIGURED                            ║")
+        print("  ║                                                          ║")
+        print("  ║  This feature requires a Gemini API key method.         ║")
+        print("  ║  Please set up your AI Engine before continuing.        ║")
+        print("  ╚══════════════════════════════════════════════════════════╝\n")
+
+        choice = self.get_input("  Configure AI Engine now? (y/n, default: y): ").strip().lower()
+        if choice in ("", "y", "yes"):
+            self.update_ai_engine()
+            # Re-check after setup
+            try:
+                data = self.api.get_ai_key_settings()
+                return bool(data.get("api_primary_mode"))
+            except Exception:
+                return False
+        return False
 
     # ------------------------------------------------------------------
     # Logout

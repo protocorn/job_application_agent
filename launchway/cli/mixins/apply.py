@@ -30,6 +30,9 @@ class ApplyMixin:
             self.pause()
             return
 
+        if not self._require_ai_engine():
+            return
+
         if not self._ensure_resume_ready_for_auto_apply():
             self.pause()
             return

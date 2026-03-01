@@ -855,25 +855,38 @@ def save_ai_key_settings():
 def extract_profile_keywords():
     """
     Extract structured keywords from the authenticated user's resume using Gemini.
-    Fetches the resume URL from the user's profile, calls ResumeKeywordExtractor,
-    saves the result back to the profile, and returns the extracted keywords.
+    Routes all Gemini calls through the user's configured GeminiKeyManager so that
+    the user's chosen primary/secondary key method is always honoured.
 
     Optional JSON body:
         { "resume_text": "..." }   — supply raw text instead of fetching from URL
     """
     try:
         from resume_keyword_extractor import ResumeKeywordExtractor
+        from agent_profile_service import AgentProfileService
+        from gemini_key_manager import AiEngineNotConfiguredError
 
         user_id = request.current_user['id']
         body = request.json or {}
+
+        # --- Guard: AI Engine must be configured ---
+        try:
+            key_manager = AgentProfileService.get_gemini_key_manager(user_id)
+        except Exception:
+            key_manager = None
+
+        if key_manager is None or not key_manager.is_configured:
+            return jsonify({
+                "error": "ai_engine_not_configured",
+                "message": "Please configure your AI Engine (primary key method) before using AI features.",
+            }), 403
 
         keywords = None
 
         # Option 1: caller supplies raw resume text
         raw_text = body.get("resume_text", "").strip()
         if raw_text:
-            api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-            extractor = ResumeKeywordExtractor(api_key=api_key)
+            extractor = ResumeKeywordExtractor(key_manager=key_manager)
             keywords = extractor.extract_from_text(raw_text)
 
         # Option 2: fetch from the user's saved resume (URL or extracted text)
@@ -887,32 +900,32 @@ def extract_profile_keywords():
             stored_text = profile.get("resume_text", "")
 
             if resume_url:
-                # Google Doc path
                 resume_text = extract_google_doc_with_oauth(resume_url, user_id)
                 if not resume_text:
                     return jsonify({
                         "error": "Could not fetch resume. Make sure it is shared as 'Anyone with the link can view'."
                     }), 400
             elif stored_text:
-                # PDF/DOCX path — text was extracted at upload time
                 resume_text = stored_text
             else:
                 return jsonify({
                     "error": "No resume found in your profile. Please upload a resume first."
                 }), 400
 
-            api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-            extractor = ResumeKeywordExtractor(api_key=api_key)
+            extractor = ResumeKeywordExtractor(key_manager=key_manager)
             keywords = extractor.extract_from_text(resume_text)
 
         if not keywords:
             return jsonify({"error": "Keyword extraction failed"}), 500
 
-        # Persist keywords back to the profile
         ProfileService.create_or_update_profile(user_id, {"resume_keywords": keywords})
-
         return jsonify({"success": True, "resume_keywords": keywords}), 200
 
+    except AiEngineNotConfiguredError as e:
+        return jsonify({
+            "error": "ai_engine_not_configured",
+            "message": str(e),
+        }), 403
     except Exception as e:
         logging.error(f"Error extracting resume keywords: {e}", exc_info=True)
         return jsonify({"error": f"Keyword extraction failed: {str(e)}"}), 500

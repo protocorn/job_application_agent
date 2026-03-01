@@ -116,6 +116,9 @@ class TailoringMixin:
             self.pause()
             return
 
+        if not self._require_ai_engine():
+            return
+
         # LaTeX mode is not available in production
         if self._is_latex_resume_mode():
             self.print_warning("LaTeX resume tailoring is not yet available in this version.")

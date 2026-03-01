@@ -42,6 +42,10 @@ class GeminiQuotaExhaustedError(RuntimeError):
     """Raised when all keys and retries are exhausted."""
 
 
+class AiEngineNotConfiguredError(RuntimeError):
+    """Raised when the user has never set up their AI Engine (primary_mode is NULL)."""
+
+
 def _is_quota_error(exc: Exception) -> bool:
     msg = str(exc).lower()
     return any(sig in msg for sig in _QUOTA_SIGNALS)
@@ -62,17 +66,23 @@ class GeminiKeyManager:
 
     def __init__(
         self,
-        primary_mode: str = "launchway",
+        primary_mode: Optional[str] = None,
         secondary_mode: Optional[str] = None,
         custom_api_key: Optional[str] = None,
         launchway_api_key: Optional[str] = None,
         cooldown_seconds: int = 60,
     ):
+        # None means the user has never configured their AI Engine
         self.primary_mode = primary_mode
         self.secondary_mode = secondary_mode
         self.custom_api_key = custom_api_key
         self.launchway_api_key = launchway_api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
         self.cooldown_seconds = cooldown_seconds
+
+    @property
+    def is_configured(self) -> bool:
+        """True only when the user has explicitly chosen a primary mode."""
+        return self.primary_mode is not None
 
     # ── key resolution ────────────────────────────────────────────────────────
 
@@ -113,12 +123,18 @@ class GeminiKeyManager:
         Call Gemini with automatic primary → secondary → cooldown → retry fallback.
         Raises GeminiQuotaExhaustedError if all attempts fail.
         """
+        if not self.is_configured:
+            raise AiEngineNotConfiguredError(
+                "AI Engine is not set up yet. Please configure your primary API key method "
+                "in Profile → AI Engine (web) or CLI Profile Management → AI Engine."
+            )
+
         primary_key = self._primary_key
         secondary_key = self._secondary_key
 
         if not primary_key:
             raise GeminiQuotaExhaustedError(
-                "No API key configured. Please set up your AI Engine in your profile settings."
+                "No API key available. If you chose 'custom', make sure you've saved a valid Gemini key."
             )
 
         # Step 1 — primary
@@ -190,7 +206,7 @@ class GeminiKeyManager:
         before being included in the agent's profile payload.
         """
         return cls(
-            primary_mode=profile.get("api_primary_mode") or "launchway",
+            primary_mode=profile.get("api_primary_mode") or None,   # None = not configured → raises AiEngineNotConfiguredError
             secondary_mode=profile.get("api_secondary_mode") or None,
             custom_api_key=profile.get("custom_gemini_api_key_decrypted") or None,
             launchway_api_key=launchway_api_key,
