@@ -458,17 +458,17 @@ class ProfileMixin:
         # Show current config
         try:
             data = self.api.get_ai_key_settings()
-            current_primary = data.get("api_primary_mode") or "launchway"
-            current_secondary = data.get("api_secondary_mode") or "none"
+            current_primary = data.get("api_primary_mode") or None
+            current_secondary = data.get("api_secondary_mode") or None
             has_key = data.get("has_custom_key", False)
             masked = data.get("masked_custom_key") or ""
-            print(f"  Current primary  : {current_primary}")
-            print(f"  Current secondary: {current_secondary}")
+            print(f"  Current primary  : {current_primary or '(not configured)'}")
+            print(f"  Current secondary: {current_secondary or 'none'}")
             if has_key:
                 print(f"  Custom key       : {masked}")
         except Exception:
-            current_primary = "launchway"
-            current_secondary = "none"
+            current_primary = None
+            current_secondary = None
             has_key = False
             masked = ""
         print()

@@ -757,7 +757,7 @@ def get_ai_key_settings():
             return jsonify({"error": "Profile not found"}), 404
 
         profile = result["profile"]
-        primary_mode = profile.get("api_primary_mode") or "launchway"
+        primary_mode = profile.get("api_primary_mode") or None   # None = not yet configured
         secondary_mode = profile.get("api_secondary_mode") or None
 
         # Determine whether a custom key is saved (mask it for the client)
