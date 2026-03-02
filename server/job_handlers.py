@@ -227,7 +227,7 @@ def handle_job_application(payload: Dict[str, Any]) -> Dict[str, Any]:
         async def run_application():
             return await run_links_with_refactored_agent(
                 links=[job_url],
-                headless=False,  # Show browser for visibility
+                headless=True,  # Server-side: always headless
                 keep_open=False,
                 debug=False,
                 hold_seconds=2,

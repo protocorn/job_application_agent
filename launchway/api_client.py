@@ -10,7 +10,8 @@ Override via env var: LAUNCHWAY_BACKEND_URL
 
 import logging
 import os
-from typing import Any, Dict, Optional, Tuple
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 from requests import Response, Session
@@ -253,6 +254,135 @@ class LaunchwayClient:
         if custom_api_key:
             body["custom_api_key"] = custom_api_key
         return self._post("/api/settings/ai-keys", body)
+
+    # ── agent runtime key ───────────────────────────────────────────────────
+
+    def get_agent_key(self) -> str:
+        """
+        Fetch the AES runtime key used to decrypt the local agent package.
+        Requires a valid auth token.  Returns the base64-encoded Fernet key.
+        """
+        data = self._get("/api/cli/agent-key")
+        return data.get("key", "")
+
+    # ── job search (server-side) ─────────────────────────────────────────────
+
+    def search_jobs(
+        self,
+        keywords: str = None,
+        location: str = None,
+        remote: bool = False,
+        easy_apply: bool = False,
+        hours_old: int = None,
+        min_relevance_score: int = 30,
+    ) -> Dict[str, Any]:
+        """
+        Run a server-side job search using the user's profile.
+
+        Returns dict with keys: jobs (list), total_found, sources, average_score, ...
+        """
+        body: Dict[str, Any] = {"min_relevance_score": min_relevance_score}
+        if keywords:
+            body["keywords"] = keywords
+        if location:
+            body["location"] = location
+        if remote:
+            body["remote"] = remote
+        if easy_apply:
+            body["easy_apply"] = easy_apply
+        if hours_old is not None:
+            body["hours_old"] = hours_old
+        return self._post("/api/search-jobs", body)
+
+    # ── resume tailoring (server-side async) ────────────────────────────────
+
+    def submit_tailoring_job(
+        self,
+        job_description: str,
+        job_title: str = "Position",
+        company: str = "Company",
+        resume_url: str = None,
+    ) -> Dict[str, Any]:
+        """
+        Submit an async resume-tailoring job to the server queue.
+
+        Returns dict with keys: success, job_id, message, queue_position.
+        Use get_job_status(job_id) to poll for completion.
+        """
+        body: Dict[str, Any] = {
+            "job_description": job_description,
+            "job_title": job_title,
+            "company_name": company,
+        }
+        if resume_url:
+            body["resume_url"] = resume_url
+        return self._post("/api/tailor-resume", body)
+
+    # ── job application (server-side async) ─────────────────────────────────
+
+    def submit_apply_job(
+        self,
+        job_url: str,
+        tailor_resume: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Submit a job application to the server queue.
+
+        Returns dict with keys: success, job_id, message.
+        Use get_job_status(job_id) to poll for completion.
+        """
+        return self._post("/api/cli/apply", {
+            "job_url": job_url,
+            "tailor_resume": tailor_resume,
+        })
+
+    # ── job queue status / management ───────────────────────────────────────
+
+    def get_job_status(self, job_id: str) -> Dict[str, Any]:
+        """
+        Fetch the current status of a queued job.
+
+        Returned dict typically has keys:
+          status  : "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED"
+          result  : dict with handler output (when COMPLETED)
+          error   : str or None
+          job_id  : str
+        """
+        return self._get(f"/api/jobs/{job_id}/status")
+
+    def cancel_job(self, job_id: str) -> Dict[str, Any]:
+        """Cancel a queued or running job."""
+        return self._post(f"/api/jobs/{job_id}/cancel")
+
+    def get_user_jobs(self) -> List[Dict[str, Any]]:
+        """Return a list of recent jobs submitted by the current user."""
+        data = self._get("/api/user/jobs")
+        return data.get("jobs", [])
+
+    def poll_job(
+        self,
+        job_id: str,
+        timeout: int = 600,
+        interval: int = 5,
+    ) -> Dict[str, Any]:
+        """
+        Poll a job until it reaches a terminal state (COMPLETED / FAILED / CANCELLED).
+
+        Returns the final status dict.
+        Raises LaunchwayAPIError if the timeout is exceeded.
+        """
+        terminal = {"COMPLETED", "FAILED", "CANCELLED", "TIMEOUT"}
+        deadline = time.monotonic() + timeout
+        while True:
+            status = self.get_job_status(job_id)
+            state = (status.get("status") or "").upper()
+            if state in terminal:
+                return status
+            if time.monotonic() >= deadline:
+                raise LaunchwayAPIError(
+                    f"Job {job_id} did not finish within {timeout}s (last state: {state})"
+                )
+            time.sleep(interval)
 
     def get_mimikree_credentials(self) -> Tuple[Optional[str], Optional[str]]:
         """

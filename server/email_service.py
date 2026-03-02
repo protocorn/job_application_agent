@@ -182,6 +182,104 @@ The Launchway Team
             logger.error(f"❌ Failed to send verification email to {to_email}: {e}")
             return False
 
+    def send_email_change_verification(self, to_email: str, token: str, first_name: str, old_email: str) -> bool:
+        """
+        Send a verification link to a user's NEW email to confirm an email address change.
+
+        Args:
+            to_email: The new (pending) email address to verify
+            token: Unique email-change token
+            first_name: User's first name for personalisation
+            old_email: The current email address (shown in the email for context)
+
+        Returns:
+            bool: True if sent successfully, False otherwise
+        """
+        if not self.is_configured:
+            logger.error("Cannot send email: RESEND_API_KEY not configured")
+            return False
+
+        try:
+            verification_link = f"{self.frontend_url}/verify-email-change?token={token}"
+
+            html_body = f"""
+            <html>
+                <head>
+                    <style>
+                        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9; }}
+                        .header {{ background: linear-gradient(135deg, #FF8C42 0%, #FF6B35 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+                        .content {{ background-color: white; padding: 30px; border-radius: 0 0 10px 10px; }}
+                        .button {{ display: inline-block; padding: 15px 30px; margin: 20px 0; background: linear-gradient(135deg, #FF8C42 0%, #FF6B35 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: bold; }}
+                        .alert {{ background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; padding: 12px 16px; margin: 16px 0; color: #856404; }}
+                        .footer {{ margin-top: 20px; text-align: center; color: #666; font-size: 12px; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header"><h1>Confirm Email Change — Launchway</h1></div>
+                        <div class="content">
+                            <h2>Hi {first_name},</h2>
+                            <p>You requested to change your Launchway account email address.</p>
+                            <table style="width:100%; border-collapse:collapse; margin:16px 0;">
+                                <tr><td style="padding:6px; color:#666; width:120px;">Current email:</td><td style="padding:6px; font-weight:bold;">{old_email}</td></tr>
+                                <tr><td style="padding:6px; color:#666;">New email:</td><td style="padding:6px; font-weight:bold;">{to_email}</td></tr>
+                            </table>
+                            <p>Click the button below to confirm this change. <strong>Your current email stays active until you verify the new one.</strong></p>
+                            <center>
+                                <a href="{verification_link}" class="button">Confirm New Email Address</a>
+                            </center>
+                            <p>Or copy and paste this link into your browser:</p>
+                            <p style="word-break: break-all; color: #FF8C42; font-weight: 500;">{verification_link}</p>
+                            <p><strong>This link expires in 24 hours.</strong></p>
+                            <div class="alert">⚠️ If you did not request this change, please ignore this email — your account email will not be modified.</div>
+                            <p>Best regards,<br>The Launchway Team</p>
+                        </div>
+                        <div class="footer"><p>This is an automated email. Please do not reply.</p></div>
+                    </div>
+                </body>
+            </html>
+            """
+
+            text_body = f"""Hi {first_name},
+
+You requested to change your Launchway account email.
+
+Current email: {old_email}
+New email:     {to_email}
+
+Click the link below to confirm:
+{verification_link}
+
+This link expires in 24 hours.
+If you did not request this change, ignore this email.
+
+The Launchway Team"""
+
+            payload = {
+                "from": self.from_email,
+                "to": [to_email],
+                "subject": "Confirm Your New Email Address — Launchway",
+                "html": html_body,
+                "text": text_body
+            }
+            headers = {
+                "Authorization": f"Bearer {self.resend_api_key}",
+                "Content-Type": "application/json"
+            }
+
+            response = requests.post(self.resend_api_url, json=payload, headers=headers, timeout=10)
+            if response.status_code == 200:
+                logger.info(f"Email-change verification sent to {to_email}")
+                return True
+            else:
+                logger.error(f"Resend API error: {response.status_code} - {response.text}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Failed to send email-change verification to {to_email}: {e}")
+            return False
+
     def send_password_reset_email(self, to_email: str, reset_token: str, first_name: str) -> bool:
         """
         Send password reset link to user (for future implementation)

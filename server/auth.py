@@ -322,6 +322,134 @@ class AuthService:
             db.close()
 
     @staticmethod
+    def request_email_change(user_id: str, new_email: str) -> Dict[str, Any]:
+        """
+        Initiate an email address change by sending a verification link to the new address.
+        The current email stays active until the new one is confirmed.
+        """
+        db = SessionLocal()
+        try:
+            new_email = new_email.strip().lower()
+
+            # Basic format check
+            if not new_email or '@' not in new_email:
+                return {'success': False, 'error': 'Please enter a valid email address.'}
+
+            user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+            user = db.query(User).filter(User.id == user_uuid).first()
+            if not user:
+                return {'success': False, 'error': 'User not found.'}
+
+            # No-op if already the active email
+            if new_email == user.email.strip().lower():
+                return {'success': False, 'error': 'The new email is the same as your current email.'}
+
+            # Check uniqueness across all users
+            conflict = db.query(User).filter(User.email == new_email).first()
+            if conflict and str(conflict.id) != str(user_uuid):
+                return {'success': False, 'error': 'That email address is already in use by another account.'}
+
+            # Generate token
+            token = secrets.token_urlsafe(32)
+            expires = datetime.utcnow() + timedelta(hours=24)
+
+            user.pending_email = new_email
+            user.email_change_token = token
+            user.email_change_token_expires = expires
+            db.commit()
+
+            # Send verification email to the NEW address
+            sent = email_service.send_email_change_verification(
+                to_email=new_email,
+                token=token,
+                first_name=user.first_name,
+                old_email=user.email
+            )
+
+            if not sent:
+                logging.error(f"Failed to send email-change verification to {new_email}")
+                return {
+                    'success': False,
+                    'error': 'Could not send verification email. Please try again later.'
+                }
+
+            return {
+                'success': True,
+                'message': f'A verification link has been sent to {new_email}. '
+                           'Click it to confirm your new email address. '
+                           'Your current email stays active until then.'
+            }
+
+        except Exception as e:
+            db.rollback()
+            logging.error(f"Error requesting email change: {e}")
+            return {'success': False, 'error': 'Failed to initiate email change. Please try again.'}
+        finally:
+            db.close()
+
+    @staticmethod
+    def verify_email_change(token: str) -> Dict[str, Any]:
+        """
+        Confirm an email address change using the token sent to the new email.
+        Updates user.email to the pending address and clears the change request.
+        """
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.email_change_token == token).first()
+
+            if not user:
+                return {'success': False, 'error': 'Invalid or already-used verification link.'}
+
+            if user.email_change_token_expires and user.email_change_token_expires < datetime.utcnow():
+                return {'success': False, 'error': 'This verification link has expired. Please request a new email change.'}
+
+            if not user.pending_email:
+                return {'success': False, 'error': 'No pending email change found for this token.'}
+
+            new_email = user.pending_email
+
+            # Final uniqueness check (race-condition guard)
+            conflict = db.query(User).filter(User.email == new_email).first()
+            if conflict and str(conflict.id) != str(user.id):
+                user.pending_email = None
+                user.email_change_token = None
+                user.email_change_token_expires = None
+                db.commit()
+                return {'success': False, 'error': 'That email address is now in use by another account. Please request a new email change.'}
+
+            old_email = user.email
+            user.email = new_email
+            user.pending_email = None
+            user.email_change_token = None
+            user.email_change_token_expires = None
+            db.commit()
+
+            logging.info(f"Email changed for user {user.id}: {old_email} → {new_email}")
+
+            # Issue a fresh JWT with the new email so the user can stay logged in
+            new_jwt = AuthService.create_jwt_token(user.id, new_email)
+
+            return {
+                'success': True,
+                'message': 'Your email address has been updated successfully.',
+                'new_email': new_email,
+                'token': new_jwt,
+                'user': {
+                    'id': str(user.id),
+                    'email': new_email,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name
+                }
+            }
+
+        except Exception as e:
+            db.rollback()
+            logging.error(f"Error verifying email change: {e}")
+            return {'success': False, 'error': 'Email change verification failed. Please try again.'}
+        finally:
+            db.close()
+
+    @staticmethod
     def get_user_from_token(token: str) -> Optional[Dict[str, Any]]:
         """Get user information from JWT token"""
         payload = AuthService.verify_jwt_token(token)

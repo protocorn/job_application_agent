@@ -1354,45 +1354,69 @@ def delete_action_history_api():
         logging.error(f"Error processing resume: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-# --- DISABLED: job automation is CLI-only; not part of web profile management MVP ---
-# @app.route("/api/search-jobs", methods=['POST'])
+@app.route("/api/search-jobs", methods=['POST'])
 @require_auth
 def search_jobs():
-    """ Search for jobs using Multi-Source Job Discovery Agent and save to PostgreSQL"""
+    """Search for jobs via Multi-Source Job Discovery Agent. Supports manual or profile-based params."""
     try:
         from Agents.multi_source_job_discovery_agent import MultiSourceJobDiscoveryAgent
 
         user_id = request.current_user['id']
+        data = request.json or {}
 
-        # Get optional min_relevance_score from request body (default: 30)
-        min_relevance_score = request.json.get('min_relevance_score', 30) if request.json else 30
+        min_relevance_score = data.get('min_relevance_score', 30)
+        keywords = data.get('keywords')
+        location = data.get('location')
+        remote = data.get('remote', False)
+        easy_apply = data.get('easy_apply', False)
+        hours_old = data.get('hours_old')
 
         job_discovery_agent = MultiSourceJobDiscoveryAgent(user_id=user_id)
 
         if not job_discovery_agent.profile_data:
             return jsonify({"error": "Profile data not found for this user"}), 400
 
-        logging.info(f"Searching for jobs across all sources (min relevance score: {min_relevance_score})...")
+        logging.info(f"Searching for jobs (keywords={keywords}, min_relevance={min_relevance_score})...")
 
-        # Use search_and_save which searches all sources and saves to database
-        response = job_discovery_agent.search_and_save(min_relevance_score=min_relevance_score)
-
-        if 'error' in response:
-            return jsonify({"error": response['error']}), 500
-
-        jobs_data = response.get('jobs', [])
+        if keywords:
+            search_overrides = {'easy_apply': easy_apply}
+            if hours_old:
+                search_overrides['hours_old'] = hours_old
+            result = job_discovery_agent.search_all_sources(
+                min_relevance_score=min_relevance_score,
+                manual_keywords=keywords,
+                manual_location=location or None,
+                manual_remote=remote,
+                manual_search_overrides=search_overrides,
+            )
+            if 'error' in result:
+                return jsonify({"error": result['error']}), 500
+            jobs_data = result.get('data', [])
+            sources = result.get('sources', {})
+            avg_score = result.get('average_score', 0)
+            saved_count = 0
+            updated_count = 0
+        else:
+            response = job_discovery_agent.search_and_save(min_relevance_score=min_relevance_score)
+            if 'error' in response:
+                return jsonify({"error": response['error']}), 500
+            jobs_data = response.get('jobs', [])
+            sources = response.get('sources', {})
+            avg_score = response.get('average_score', 0)
+            saved_count = response.get('saved_count', 0)
+            updated_count = response.get('updated_count', 0)
 
         return jsonify({
             "jobs": jobs_data,
-            "total_found": response.get('count', 0),
-            "sources": response.get('sources', {}),
-            "average_score": response.get('average_score', 0),
-            "saved_count": response.get('saved_count', 0),
-            "updated_count": response.get('updated_count', 0),
+            "total_found": len(jobs_data),
+            "sources": sources,
+            "average_score": avg_score,
+            "saved_count": saved_count,
+            "updated_count": updated_count,
             "success": True,
-            "message": f"Jobs searched from {len(response.get('sources', {}))} sources and saved to database",
-            "error": None
-            }), 200
+            "message": f"Jobs searched from {len(sources)} sources",
+            "error": None,
+        }), 200
     except Exception as e:
         logging.error(f"Error searching for jobs: {str(e)}")
         return jsonify({"error": str(e)}), 500
@@ -1539,8 +1563,7 @@ def get_user_credits():
         logging.error(f"Error getting user credits: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-# --- DISABLED: resume tailoring via web is not part of profile management MVP ---
-# @app.route("/api/tailor-resume", methods=['POST'])
+@app.route("/api/tailor-resume", methods=['POST'])
 @require_auth
 @rate_limit('api_requests_per_user_per_minute')
 @validate_input
@@ -2724,6 +2747,45 @@ def update_email():
         return jsonify({"error": "Failed to update email"}), 500
 
 
+@app.route("/api/account/request-email-change", methods=['POST', 'OPTIONS'])
+@require_auth
+def request_email_change():
+    """Send a verification link to a new email address to confirm an email change."""
+    if request.method == 'OPTIONS':
+        return '', 204
+    try:
+        data = request.get_json() or {}
+        new_email = (data.get('new_email') or '').strip().lower()
+        if not new_email:
+            return jsonify({'error': 'new_email is required'}), 400
+
+        user_id = request.current_user['id']
+        result = AuthService.request_email_change(user_id, new_email)
+        if result['success']:
+            return jsonify(result), 200
+        return jsonify(result), 400
+    except Exception as e:
+        logging.error(f"Error in request_email_change: {e}")
+        return jsonify({'error': 'Failed to initiate email change'}), 500
+
+
+@app.route("/api/auth/verify-email-change", methods=['GET'])
+def verify_email_change():
+    """Confirm an email change using the token sent to the new address."""
+    try:
+        token = request.args.get('token')
+        if not token:
+            return jsonify({'error': 'Verification token is required'}), 400
+
+        result = AuthService.verify_email_change(token)
+        if result['success']:
+            return jsonify(result), 200
+        return jsonify(result), 400
+    except Exception as e:
+        logging.error(f"Error in verify_email_change: {e}")
+        return jsonify({'error': 'Email change verification failed'}), 500
+
+
 @app.route("/api/account/info", methods=['GET'])
 @require_auth
 def get_account_info():
@@ -2746,6 +2808,7 @@ def get_account_info():
                 "account": {
                     "user_id":        str(user.id),
                     "email":          user.email,
+                    "pending_email":  user.pending_email or None,
                     "first_name":     user.first_name,
                     "last_name":      user.last_name,
                     "created_at":     user.created_at.isoformat() if user.created_at else None,
@@ -2844,6 +2907,72 @@ def cli_record_application():
     except Exception as e:
         logging.error(f"Error recording CLI application: {e}")
         return jsonify({"error": "Failed to record application"}), 500
+
+
+@app.route("/api/cli/agent-key", methods=['GET'])
+@require_auth
+def get_cli_agent_key():
+    """Return the AES runtime key for local agent decryption (authenticated CLI only)."""
+    key = os.getenv("AGENT_RUNTIME_KEY")
+    if not key:
+        logging.error("AGENT_RUNTIME_KEY env var is not set on this server")
+        return jsonify({"error": "Runtime key not configured on server"}), 500
+    return jsonify({"key": key}), 200
+
+
+@app.route("/api/cli/apply", methods=['POST'])
+@require_auth
+def cli_submit_apply():
+    """Submit a job application job to the server-side queue (CLI endpoint)."""
+    try:
+        from database_config import SessionLocal, UserProfile
+        import uuid as uuid_module
+
+        user_id = request.current_user['id']
+        data = request.get_json() or {}
+
+        job_url = (data.get("job_url") or "").strip()
+        if not job_url:
+            return jsonify({"error": "job_url is required"}), 400
+
+        tailor_resume_flag = data.get("tailor_resume", False)
+
+        db = SessionLocal()
+        try:
+            user_uuid = uuid_module.UUID(str(user_id))
+            profile = db.query(UserProfile).filter(UserProfile.user_id == user_uuid).first()
+            resume_url = (profile.resume_url or "").strip() if profile else ""
+        finally:
+            db.close()
+
+        if not resume_url:
+            return jsonify({"error": "No resume URL found in your profile. Please add one first."}), 400
+
+        payload = {
+            'job_url': job_url,
+            'resume_url': resume_url,
+            'use_tailored': tailor_resume_flag,
+        }
+
+        result = submit_job_with_validation(
+            user_id=user_id,
+            job_type='job_application',
+            payload=payload,
+            priority=JobPriority.NORMAL,
+        )
+
+        if result['success']:
+            return jsonify({
+                "success": True,
+                "job_id": result['job_id'],
+                "message": "Job application submitted to queue.",
+            }), 202
+        else:
+            return jsonify({"error": result['error'], "success": False}), 400
+
+    except Exception as e:
+        logging.error(f"Error submitting CLI apply job: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/account/export-data", methods=['GET'])
@@ -4060,8 +4189,7 @@ def get_job_queue_stats():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- DISABLED: async job queue is used by tailor-resume (web); disabled with it ---
-# @app.route("/api/jobs/<job_id>/status", methods=['GET'])
+@app.route("/api/jobs/<job_id>/status", methods=['GET'])
 @require_auth
 def get_job_status_api(job_id):
     """Get status of a specific job"""
@@ -4084,8 +4212,7 @@ def get_job_status_api(job_id):
         logging.error(f"Error getting job status: {e}")
         return jsonify({"error": str(e)}), 500
 
-# --- DISABLED ---
-# @app.route("/api/jobs/<job_id>/cancel", methods=['POST'])
+@app.route("/api/jobs/<job_id>/cancel", methods=['POST'])
 @require_auth
 def cancel_job_api(job_id):
     """Cancel a job"""
@@ -4102,8 +4229,7 @@ def cancel_job_api(job_id):
         logging.error(f"Error cancelling job: {e}")
         return jsonify({"error": str(e)}), 500
 
-# --- DISABLED ---
-# @app.route("/api/user/jobs", methods=['GET'])
+@app.route("/api/user/jobs", methods=['GET'])
 @require_auth
 def get_user_jobs_api():
     """Get all jobs for the current user"""

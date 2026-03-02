@@ -1,4 +1,4 @@
-"""Continuous auto-apply mixin — 100% automation mode."""
+"""Continuous auto-apply mixin — 100% local automation mode."""
 
 import asyncio
 import json
@@ -17,27 +17,6 @@ import requests
 from launchway.cli.utils import Colors
 
 logger = logging.getLogger(__name__)
-
-try:
-    from Agents.job_application_agent import RefactoredJobAgent, _get_or_create_playwright
-    _JOB_APPLICATION_AVAILABLE = True
-except Exception as e:
-    logger.error(f"Job application agent not available: {e}", exc_info=True)
-    _JOB_APPLICATION_AVAILABLE = False
-
-try:
-    from Agents.multi_source_job_discovery_agent import MultiSourceJobDiscoveryAgent
-    _JOB_DISCOVERY_AVAILABLE = True
-except Exception as e:
-    logger.warning(f"Job discovery not available: {e}")
-    _JOB_DISCOVERY_AVAILABLE = False
-
-try:
-    from Agents.gemini_query_optimizer import GeminiQueryOptimizer
-    _QUERY_OPTIMIZER_AVAILABLE = True
-except Exception as e:
-    logger.warning(f"Query optimizer not available: {e}")
-    _QUERY_OPTIMIZER_AVAILABLE = False
 
 
 class ContinuousApplyMixin:
@@ -146,11 +125,11 @@ class ContinuousApplyMixin:
                 'report_type':  'final_report' if final else 'progress_checkpoint',
                 'generated_at': datetime.now().isoformat(),
                 'session_info': {
-                    'start_time':           automation_state['start_time'].isoformat(),
-                    'duration_minutes':     round((datetime.now() - automation_state['start_time']).total_seconds() / 60, 2),
-                    'status':               'completed' if final else 'in_progress',
-                    'original_keywords':    automation_state.get('original_keywords', ''),
-                    'optimized_keywords':   automation_state.get('optimized_keywords', ''),
+                    'start_time':            automation_state['start_time'].isoformat(),
+                    'duration_minutes':      round((datetime.now() - automation_state['start_time']).total_seconds() / 60, 2),
+                    'status':                'completed' if final else 'in_progress',
+                    'original_keywords':     automation_state.get('original_keywords', ''),
+                    'optimized_keywords':    automation_state.get('optimized_keywords', ''),
                     'query_variations_used': automation_state.get('query_variations', []),
                 },
                 'statistics': {
@@ -193,34 +172,34 @@ class ContinuousApplyMixin:
         if incomplete_count > 0:
             print("\n" + "=" * 60)
             self.print_warning(f"⚠️  {incomplete_count} application(s) were not fully submitted.")
-            self.print_info("Would you like to continue these applications manually?")
-            print("=" * 60)
             choice = self.get_input("\nOpen incomplete applications? (y/n): ").strip().lower()
-            self._should_open_incomplete    = (choice == 'y')
-            self._incomplete_report_file    = report_filename if choice == 'y' else None
+            self._should_open_incomplete   = (choice == 'y')
+            self._incomplete_report_file   = report_filename if choice == 'y' else None
 
     async def _apply_to_single_job_automated(
         self,
-        job_url:         str,
-        job_title:       str,
-        company:         str,
-        tailor_resume:   bool,
-        headless:        bool,
+        job_url:          str,
+        job_title:        str,
+        company:          str,
+        tailor_resume:    bool,
+        headless:         bool,
         automation_state: Dict[str, Any],
-        description:     str = '',
+        description:      str = '',
     ) -> Dict[str, Any]:
+        from Agents.job_application_agent import RefactoredJobAgent, _get_or_create_playwright
+
         start_time = time.time()
 
         job_result = {
-            'job_url':       job_url,
-            'job_title':     job_title,
-            'company':       company,
-            'timestamp':     datetime.now().isoformat(),
-            'success':       False,
-            'submitted':     False,
-            'fields_filled': 0,
-            'field_details': [],
-            'error':         None,
+            'job_url':          job_url,
+            'job_title':        job_title,
+            'company':          company,
+            'timestamp':        datetime.now().isoformat(),
+            'success':          False,
+            'submitted':        False,
+            'fields_filled':    0,
+            'field_details':    [],
+            'error':            None,
             'rate_limit_error': False,
             'duration_seconds': 0,
         }
@@ -294,7 +273,7 @@ class ContinuousApplyMixin:
             if job_result['fields_filled'] > 0 and job_result['submitted']:
                 job_result['success'] = True
                 automation_state['applications_submitted'] += 1
-                self.record_application(job_url)
+                self.record_application(job_url, company=company, title=job_title)
                 self.print_success(f"✓ Application submitted! ({job_result['fields_filled']} fields filled)")
             else:
                 job_result['success']   = False
@@ -322,7 +301,6 @@ class ContinuousApplyMixin:
         from Agents.persistent_browser_manager import PersistentBrowserManager
 
         try:
-            self.print_info(f"\n📖 Reading progress report: {report_filename}")
             if not os.path.exists(report_filename):
                 self.print_error(f"Progress report not found: {report_filename}")
                 return
@@ -340,36 +318,21 @@ class ContinuousApplyMixin:
                 return
 
             self.print_info(f"\n✓ Found {len(incomplete_apps)} incomplete application(s)")
-            print("\n" + "=" * 60)
             for i, app in enumerate(incomplete_apps, 1):
                 print(f"\n{i}. {app.get('job_title','Unknown')} at {app.get('company','Unknown')}")
-                print(f"   URL:          {str(app.get('job_url','N/A'))[:70]}...")
-                print(f"   Fields Filled: {app.get('fields_filled', 0)}")
-                if app.get('error'):
-                    print(f"   Error:        {app.get('error')}")
-            print("=" * 60)
+                print(f"   URL: {str(app.get('job_url','N/A'))[:70]}")
 
             if self.get_input(f"\nOpen all {len(incomplete_apps)} application(s) in browser? (y/n): ").strip().lower() != 'y':
                 self.print_info("Cancelled.")
                 return
 
-            self.print_info("\n🚀 Opening persistent browser...")
-            manager      = PersistentBrowserManager()
-            profile_path = manager.get_profile_path(str(self.current_user['id']))
-
-            self.print_info(f"  Profile path:   {profile_path}")
-            self.print_info(f"  Profile exists: {profile_path.exists()}")
-
-            if not profile_path.exists():
-                self.print_warning("⚠️ Profile directory does not exist — run 'Browser Profile Setup' first.")
-
+            manager = PersistentBrowserManager()
             context = await manager.launch_persistent_browser(
                 user_id=str(self.current_user['id']),
                 headless=False,
             )
 
             self.print_success("✓ Browser opened with persistent profile")
-            self.print_warning("\n⚠️  NOTE: Fields will NOT be pre-filled (technical limitation).")
 
             pages = []
             for i, app in enumerate(incomplete_apps, 1):
@@ -385,23 +348,13 @@ class ContinuousApplyMixin:
                 except Exception as e:
                     self.print_warning(f"  ⚠ Tab {i} failed: {str(e)}")
 
-            print("\n" + "=" * 60)
             self.print_success(f"✓ Opened {len(pages)} application(s) in browser tabs")
-            print("=" * 60)
-            self.print_info("\nInstructions:")
-            self.print_info("  1. Complete and submit each application")
-            self.print_info("  2. Close the browser when done")
-            self.print_info("  💡 Your login sessions are preserved in this browser!")
-
-            print("\nBrowser is open. Press Enter here when you're done...")
+            self.print_info("\nComplete and submit each application, then press Enter here.")
             input()
 
             try:
                 await context.close()
-                if hasattr(context, '_playwright'):
-                    await context._playwright.stop()
                 PersistentBrowserManager.close_browser_for_user(str(self.current_user['id']))
-                self.print_success("✓ Browser closed successfully")
             except Exception as e:
                 logger.warning(f"Error closing browser: {e}")
 
@@ -413,12 +366,8 @@ class ContinuousApplyMixin:
         self.clear_screen()
         self.print_header("🚀 100% AUTO JOB APPLY - CONTINUOUS MODE")
 
-        if not _JOB_APPLICATION_AVAILABLE or not _JOB_DISCOVERY_AVAILABLE:
-            self.print_error("Required features are not available.")
+        if not self._ensure_agents_bootstrapped():
             self.pause()
-            return
-
-        if not self._require_ai_engine():
             return
 
         if not self._ensure_resume_ready_for_auto_apply():
@@ -463,7 +412,7 @@ class ContinuousApplyMixin:
 
         headless = self.get_input("Run in headless mode? (y/n, default: n): ").strip().lower() == 'y'
 
-        use_proxies  = self.get_input("Use proxies to avoid IP bans? (y/n, default: n): ").strip().lower() == 'y'
+        use_proxies   = self.get_input("Use proxies to avoid IP bans? (y/n, default: n): ").strip().lower() == 'y'
         proxy_manager = None
 
         if use_proxies:
@@ -560,24 +509,20 @@ class ContinuousApplyMixin:
 
     async def run_continuous_automation(
         self,
-        keywords:          str,
-        location:          str,
-        remote:            bool,
-        easy_apply:        bool,
-        hours_old:         Optional[int],
-        tailor_resume:     bool,
-        headless:          bool,
-        session_goal:      int   = 5,
-        cooldown_minutes:  int   = 60,
+        keywords:         str,
+        location:         str,
+        remote:           bool,
+        easy_apply:       bool,
+        hours_old:        Optional[int],
+        tailor_resume:    bool,
+        headless:         bool,
+        session_goal:     int  = 5,
+        cooldown_minutes: int  = 60,
         proxy_manager=None,
     ):
-        """
-        Goal-based continuous automation:
-        - Each round tries to apply to `session_goal` jobs.
-        - Excess jobs found beyond the goal are held for the next round.
-        - After a round completes (goal met or queue exhausted), enter `cooldown_minutes` cooldown.
-        - If not enough jobs found after all query variations, prompt to wait 5 min or change params.
-        """
+        from Agents.multi_source_job_discovery_agent import MultiSourceJobDiscoveryAgent
+        from Agents.gemini_query_optimizer import GeminiQueryOptimizer
+
         self.print_header("🚀 STARTING AUTOMATION ENGINE")
 
         if proxy_manager:
@@ -596,32 +541,31 @@ class ContinuousApplyMixin:
             "hours_old":  hours_old,
         }
 
-        if _QUERY_OPTIMIZER_AVAILABLE:
-            try:
-                optimizer = GeminiQueryOptimizer()
-                if self.current_profile:
-                    profile_dict = (
-                        {k: v for k, v in self.current_profile.__dict__.items() if not k.startswith('_')}
-                        if hasattr(self.current_profile, '__dict__')
-                        else self.current_profile
-                    )
-                opt_result = optimizer.optimize_search_query(keywords, location, profile_dict)
-                if opt_result and opt_result.get('success'):
-                    raw_primary    = opt_result['primary_query']
-                    raw_variations = [raw_primary] + opt_result.get('variations', [])
-                    seen, normalized = set(), []
-                    for q in raw_variations:
-                        n = self._sanitize_search_query(q, keywords)
-                        if n and n.lower() not in seen:
-                            normalized.append(n)
-                            seen.add(n.lower())
-                    query_variations   = normalized or [keywords]
-                    optimized_keywords = query_variations[0]
-                    method = opt_result.get('method', 'unknown')
-                    prefix = "🤖 AI-optimized" if method == 'gemini_ai' else "✓ Rule-based optimized"
-                    self.print_success(f"{prefix} query: '{keywords}' → '{optimized_keywords}'")
-                    if len(query_variations) > 1:
-                        self.print_info(f"✓ Generated {len(query_variations) - 1} alternative queries")
+        try:
+            optimizer = GeminiQueryOptimizer()
+            if self.current_profile:
+                profile_dict = (
+                    {k: v for k, v in self.current_profile.__dict__.items() if not k.startswith('_')}
+                    if hasattr(self.current_profile, '__dict__')
+                    else self.current_profile
+                )
+            opt_result = optimizer.optimize_search_query(keywords, location, profile_dict)
+            if opt_result and opt_result.get('success'):
+                raw_primary    = opt_result['primary_query']
+                raw_variations = [raw_primary] + opt_result.get('variations', [])
+                seen, normalized = set(), []
+                for q in raw_variations:
+                    n = self._sanitize_search_query(q, keywords)
+                    if n and n.lower() not in seen:
+                        normalized.append(n)
+                        seen.add(n.lower())
+                query_variations   = normalized or [keywords]
+                optimized_keywords = query_variations[0]
+                method = opt_result.get('method', 'unknown')
+                prefix = "🤖 AI-optimized" if method == 'gemini_ai' else "✓ Rule-based optimized"
+                self.print_success(f"{prefix} query: '{keywords}' → '{optimized_keywords}'")
+                if len(query_variations) > 1:
+                    self.print_info(f"✓ Generated {len(query_variations) - 1} alternative queries")
 
                 param_result = optimizer.enrich_jobspy_parameters(
                     user_keywords=optimized_keywords,
@@ -639,9 +583,9 @@ class ContinuousApplyMixin:
                         enriched_search_params["hours_old"] = hours_old
                     self.print_success("🤖 AI-enriched search parameters enabled")
 
-            except Exception as e:
-                self.print_warning(f"⚠️  Query optimization error: {str(e)}")
-                logger.error(f"Query optimization error: {e}", exc_info=True)
+        except Exception as e:
+            self.print_warning(f"⚠️  Query optimization error: {str(e)}")
+            logger.error(f"Query optimization error: {e}", exc_info=True)
 
         # ── State ────────────────────────────────────────────────────────────
         automation_state = {
@@ -661,9 +605,9 @@ class ContinuousApplyMixin:
         }
 
         report_filename         = f"automation_progress_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        job_queue               = deque()          # jobs ready to apply (current + overflow)
+        job_queue               = deque()
         processed_urls          = set()
-        overflow_queue          = deque()          # jobs beyond this round's goal
+        overflow_queue          = deque()
 
         self.print_info("📋 Loading application history for deduplication...")
         previously_applied_urls = self.get_applied_job_urls()
@@ -686,10 +630,7 @@ class ContinuousApplyMixin:
         self.print_info(f"✓ Progress report: {report_filename}")
         self.print_info("✓ Press Ctrl+C to stop gracefully\n")
 
-        # ── Helpers ──────────────────────────────────────────────────────────
-
         def _enqueue_jobs(new_jobs: list) -> tuple:
-            """Add new jobs to job_queue up to goal, remainder to overflow."""
             added, skipped_applied, skipped_dup = 0, 0, 0
             for job in new_jobs:
                 url = self._extract_job_url(job)
@@ -718,21 +659,13 @@ class ContinuousApplyMixin:
             return added, skipped_applied, skipped_dup
 
         async def _fill_queue_to_goal() -> bool:
-            """
-            Search all query variations until job_queue reaches session_goal.
-            Returns True if goal met, False otherwise.
-            """
             all_queries = automation_state['query_variations']
             self.print_info(f"\n{'='*60}")
             self.print_info(f"🔍 ROUND {automation_state['round_number']} — DISCOVERING JOBS (goal: {session_goal})")
             self.print_info(f"{'='*60}")
 
-            # First: drain overflow from last round
             while overflow_queue and len(job_queue) < session_goal:
                 job_queue.append(overflow_queue.popleft())
-            if overflow_queue:
-                self.print_info(f"  ↳ Carried over {session_goal - len(overflow_queue)} jobs from previous round")
-
             if len(job_queue) >= session_goal:
                 self.print_success(f"✓ Queue already at goal ({len(job_queue)}) from overflow")
                 return True
@@ -787,7 +720,6 @@ class ContinuousApplyMixin:
             return len(job_queue) > 0
 
         async def _run_round() -> int:
-            """Apply to up to session_goal jobs. Returns count submitted."""
             round_submitted = 0
             round_goal      = min(session_goal, len(job_queue))
             while job_queue and round_submitted < session_goal and automation_state['running']:
@@ -828,7 +760,6 @@ class ContinuousApplyMixin:
             return round_submitted
 
         async def _cooldown():
-            """Sleep for cooldown_minutes, showing a live countdown."""
             total_secs   = cooldown_minutes * 60
             wake_at      = datetime.now() + timedelta(seconds=total_secs)
             self.print_info(
@@ -846,16 +777,13 @@ class ContinuousApplyMixin:
             print()
             self.print_success("✓ Cooldown finished — starting next round")
 
-        # ── Main loop ────────────────────────────────────────────────────────
         try:
             while automation_state['running']:
                 automation_state['round_number'] += 1
 
-                # Fill queue to goal (uses all query variations + overflow)
                 goal_met = await _fill_queue_to_goal()
 
                 if not job_queue:
-                    # Nothing found at all — ask user what to do
                     self.print_warning("\n📭 No jobs found. Options:")
                     self.print_info("  1. Wait 5 minutes and retry automatically")
                     self.print_info("  2. Change search parameters (restart)")
@@ -866,7 +794,6 @@ class ContinuousApplyMixin:
                         break
                     if choice == '3':
                         break
-                    # Default: wait 5 minutes
                     self.print_info("Retrying in 5 minutes...")
                     for _ in range(30):
                         if not automation_state['running']:
@@ -875,12 +802,10 @@ class ContinuousApplyMixin:
                     continue
 
                 if not goal_met:
-                    # Partial queue — inform user but proceed with what we have
                     self.print_warning(
                         f"⚠  Proceeding with {len(job_queue)} job(s) (goal was {session_goal})."
                     )
 
-                # Apply to jobs in this round
                 round_submitted = await _run_round()
 
                 self.print_success(
@@ -892,7 +817,6 @@ class ContinuousApplyMixin:
                 if not automation_state['running']:
                     break
 
-                # Cooldown before next round
                 await _cooldown()
 
             self.print_header("🎉 AUTOMATION COMPLETED")

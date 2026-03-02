@@ -9,10 +9,14 @@ logger = logging.getLogger(__name__)
 class BrowserSetupMixin:
 
     async def browser_profile_setup_menu(self):
-        from Agents.persistent_browser_manager import PersistentBrowserManager
-
         self.clear_screen()
         self.print_header("🌐 BROWSER PROFILE SETUP")
+
+        if not self._ensure_agents_bootstrapped():
+            self.pause()
+            return
+
+        from Agents.persistent_browser_manager import PersistentBrowserManager
 
         print("\n" + "=" * 60)
         print("  WHY SETUP A PERSISTENT BROWSER PROFILE?")

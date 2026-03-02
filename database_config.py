@@ -70,6 +70,11 @@ class User(Base):
     mimikree_connected_at = Column(DateTime)
     mimikree_is_connected = Column(Boolean, default=False)
 
+    # Pending email change fields
+    pending_email = Column(String, nullable=True)
+    email_change_token = Column(String, unique=True, nullable=True)
+    email_change_token_expires = Column(DateTime, nullable=True)
+
     # Beta access fields
     beta_access_requested = Column(Boolean, default=False)
     beta_access_approved = Column(Boolean, default=False)
@@ -361,6 +366,10 @@ def _apply_incremental_migrations():
     migrations = [
         # resume_keywords: Gemini-extracted keyword cache (added Feb 2026)
         "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS resume_keywords JSONB",
+        # pending email change (added Mar 2026)
+        "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS pending_email VARCHAR",
+        "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_change_token VARCHAR",
+        "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_change_token_expires TIMESTAMP",
         # resume_text: raw extracted text from PDF/DOCX uploads (added Mar 2026)
         "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS resume_text TEXT",
         # AI Engine key config (added Mar 2026)

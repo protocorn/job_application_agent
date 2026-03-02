@@ -6,11 +6,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name        = "launchway"
-version     = "0.1.0"
+version     = "0.1.2"
 description = "AI-powered job application automation — tailor resumes, find jobs, apply autonomously."
 readme      = "README.md"
 requires-python = ">=3.11"
-license     = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
+
+authors = [
+    { name = "Launchway", email = "noreply@tailor-mycareer.online" }
+]
 
 keywords = ["job-search", "resume", "automation", "cli", "ai", "playwright"]
 
@@ -18,45 +23,61 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Office/Business",
 ]
 
-# ─── CLI dependencies only ───────────────────────────────────────────────────
+# ─── Dependencies ────────────────────────────────────────────────────────────
 
 dependencies = [
-    # Google AI — new unified SDK (all agent + CLI usage)
+    # HTTP — CLI↔server communication
+    "requests>=2.31.0",
+
+    # AES decryption of the encrypted agents bundle (agent_bootstrap.py)
+    "cryptography>=41.0.0",
+
+    # Config / utilities
+    "python-dotenv>=1.0.0",
+    "loguru",
+
+    # ── Local agent runtime dependencies ─────────────────────────────────────
+    # These are needed because agents run locally on the user's machine after
+    # the encrypted bundle is decrypted.
+
+    # Browser automation (headful, persistent profiles)
+    "playwright>=1.40.0",
+
+    # Google Generative AI (Gemini for field mapping, resume tailoring, etc.)
     "google-genai>=1.0.0",
-    # Legacy SDK still needed by gemini_field_mapper.py (google.generativeai)
     "google-generativeai>=0.8.0",
-    # Google OAuth / Docs (resume tailoring, OAuth service)
+
+    # Google OAuth / Drive / Docs (for resume tailoring via Google Docs)
     "google-auth>=2.23.0",
     "google-auth-oauthlib>=1.1.0",
     "google-auth-httplib2>=0.1.1",
     "google-api-python-client>=2.100.0",
 
-    # HTTP / scraping
-    "requests>=2.31.0",
+    # Job scraping / parsing
     "beautifulsoup4>=4.12.0",
     "lxml>=4.9.0",
+    "jobspy>=1.1.78",
 
-    # Browser automation
-    "playwright>=1.40.0",
-
-    # Data
+    # Data processing
     "pandas>=2.1.0",
     "numpy>=1.25.0",
-    "Pillow",
-    "PyPDF2>=3.0.0",
 
-    # Config / utilities
-    "python-dotenv>=1.0.0",
+    # PDF / document handling
+    "PyPDF2>=3.0.0",
+    "Pillow>=10.0.0",
+
+    # Date utilities
     "python-dateutil>=2.8.2",
-    "loguru",
 ]
+
+# ─── Optional extras ─────────────────────────────────────────────────────────
 
 [project.optional-dependencies]
 server = [
@@ -98,15 +119,30 @@ dev = [
 [project.scripts]
 launchway = "launchway.cli.agent:main"
 
+# ─── URLs — must come after all [project] keys in TOML ───────────────────────
+
+[project.urls]
+Homepage      = "https://launchway.app"
+Documentation = "https://launchway.app/docs"
+Repository    = "https://github.com/launchway/launchway"
+"Bug Tracker" = "https://github.com/launchway/launchway/issues"
+
 # ─── Package discovery ───────────────────────────────────────────────────────
 
 [tool.setuptools.packages.find]
 where   = ["."]
-include = ["launchway*", "Agents*"]
-exclude = ["server*", "Website*", "tests*"]
+include = ["launchway*"]
+exclude = ["server*", "Website*", "tests*", "Testing*", "Agents*"]
 
 [tool.setuptools.package-data]
-"*" = ["*.json", "*.yaml", "*.txt"]
+"launchway" = [
+    "*.yaml",
+    "*.txt",
+    "encrypted_agents/**/*.enc",   # encrypted agent blobs — decrypted at runtime
+]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["token.json", "credentials.json", "*_token.json", "*_credentials.json", ".env", ".env.*"]
 
 # ─── Post-install: Playwright browsers ───────────────────────────────────────
 # NOTE: Playwright browsers are installed automatically on first run via

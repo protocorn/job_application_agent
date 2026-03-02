@@ -1,19 +1,13 @@
-"""Resume tailoring mixin — Mimikree credentials fetched via Launchway API."""
+"""Resume tailoring mixin — runs locally after agent bootstrap."""
 
 import logging
 import os
 from typing import Optional
+
 from launchway.api_client import LaunchwayAPIError
 from launchway.cli.utils import Colors
 
 logger = logging.getLogger(__name__)
-
-try:
-    from Agents.resume_tailoring_agent import tailor_resume_and_return_url
-    _TAILORING_AVAILABLE = True
-except Exception as e:
-    logger.warning(f"Resume tailoring not available: {e}")
-    _TAILORING_AVAILABLE = False
 
 
 class TailoringMixin:
@@ -38,7 +32,7 @@ class TailoringMixin:
             return False
         return True
 
-    def ensure_mimikree_connected_for_tailoring(self) -> tuple[Optional[str], Optional[str]]:
+    def ensure_mimikree_connected_for_tailoring(self) -> tuple:
         """
         Ensure Mimikree credentials are available for local resume tailoring.
         Tries the API first; falls back to session-cached or manual entry.
@@ -47,11 +41,9 @@ class TailoringMixin:
             self.print_error("You must be logged in before using resume tailoring.")
             return None, None
 
-        # Session cache (avoids repeated API calls within one CLI session)
         if self._session_mimikree_email and self._session_mimikree_password:
             return self._session_mimikree_email, self._session_mimikree_password
 
-        # Try fetching stored credentials from the backend
         try:
             email, password = self.api.get_mimikree_credentials()
             if email and password:
@@ -63,7 +55,6 @@ class TailoringMixin:
             if e.status_code not in (404, 400):
                 logger.warning(f"Could not fetch Mimikree credentials: {e}")
 
-        # Not connected — offer to connect now
         self.print_warning("Mimikree is not connected.")
         self.print_info("You need to connect your Mimikree account before resume tailoring can start.")
         if self.get_input("Connect Mimikree now? (y/n): ").strip().lower() != 'y':
@@ -85,7 +76,6 @@ class TailoringMixin:
                 result = self.api.connect_mimikree(email, password)
                 if result.get('success'):
                     self.print_success("Mimikree connected successfully.")
-                    # Try to get stored (decrypted) credentials from API
                     try:
                         stored_email, stored_password = self.api.get_mimikree_credentials()
                         if stored_email and stored_password:
@@ -94,7 +84,6 @@ class TailoringMixin:
                             return stored_email, stored_password
                     except LaunchwayAPIError:
                         pass
-                    # Fallback: use what the user just entered
                     self._session_mimikree_email    = email
                     self._session_mimikree_password = password
                     return email, password
@@ -110,16 +99,10 @@ class TailoringMixin:
         self.clear_screen()
         self.print_header("RESUME TAILORING")
 
-        if not _TAILORING_AVAILABLE:
-            self.print_error("Resume tailoring feature is not available.")
-            self.print_info("Missing dependencies or configuration.")
+        if not self._ensure_agents_bootstrapped():
             self.pause()
             return
 
-        if not self._require_ai_engine():
-            return
-
-        # LaTeX mode is not available in production
         if self._is_latex_resume_mode():
             self.print_warning("LaTeX resume tailoring is not yet available in this version.")
             self.print_info("Please set your resume source to Google Docs in Profile Management.")
@@ -158,8 +141,14 @@ class TailoringMixin:
         company   = self.get_input("Company Name: ").strip() or "Company"
 
         try:
+            from Agents.resume_tailoring_agent import tailor_resume_and_return_url
+
             self.print_info("\nStarting resume tailoring... This may take 1-2 minutes")
-            user_full_name = f"{self.current_user.get('first_name','')}{self.current_user.get('last_name','')}"
+            user_full_name = (
+                f"{self.current_user.get('first_name','')} "
+                f"{self.current_user.get('last_name','')}".strip()
+                or "Resume"
+            )
 
             tailored_url = tailor_resume_and_return_url(
                 original_resume_url=resume_url,

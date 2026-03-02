@@ -1,21 +1,15 @@
-"""Batch / single auto-apply mixin — application recording via the Launchway API."""
+"""Batch / single auto-apply mixin — runs agents locally after bootstrap."""
 
 import asyncio
 import json
 import logging
 import os
 from datetime import datetime
+
 from launchway.api_client import LaunchwayAPIError
 from launchway.cli.utils import Colors
 
 logger = logging.getLogger(__name__)
-
-try:
-    from Agents.job_application_agent import RefactoredJobAgent
-    _JOB_APPLICATION_AVAILABLE = True
-except Exception as e:
-    logger.error(f"Job application agent not available: {e}", exc_info=True)
-    _JOB_APPLICATION_AVAILABLE = False
 
 
 class ApplyMixin:
@@ -24,13 +18,8 @@ class ApplyMixin:
         self.clear_screen()
         self.print_header("AUTO APPLY TO JOB(S)")
 
-        if not _JOB_APPLICATION_AVAILABLE:
-            self.print_error("Auto-apply feature is not available.")
-            self.print_info("Missing dependencies or configuration.")
+        if not self._ensure_agents_bootstrapped():
             self.pause()
-            return
-
-        if not self._require_ai_engine():
             return
 
         if not self._ensure_resume_ready_for_auto_apply():
@@ -101,6 +90,8 @@ class ApplyMixin:
         await self.auto_apply_batch(job_urls, tailor_settings, headless)
 
     async def auto_apply_batch(self, job_urls: list, tailor_settings: list, headless: bool = False):
+        from Agents.job_application_agent import RefactoredJobAgent
+
         total_jobs       = len(job_urls)
         successful_apps  = []
         failed_apps      = []
@@ -266,14 +257,15 @@ class ApplyMixin:
         self.pause()
 
     async def auto_apply_single(self, job_url: str):
-        if not _JOB_APPLICATION_AVAILABLE:
-            self.print_error("Auto-apply feature is not available.")
+        if not self._ensure_agents_bootstrapped():
             self.pause()
             return
 
         if not self._ensure_resume_ready_for_auto_apply():
             self.pause()
             return
+
+        from Agents.job_application_agent import RefactoredJobAgent
 
         headless = self.get_input("Run in headless mode? (y/n, default: n): ").strip().lower() == 'y'
         tailor   = self.get_input("Tailor resume for this job? (y/n, default: n): ").strip().lower() == 'y'
@@ -335,6 +327,74 @@ class ApplyMixin:
             self.print_error(f"Auto apply failed: {str(e)}")
             logger.error(f"Auto apply error: {e}", exc_info=True)
             self.pause()
+
+    async def _open_incomplete_applications(self, report_filename: str):
+        from Agents.persistent_browser_manager import PersistentBrowserManager
+        import os
+
+        try:
+            self.print_info(f"\n📖 Reading progress report: {report_filename}")
+            if not os.path.exists(report_filename):
+                self.print_error(f"Progress report not found: {report_filename}")
+                return
+
+            with open(report_filename, 'r') as f:
+                report_data = json.load(f)
+
+            incomplete_apps = [
+                job for job in report_data.get('applications', [])
+                if not job.get('submitted', False)
+            ]
+
+            if not incomplete_apps:
+                self.print_success("All applications were submitted successfully!")
+                return
+
+            self.print_info(f"\n✓ Found {len(incomplete_apps)} incomplete application(s)")
+            for i, app in enumerate(incomplete_apps, 1):
+                print(f"\n{i}. {app.get('job_title','Unknown')} at {app.get('company','Unknown')}")
+                print(f"   URL: {str(app.get('job_url','N/A'))[:70]}...")
+
+            if self.get_input(f"\nOpen all {len(incomplete_apps)} application(s) in browser? (y/n): ").strip().lower() != 'y':
+                self.print_info("Cancelled.")
+                return
+
+            manager      = PersistentBrowserManager()
+            profile_path = manager.get_profile_path(str(self.current_user['id']))
+
+            from playwright.async_api import async_playwright
+            async with async_playwright() as playwright:
+                context = await manager.launch_persistent_browser(
+                    user_id=str(self.current_user['id']),
+                    headless=False,
+                )
+
+                pages = []
+                for i, app in enumerate(incomplete_apps, 1):
+                    job_url = app.get('job_url')
+                    if not job_url:
+                        continue
+                    try:
+                        page = await context.new_page()
+                        await page.goto(job_url, timeout=30000, wait_until='domcontentloaded')
+                        pages.append(page)
+                        self.print_success(f"  ✓ Tab {i}: {str(app.get('job_title','Unknown'))[:50]}")
+                        await asyncio.sleep(1)
+                    except Exception as e:
+                        self.print_warning(f"  ⚠ Tab {i} failed: {str(e)}")
+
+                self.print_success(f"✓ Opened {len(pages)} application(s) in browser tabs")
+                self.print_info("\nComplete and submit each application, then press Enter here.")
+                input()
+
+                try:
+                    await context.close()
+                except Exception:
+                    pass
+
+        except Exception as e:
+            self.print_error(f"Failed to open incomplete applications: {str(e)}")
+            logger.error(f"Open incomplete applications error: {e}", exc_info=True)
 
     def record_application(self, job_url: str, company: str = "Unknown Company",
                            title: str = "Unknown Position"):

@@ -1,33 +1,22 @@
-"""Job search mixin."""
+"""Job search mixin — runs locally after agent bootstrap."""
 
 import asyncio
 import json
 import logging
 import sys
 from datetime import datetime
+
 from launchway.cli.utils import Colors
 
 logger = logging.getLogger(__name__)
-
-try:
-    from Agents.multi_source_job_discovery_agent import MultiSourceJobDiscoveryAgent
-    _JOB_DISCOVERY_AVAILABLE = True
-except Exception as e:
-    logger.warning(f"Job discovery not available: {e}")
-    _JOB_DISCOVERY_AVAILABLE = False
 
 
 class JobSearchMixin:
 
     def _ensure_resume_keywords(self) -> bool:
-        """
-        Check whether the current profile has Gemini-extracted resume keywords.
-        If not, offer to extract them now (improves job relevance matching).
-        Returns True to proceed, False to abort (user opted out or extraction failed).
-        """
         rk = (self.current_profile or {}).get("resume_keywords") or {}
         if rk and (rk.get("skills") or rk.get("domains")):
-            return True  # already extracted — nothing to do
+            return True
 
         print(
             f"\n{Colors.WARNING}Tip:{Colors.ENDC} Your profile doesn't have Gemini-extracted "
@@ -36,16 +25,15 @@ class JobSearchMixin:
         )
         ans = self.get_input("  Extract keywords from your resume now? (y/n, default: y): ").strip().lower()
         if ans == 'n':
-            return True  # user skipped — still proceed with search
+            return True
 
-        # Check resume URL
         resume_url = (self.current_profile or {}).get("resume_url", "")
         if not resume_url:
             self.print_warning(
                 "No resume URL saved in your profile. "
                 "Add it under Profile > Resume URL first."
             )
-            return True  # proceed without keywords
+            return True
 
         sys.stdout.write(f"\n  {Colors.OKCYAN}Extracting keywords from your resume...{Colors.ENDC} ")
         sys.stdout.flush()
@@ -73,13 +61,8 @@ class JobSearchMixin:
         self.clear_screen()
         self.print_header("JOB SEARCH")
 
-        if not _JOB_DISCOVERY_AVAILABLE:
-            self.print_error("Job search feature is not available.")
-            self.print_info("Missing dependencies or configuration.")
+        if not self._ensure_agents_bootstrapped():
             self.pause()
-            return
-
-        if not self._require_ai_engine():
             return
 
         self._ensure_resume_keywords()
@@ -111,6 +94,8 @@ class JobSearchMixin:
             max_results = 20
 
         try:
+            from Agents.multi_source_job_discovery_agent import MultiSourceJobDiscoveryAgent
+
             self.print_info("\nSearching for jobs... This may take a moment")
             agent = MultiSourceJobDiscoveryAgent(
                 user_id=str(self.current_user['id']),

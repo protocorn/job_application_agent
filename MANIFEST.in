@@ -1,0 +1,46 @@
+# Include essential project files
+include README.md
+include LICENSE
+include pyproject.toml
+
+# Include encrypted agent blobs (the Agents/ source is NOT included — only the .enc files)
+recursive-include launchway/encrypted_agents *.enc
+
+# Exclude all runtime-generated directories from source distributions
+prune Agents/browser_profiles
+prune Agents/hidden_browsers
+prune Agents/logs
+prune Agents/sessions
+prune Agents/__pycache__
+prune Agents/components/__pycache__
+prune Agents/components/brains/__pycache__
+prune Agents/components/detectors/__pycache__
+prune Agents/components/executors/__pycache__
+prune Agents/components/router/__pycache__
+prune Agents/components/state/__pycache__
+prune Agents/components/utils/__pycache__
+
+# Exclude server and website code
+prune server
+prune Website
+prune Testing
+prune tests
+prune migrations
+prune browser_profiles
+
+# Exclude credentials and secrets — NEVER ship these
+exclude Agents/token.json
+global-exclude token.json
+global-exclude credentials.json
+global-exclude *_credentials.json
+global-exclude *_token.json
+
+# Exclude development/environment files
+exclude .env
+exclude .env.*
+exclude *.pyc
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude .DS_Store
+global-exclude *.pma
+global-exclude batch_progress_*.json

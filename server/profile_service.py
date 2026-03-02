@@ -249,7 +249,8 @@ class ProfileService:
             profile_data.update({
                 'first name': user.first_name,
                 'last name': user.last_name,
-                'email': user.email
+                'email': user.email,
+                'pending_email': user.pending_email or None
             })
 
             return {

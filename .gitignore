@@ -2,6 +2,10 @@
 # SECURITY: SENSITIVE DATA - NEVER COMMIT
 # ============================================================
 
+# AES encryption key for the agents bundle (developer machine only)
+# Set AGENT_RUNTIME_KEY on Railway instead — never commit this file
+.agent_build_key
+
 # Environment variables (CRITICAL - Contains API keys, passwords)
 .env
 .env.*

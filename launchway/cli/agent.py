@@ -12,12 +12,12 @@ import os
 import sys
 from typing import Any, Dict, Optional
 
-# Ensure repo root and Agents/ are importable regardless of CWD
+# When running from source (dev mode), add the repo root so Agents/ is importable.
+# When installed as a package, agent_bootstrap.py handles sys.path injection
+# by decrypting encrypted_agents/ to a temp dir at runtime.
 _PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_AGENTS_DIR  = os.path.join(_PACKAGE_DIR, 'Agents')
-for _p in (_PACKAGE_DIR, _AGENTS_DIR):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+if _PACKAGE_DIR not in sys.path:
+    sys.path.insert(0, _PACKAGE_DIR)
 
 from launchway.api_client           import LaunchwayClient
 from launchway.cli.utils            import Colors, PrintMixin
@@ -66,6 +66,55 @@ class CLIJobAgent(
         # Flags for incomplete-application handling
         self._should_open_incomplete: bool  = False
         self._incomplete_report_file: Optional[str] = None
+
+        # Set to True once agent_bootstrap has decrypted agents into sys.path
+        self._agents_bootstrapped: bool = False
+
+    # ------------------------------------------------------------------
+    # Agent bootstrap
+    # ------------------------------------------------------------------
+
+    def _ensure_agents_bootstrapped(self) -> bool:
+        """
+        Decrypt the encrypted Agents package into a session temp dir and inject
+        it into sys.path.  Must be called (and return True) before any mixin
+        method that does `from Agents.xxx import yyy`.
+
+        Safe to call multiple times — the heavy work only runs once per process.
+        Returns True when agents are ready, False on any failure.
+        """
+        if self._agents_bootstrapped:
+            return True
+
+        if not self.current_user:
+            self.print_error("You must be logged in to use this feature.")
+            return False
+
+        # Fast path: already bootstrapped by a previous call in this process
+        from launchway.agent_bootstrap import is_bootstrapped, bootstrap_agents
+        if is_bootstrapped():
+            self._agents_bootstrapped = True
+            return True
+
+        self.print_info("🔐 Loading automation engine (one moment)...")
+        try:
+            ok = bootstrap_agents(self.api)
+            if ok:
+                self._agents_bootstrapped = True
+                self.print_success("✓ Automation engine ready")
+                return True
+            else:
+                self.print_error(
+                    "Failed to load automation engine.\n"
+                    "  • Make sure you are connected to the internet.\n"
+                    "  • Try logging out and back in (re-fetches the key).\n"
+                    "  • Contact support if the problem persists."
+                )
+                return False
+        except Exception as e:
+            self.print_error(f"Bootstrap error: {e}")
+            logger.error(f"Agent bootstrap error: {e}", exc_info=True)
+            return False
 
     # ------------------------------------------------------------------
     # Main menu
@@ -133,6 +182,16 @@ class CLIJobAgent(
 
 def main():
     """Package entry point — invoked by `launchway` command."""
+    # Handle --version / -V before any heavyweight setup
+    if len(sys.argv) > 1 and sys.argv[1] in ('--version', '-V'):
+        try:
+            from importlib.metadata import version
+            ver = version('launchway')
+        except Exception:
+            ver = '0.1.0'
+        print(f"Launchway v{ver}")
+        sys.exit(0)
+
     # 1. Load .env (from ~/.launchway/.env or cwd/.env)
     from launchway.config import ensure_env_loaded, run_first_time_setup
     ensure_env_loaded()

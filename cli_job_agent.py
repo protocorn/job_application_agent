@@ -1473,6 +1473,13 @@ class CLIJobAgent:
 
                         # Process the job application
                         await agent.process_link(job_url)
+
+                        # Enrich job_result with extracted company/title from URL
+                        extracted_company, extracted_title = self._extract_job_info_from_url(job_url)
+                        if job_result['company'] in ('Unknown', 'Unknown Company'):
+                            job_result['company'] = extracted_company
+                        if job_result['job_title'] in (f'Job #{idx}', 'Unknown Position'):
+                            job_result['job_title'] = extracted_title
                         
                         # Display tailored resume download if tailoring was enabled
                         if tailor:
@@ -1520,7 +1527,7 @@ class CLIJobAgent:
                         # Determine if truly successful
                         if job_result['fields_filled'] > 0 and job_result['submitted']:
                             job_result['success'] = True
-                            self.record_application(job_url)
+                            self.record_application(job_url, company=job_result.get('company'), title=job_result.get('job_title'))
                             successful_applications.append({
                                 'number': idx,
                                 'url': job_url,
@@ -1711,13 +1718,84 @@ class CLIJobAgent:
             logger.error(f"Auto apply error: {e}", exc_info=True)
             self.pause()
     
-    def record_application(self, job_url: str):
+    def _extract_job_info_from_url(self, url: str):
+        """Extract company and job title from common job board URL patterns."""
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            hostname = parsed.hostname or ''
+            path_parts = [p for p in parsed.path.strip('/').split('/') if p]
+
+            company = None
+            title = None
+
+            # Greenhouse: boards.greenhouse.io/<company>/jobs/<id>
+            #             greenhouse.io/<company>/jobs/<id>
+            if 'greenhouse.io' in hostname:
+                if path_parts:
+                    company = path_parts[0].replace('-', ' ').replace('_', ' ').title()
+
+            # Lever: jobs.lever.co/<company>/<job-id>
+            elif 'lever.co' in hostname:
+                if path_parts:
+                    company = path_parts[0].replace('-', ' ').replace('_', ' ').title()
+
+            # Ashby: jobs.ashbyhq.com/<company>/<job-id>
+            elif 'ashbyhq.com' in hostname:
+                if path_parts:
+                    company = path_parts[0].replace('-', ' ').replace('_', ' ').title()
+
+            # SmartRecruiters: careers.smartrecruiters.com/<company>/<job-id>
+            elif 'smartrecruiters.com' in hostname:
+                if path_parts:
+                    company = path_parts[0].replace('-', ' ').replace('_', ' ').title()
+
+            # Workable: apply.workable.com/j/<company-slug>
+            elif 'workable.com' in hostname:
+                if len(path_parts) >= 2 and path_parts[0] == 'j':
+                    company = path_parts[1].replace('-', ' ').replace('_', ' ').title()
+                elif path_parts:
+                    company = path_parts[0].replace('-', ' ').replace('_', ' ').title()
+
+            # LinkedIn: linkedin.com/jobs/view/<slug-id>
+            elif 'linkedin.com' in hostname:
+                # Slug is like "software-engineer-at-company-12345"
+                if len(path_parts) >= 3 and path_parts[0] == 'jobs' and path_parts[1] == 'view':
+                    slug = path_parts[2]
+                    # Remove trailing numeric ID
+                    slug = re.sub(r'-?\d+$', '', slug).strip('-')
+                    at_idx = slug.rfind('-at-')
+                    if at_idx != -1:
+                        title = slug[:at_idx].replace('-', ' ').title()
+                        company = slug[at_idx + 4:].replace('-', ' ').title()
+                    else:
+                        title = slug.replace('-', ' ').title()
+
+            # Indeed: indeed.com/viewjob?jk=... or indeed.com/jobs/...
+            elif 'indeed.com' in hostname:
+                pass  # No reliable company/title from URL alone
+
+            # Fallback: use cleaned-up hostname as company hint
+            if not company:
+                # Strip common prefixes and TLD
+                host_clean = re.sub(r'^(www|jobs|careers|apply|boards)\.',  '', hostname)
+                host_clean = re.sub(r'\.(com|io|co|net|org|careers)$', '', host_clean)
+                if host_clean and host_clean not in ('greenhouse', 'lever', 'workday', 'taleo', 'icims'):
+                    company = host_clean.replace('-', ' ').replace('_', ' ').title()
+
+            return (company or 'Unknown Company', title or 'Unknown Position')
+
+        except Exception:
+            return ('Unknown Company', 'Unknown Position')
+
+    def record_application(self, job_url: str, company: str = None, title: str = None):
         """Record job application in database"""
         try:
-            # Extract company and title from URL (basic implementation)
-            company = "Unknown Company"
-            title = "Unknown Position"
-            
+            if not company or not title:
+                extracted_company, extracted_title = self._extract_job_info_from_url(job_url)
+                company = company or extracted_company
+                title = title or extracted_title
+
             application = JobApplication(
                 user_id=self.current_user.id,
                 job_id=f"cli_{datetime.now().timestamp()}",
@@ -2715,7 +2793,7 @@ class CLIJobAgent:
             if job_result['fields_filled'] > 0 and job_result['submitted']:
                 job_result['success'] = True
                 automation_state['applications_submitted'] += 1
-                self.record_application(job_url)
+                self.record_application(job_url, company=company, title=job_title)
                 self.print_success(f"✓ Application submitted! ({job_result['fields_filled']} fields filled)")
             else:
                 # Application incomplete - didn't submit
