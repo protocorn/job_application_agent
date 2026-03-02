@@ -38,17 +38,30 @@ _PRODUCTION_DEFAULTS = {
 
 
 def _apply_env_defaults():
-    """Set production defaults for any env vars not already configured by the user."""
+    """
+    Set production defaults and restore server-provided keys on every bootstrap.
+    Called on both cache-hit and cache-miss runs so env vars are always present.
+    """
+    # Static production defaults (e.g. Mimikree URL)
     for key, default_value in _PRODUCTION_DEFAULTS.items():
         if not os.getenv(key):
             os.environ[key] = default_value
 
+    # Gemini key — user's own key takes priority; fall back to the server-provided
+    # key that was cached the last time a full bundle fetch was performed.
+    if not os.getenv("GOOGLE_API_KEY"):
+        cached = _load_cached_gemini_key()
+        if cached:
+            os.environ["GOOGLE_API_KEY"] = cached
+            logger.debug("Restored GOOGLE_API_KEY from local cache")
+
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-_KEY_CACHE_PATH  = Path.home() / ".launchway" / ".rkey"
-_KEY_MAX_AGE_SEC = 24 * 3600   # refresh key every 24 hours
-_ENC_ROOT        = Path(__file__).parent / "encrypted_agents"
+_KEY_CACHE_PATH     = Path.home() / ".launchway" / ".rkey"
+_GEMINI_KEY_CACHE   = Path.home() / ".launchway" / ".gemini_key"
+_KEY_MAX_AGE_SEC    = 24 * 3600   # refresh key every 24 hours
+_ENC_ROOT           = Path(__file__).parent / "encrypted_agents"
 
 # Module-level state (set once per process)
 _bootstrap_done: bool = False
@@ -71,10 +84,27 @@ def _load_cached_key() -> Optional[bytes]:
 def _save_key(key_bytes: bytes) -> None:
     _KEY_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     _KEY_CACHE_PATH.write_bytes(key_bytes)
-    # Restrict read access to the current user only (best-effort on Windows)
     try:
         import stat
         _KEY_CACHE_PATH.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    except Exception:
+        pass
+
+
+def _load_cached_gemini_key() -> Optional[str]:
+    """Return the server-provided Gemini key cached from the last bundle fetch."""
+    if not _GEMINI_KEY_CACHE.exists():
+        return None
+    val = _GEMINI_KEY_CACHE.read_text(encoding="utf-8").strip()
+    return val if val else None
+
+
+def _save_gemini_key(key: str) -> None:
+    _GEMINI_KEY_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    _GEMINI_KEY_CACHE.write_text(key, encoding="utf-8")
+    try:
+        import stat
+        _GEMINI_KEY_CACHE.chmod(stat.S_IRUSR | stat.S_IWUSR)
     except Exception:
         pass
 
@@ -122,9 +152,11 @@ def bootstrap_agents(api_client) -> bool:
             if isinstance(bundle, dict):
                 # Gemini API key — needed by systematic_tailoring_complete.py
                 gemini_key = bundle.get("gemini_key", "")
-                if gemini_key and not os.getenv("GOOGLE_API_KEY"):
-                    os.environ["GOOGLE_API_KEY"] = gemini_key
-                    logger.debug("Set GOOGLE_API_KEY from server bundle (Launchway AI)")
+                if gemini_key:
+                    _save_gemini_key(gemini_key)   # persist for future cache-hit runs
+                    if not os.getenv("GOOGLE_API_KEY"):
+                        os.environ["GOOGLE_API_KEY"] = gemini_key
+                        logger.debug("Set GOOGLE_API_KEY from server bundle (Launchway AI)")
 
                 # Mimikree production URL — overrides localhost default in agent code
                 mimikree_url = bundle.get("mimikree_url", "")
