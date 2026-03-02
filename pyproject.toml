@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name        = "launchway"
-version     = "0.1.2"
+version     = "0.1.7"
 description = "AI-powered job application automation — tailor resumes, find jobs, apply autonomously."
 readme      = "README.md"
 requires-python = ">=3.11"
@@ -63,7 +63,7 @@ dependencies = [
     # Job scraping / parsing
     "beautifulsoup4>=4.12.0",
     "lxml>=4.9.0",
-    "jobspy>=1.1.78",
+    "jobspy>=0.25.0",
 
     # Data processing
     "pandas>=2.1.0",
@@ -138,7 +138,8 @@ exclude = ["server*", "Website*", "tests*", "Testing*", "Agents*"]
 "launchway" = [
     "*.yaml",
     "*.txt",
-    "encrypted_agents/**/*.enc",   # encrypted agent blobs — decrypted at runtime
+    "encrypted_agents/**/*.enc",    # encrypted agent blobs — decrypted at runtime
+    "encrypted_support/*.enc",      # encrypted support files (credentials.json, etc.)
 ]
 
 [tool.setuptools.exclude-package-data]

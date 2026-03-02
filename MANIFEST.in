@@ -6,6 +6,9 @@ include pyproject.toml
 # Include encrypted agent blobs (the Agents/ source is NOT included — only the .enc files)
 recursive-include launchway/encrypted_agents *.enc
 
+# Include encrypted support files (credentials.json etc. — encrypted with the same key)
+recursive-include launchway/encrypted_support *.enc
+
 # Exclude all runtime-generated directories from source distributions
 prune Agents/browser_profiles
 prune Agents/hidden_browsers

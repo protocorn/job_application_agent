@@ -96,7 +96,34 @@ for py_file in py_files:
     print(f"  [OK] {rel}")
 
 print()
-print(f"[DONE] Encrypted {count} files -> {OUT_DIR.relative_to(REPO_ROOT)}/")
+print(f"[DONE] Encrypted {count} agent files -> {OUT_DIR.relative_to(REPO_ROOT)}/")
+
+# ── Encrypt support files (credentials.json, etc.) ──────────────────────────
+
+SUPPORT_FILES = [
+    "credentials.json",   # Google OAuth client secrets (required for Docs/Drive)
+]
+SUPPORT_OUT_DIR = REPO_ROOT / "launchway" / "encrypted_support"
+
+if SUPPORT_OUT_DIR.exists():
+    shutil.rmtree(SUPPORT_OUT_DIR)
+SUPPORT_OUT_DIR.mkdir(parents=True)
+
+support_count = 0
+print()
+print("Encrypting support files:")
+for filename in SUPPORT_FILES:
+    src = REPO_ROOT / filename
+    if src.exists():
+        out = SUPPORT_OUT_DIR / (filename + ".enc")
+        out.write_bytes(f.encrypt(src.read_bytes()))
+        support_count += 1
+        print(f"  [OK] {filename}")
+    else:
+        print(f"  [SKIP] {filename} (not found at {src})")
+
+print()
+print(f"[DONE] Encrypted {support_count} support file(s) -> {SUPPORT_OUT_DIR.relative_to(REPO_ROOT)}/")
 print()
 print("Next steps:")
 print("  1. Set AGENT_RUNTIME_KEY on Railway (printed above)")

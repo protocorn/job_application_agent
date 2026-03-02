@@ -1,14 +1,13 @@
 """
 Configuration management for Launchway CLI.
 
-End-user config story:
-  - No DATABASE_URL needed. All data goes through the Launchway Railway backend.
-  - Users only need a Gemini API key for the local AI features (job ranking, etc.).
-  - LAUNCHWAY_BACKEND_URL defaults to the production Railway deployment.
+AI provider story:
+  - "launchway"  (default): no API key needed; uses Launchway's built-in AI
+  - "custom":               user supplies their own GOOGLE_API_KEY
 
 .env resolution order:
   1. CWD/.env
-  2. ~/.launchway/.env   (user-specific, written by first-run wizard)
+  2. ~/.launchway/.env   (written by first-run wizard)
   3. repo root .env      (developer mode)
 """
 
@@ -18,7 +17,6 @@ from pathlib import Path
 _USER_CONFIG_DIR = Path.home() / ".launchway"
 _USER_ENV_FILE   = _USER_CONFIG_DIR / ".env"
 
-# Repo root = two levels up from this file (launchway/config.py -> launchway/ -> repo root)
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _REPO_ENV  = _REPO_ROOT / ".env"
 
@@ -43,97 +41,40 @@ def ensure_env_loaded():
         if env_file:
             load_dotenv(env_file, override=False)
     except ImportError:
-        pass  # python-dotenv not installed — rely on system env vars
+        pass
 
 
-def _required_vars() -> list[dict]:
+def _setup_already_done() -> bool:
     """
-    Configuration values requested from the user on first run.
-
-    DATABASE_URL is intentionally excluded — all data access goes
-    through the Launchway API, not a direct database connection.
+    True if the user has already made an AI provider choice.
+    We treat having either AI_PROVIDER or GOOGLE_API_KEY set as 'done'.
     """
-    return [
-        {
-            "key":         "GOOGLE_API_KEY",
-            "description": "Gemini AI API key (from Google AI Studio — aistudio.google.com)",
-            "example":     "AIzaSy...",
-            "secret":      True,
-        },
-    ]
+    return bool(os.getenv("AI_PROVIDER") or os.getenv("GOOGLE_API_KEY"))
 
 
-def run_first_time_setup():
-    """
-    Interactive wizard that collects required configuration and writes
-    it to ~/.launchway/.env.  Skipped if all required vars are already set.
-    """
-    ensure_env_loaded()
-
-    missing = [
-        v for v in _required_vars()
-        if not v.get("optional") and not os.getenv(v["key"])
-    ]
-
-    if not missing:
-        return
-
+def _append_to_user_env(entries: dict[str, str]):
+    """Write key=value pairs to ~/.launchway/.env, preserving existing content."""
     _USER_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
-    print("\n" + "=" * 60)
-    print("  LAUNCHWAY — FIRST-TIME SETUP")
-    print("=" * 60)
-    print("\nA few configuration values are missing.")
-    print(f"Your settings will be saved to: {_USER_ENV_FILE}\n")
-
-    collected: dict[str, str] = {}
-
-    import getpass
-
-    for spec in missing:
-        key         = spec["key"]
-        description = spec["description"]
-        example     = spec.get("example", "")
-
-        print(f"\n{key}")
-        print(f"  {description}")
-        if example:
-            print(f"  Example: {example}")
-
-        while True:
-            if spec.get("secret"):
-                value = getpass.getpass("  Enter value: ").strip()
-            else:
-                value = input("  Enter value: ").strip()
-
-            if value:
-                break
-
-            print("  [!] Value is required — please enter it.")
-
-        collected[key] = value
-
-    # Preserve existing keys; only append new ones
     existing_lines: list[str] = []
     if _USER_ENV_FILE.exists():
         existing_lines = _USER_ENV_FILE.read_text(encoding="utf-8").splitlines()
 
-    existing_keys = set()
+    existing_keys: set[str] = set()
     for line in existing_lines:
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            existing_keys.add(line.split("=", 1)[0].strip())
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            existing_keys.add(stripped.split("=", 1)[0].strip())
 
     new_lines = list(existing_lines)
     if new_lines and new_lines[-1] != "":
         new_lines.append("")
 
-    for key, value in collected.items():
+    for key, value in entries.items():
         if key not in existing_keys:
             new_lines.append(f'{key}="{value}"')
 
     _USER_ENV_FILE.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
-    print(f"\n[OK] Configuration saved to {_USER_ENV_FILE}")
 
     try:
         from dotenv import load_dotenv
@@ -141,14 +82,83 @@ def run_first_time_setup():
     except ImportError:
         pass
 
+
+def run_first_time_setup():
+    """
+    Optional first-run wizard.  Lets users choose their AI provider (or skip).
+    Skipped silently if a choice was already saved.
+    """
+    ensure_env_loaded()
+
+    if _setup_already_done():
+        return
+
+    print("\n" + "=" * 60)
+    print("  LAUNCHWAY — FIRST-TIME SETUP")
+    print("=" * 60)
+    print("""
+Welcome to Launchway!
+
+Launchway uses AI to match jobs to your profile and fill
+application forms. Choose how you want to power AI features:
+
+  1. Use Launchway AI  (recommended — no API key needed)
+     Works out of the box. Best choice for most users.
+
+  2. Use my own Gemini API key
+     Get a free key at aistudio.google.com
+     Good for power users or very heavy usage.
+
+  3. Skip for now — decide later
+     You can always change this from the Settings menu.
+""")
+
+    choice = input("  Your choice [1/2/3, default: 1]: ").strip() or "1"
+
+    if choice == "2":
+        # ── Custom Gemini key ────────────────────────────────────────────────
+        import getpass
+        print()
+        print("  Enter your Gemini API key.")
+        print("  Get one free at: https://aistudio.google.com")
+        print("  (Press Enter to skip and use Launchway AI instead.)\n")
+
+        api_key = getpass.getpass("  Gemini API Key: ").strip()
+
+        if api_key:
+            _append_to_user_env({"GOOGLE_API_KEY": api_key, "AI_PROVIDER": "custom"})
+            print("\n  [OK] Custom Gemini key saved.")
+            print(f"  Config file: {_USER_ENV_FILE}")
+        else:
+            # User pressed Enter — treat as "use Launchway AI"
+            _append_to_user_env({"AI_PROVIDER": "launchway"})
+            print("\n  No key entered — Launchway AI will be used.")
+
+    elif choice == "3":
+        # ── Skip entirely — do not write anything ────────────────────────────
+        print()
+        print("  [OK] Setup skipped.")
+        print("  You can configure your AI provider anytime from:")
+        print("    launchway  →  Settings  →  AI Provider")
+        # Mark as done so the wizard does not repeat on next launch
+        _append_to_user_env({"AI_PROVIDER": "launchway"})
+
+    else:
+        # ── Default: Launchway AI ────────────────────────────────────────────
+        _append_to_user_env({"AI_PROVIDER": "launchway"})
+        print()
+        print("  [OK] Launchway AI selected — no API key needed.")
+
     print("\nSetup complete! Starting Launchway...\n")
 
 
 def get_config() -> dict:
     """Return a snapshot of the active configuration (safe to log)."""
     ensure_env_loaded()
+    provider = os.getenv("AI_PROVIDER", "launchway" if not os.getenv("GOOGLE_API_KEY") else "custom")
     return {
-        "GOOGLE_API_KEY":        bool(os.getenv("GOOGLE_API_KEY")),
+        "AI_PROVIDER":          provider,
+        "GOOGLE_API_KEY":       bool(os.getenv("GOOGLE_API_KEY")),
         "LAUNCHWAY_BACKEND_URL": os.getenv(
             "LAUNCHWAY_BACKEND_URL",
             "https://jobapplicationagent-production.up.railway.app",

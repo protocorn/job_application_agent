@@ -130,13 +130,73 @@ def bootstrap_agents(api_client) -> bool:
         logger.error(f"Decryption error: {e}")
         return False
 
-    # ── 4. Inject into sys.path ───────────────────────────────────────────────
+    # ── 4. Decrypt support files (credentials.json, etc.) ───────────────────
+    # These go to tmp_dir/ (the "project_root" the agents expect)
+
+    support_root = Path(__file__).parent / "encrypted_support"
+    if support_root.exists():
+        for enc_file in support_root.glob("*.enc"):
+            # e.g. credentials.json.enc -> tmp_dir/credentials.json
+            out_name = enc_file.stem          # strips last suffix (.enc)
+            out_file = tmp_dir / out_name
+            try:
+                out_file.write_bytes(f.decrypt(enc_file.read_bytes()))
+                logger.debug(f"Decrypted support file: {out_name}")
+            except Exception as e:
+                logger.warning(f"Could not decrypt support file {enc_file.name}: {e}")
+
+    # ── 5. Seed token.json from persistent store ──────────────────────────────
+    # The agent reads/writes token.json at tmp_dir/token.json.
+    # We copy the persisted token from ~/.launchway/token.json so the user
+    # does not have to re-authenticate via browser on every launch.
+
+    _TOKEN_STORE = Path.home() / ".launchway" / "token.json"
+    _tmp_token   = tmp_dir / "token.json"
+
+    if _TOKEN_STORE.exists() and not _tmp_token.exists():
+        try:
+            shutil.copy2(_TOKEN_STORE, _tmp_token)
+            logger.debug("Copied token.json from ~/.launchway/")
+        except Exception as e:
+            logger.warning(f"Could not copy token.json: {e}")
+
+    # ── 6. Write stubs for repo-root utilities that agents import ────────────
+
+    _LOGGING_CONFIG_STUB = '''\
+import logging
+
+def setup_file_logging(log_level=logging.INFO, console_logging=False, **kwargs):
+    """Stub: file logging is handled by the CLI entry point."""
+    pass
+'''
+    stub = tmp_dir / "logging_config.py"
+    if not stub.exists():
+        stub.write_text(_LOGGING_CONFIG_STUB, encoding="utf-8")
+
+    # ── 7. Inject into sys.path ───────────────────────────────────────────────
 
     tmp_str = str(tmp_dir)
     if tmp_str not in sys.path:
         sys.path.insert(0, tmp_str)
 
-    # ── 5. Schedule cleanup on exit ──────────────────────────────────────────
+    # ── 8. Persist token.json back to ~/.launchway/ on exit ──────────────────
+    # The agent writes a new/refreshed token.json to tmp_dir after OAuth.
+    # We save it back so the next session doesn't need a browser login.
+
+    def _persist_token(tmp_path: str):
+        try:
+            src = Path(tmp_path) / "token.json"
+            if src.exists():
+                dst = Path.home() / ".launchway" / "token.json"
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
+                logger.debug("Persisted token.json to ~/.launchway/")
+        except Exception as e:
+            logger.warning(f"Could not persist token.json: {e}")
+
+    atexit.register(_persist_token, tmp_str)
+
+    # ── 9. Schedule temp dir cleanup on exit ─────────────────────────────────
 
     atexit.register(shutil.rmtree, tmp_dir, ignore_errors=True)
 
