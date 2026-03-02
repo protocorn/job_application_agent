@@ -18,6 +18,7 @@ automatically when the process exits.
 
 import atexit
 import logging
+import os
 import shutil
 import sys
 import tempfile
@@ -26,6 +27,22 @@ from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# ── Production env defaults (applied every bootstrap) ───────────────────────
+# These are safe defaults that should always be set for production use.
+# They can be overridden by the user's ~/.launchway/.env or system env vars.
+
+_PRODUCTION_DEFAULTS = {
+    "MIMIKREE_BASE_URL": "https://www.mimikree.com",
+}
+
+
+def _apply_env_defaults():
+    """Set production defaults for any env vars not already configured by the user."""
+    for key, default_value in _PRODUCTION_DEFAULTS.items():
+        if not os.getenv(key):
+            os.environ[key] = default_value
+
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -86,13 +103,35 @@ def bootstrap_agents(api_client) -> bool:
 
     key_bytes = _load_cached_key()
 
+    # Always inject production env vars that are env-dependent (not stored in key cache)
+    # We re-set them every bootstrap even on cache hit, because os.environ resets each process
+    _apply_env_defaults()
+
     if not key_bytes:
         logger.debug("Key cache miss — fetching from server")
         try:
-            key_b64 = api_client.get_agent_key()
+            bundle    = api_client.get_agent_key()   # returns dict with key + extras
+            key_b64   = bundle if isinstance(bundle, str) else bundle.get("key", "")
             key_bytes = key_b64.encode() if isinstance(key_b64, str) else key_b64
             _save_key(key_bytes)
             logger.debug("Runtime key fetched and cached")
+
+            # ── Inject service env vars from the bundle ──────────────────────
+            # Only set each var if the user hasn't already configured their own.
+
+            if isinstance(bundle, dict):
+                # Gemini API key — needed by systematic_tailoring_complete.py
+                gemini_key = bundle.get("gemini_key", "")
+                if gemini_key and not os.getenv("GOOGLE_API_KEY"):
+                    os.environ["GOOGLE_API_KEY"] = gemini_key
+                    logger.debug("Set GOOGLE_API_KEY from server bundle (Launchway AI)")
+
+                # Mimikree production URL — overrides localhost default in agent code
+                mimikree_url = bundle.get("mimikree_url", "")
+                if mimikree_url and not os.getenv("MIMIKREE_BASE_URL"):
+                    os.environ["MIMIKREE_BASE_URL"] = mimikree_url
+                    logger.debug(f"Set MIMIKREE_BASE_URL={mimikree_url}")
+
         except Exception as e:
             logger.error(f"Failed to fetch runtime key from server: {e}")
             return False
@@ -174,10 +213,15 @@ def setup_file_logging(log_level=logging.INFO, console_logging=False, **kwargs):
         stub.write_text(_LOGGING_CONFIG_STUB, encoding="utf-8")
 
     # ── 7. Inject into sys.path ───────────────────────────────────────────────
+    # Add BOTH tmp_dir and tmp_dir/Agents so that:
+    #   - "from Agents.xxx import yyy"  (called by CLI mixins) works via tmp_dir
+    #   - "from xxx import yyy"          (inter-agent imports)  works via tmp_dir/Agents
 
-    tmp_str = str(tmp_dir)
-    if tmp_str not in sys.path:
-        sys.path.insert(0, tmp_str)
+    tmp_str       = str(tmp_dir)
+    tmp_agents    = str(tmp_dir / "Agents")
+    for p in (tmp_agents, tmp_str):   # agents dir first so intra-agent imports win
+        if p not in sys.path:
+            sys.path.insert(0, p)
 
     # ── 8. Persist token.json back to ~/.launchway/ on exit ──────────────────
     # The agent writes a new/refreshed token.json to tmp_dir after OAuth.

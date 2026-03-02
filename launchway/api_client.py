@@ -257,13 +257,13 @@ class LaunchwayClient:
 
     # ── agent runtime key ───────────────────────────────────────────────────
 
-    def get_agent_key(self) -> str:
+    def get_agent_key(self) -> dict:
         """
-        Fetch the AES runtime key used to decrypt the local agent package.
-        Requires a valid auth token.  Returns the base64-encoded Fernet key.
+        Fetch the agent runtime bundle from the server.
+        Returns a dict with at minimum:
+          { "key": "<fernet key>", "gemini_key": "...", "mimikree_url": "..." }
         """
-        data = self._get("/api/cli/agent-key")
-        return data.get("key", "")
+        return self._get("/api/cli/agent-key")
 
     # ── job search (server-side) ─────────────────────────────────────────────
 

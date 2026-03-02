@@ -2912,12 +2912,23 @@ def cli_record_application():
 @app.route("/api/cli/agent-key", methods=['GET'])
 @require_auth
 def get_cli_agent_key():
-    """Return the AES runtime key for local agent decryption (authenticated CLI only)."""
+    """
+    Return the AES runtime key for local agent decryption (authenticated CLI only).
+    Also returns shared service credentials so agents work out-of-the-box for
+    users who chose "Launchway AI" (no personal API key).
+    """
     key = os.getenv("AGENT_RUNTIME_KEY")
     if not key:
         logging.error("AGENT_RUNTIME_KEY env var is not set on this server")
         return jsonify({"error": "Runtime key not configured on server"}), 500
-    return jsonify({"key": key}), 200
+
+    return jsonify({
+        "key":          key,
+        # Shared Gemini key — used when user has not set their own GOOGLE_API_KEY
+        "gemini_key":   os.getenv("GOOGLE_API_KEY", ""),
+        # Production Mimikree URL — overrides the localhost default in agent code
+        "mimikree_url": os.getenv("MIMIKREE_BASE_URL", "https://www.mimikree.com"),
+    }), 200
 
 
 @app.route("/api/cli/apply", methods=['POST'])
