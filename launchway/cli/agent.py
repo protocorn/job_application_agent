@@ -91,9 +91,14 @@ class CLIJobAgent(
             return False
 
         # Fast path: already bootstrapped by a previous call in this process
-        from launchway.agent_bootstrap import is_bootstrapped, bootstrap_agents
+        from launchway.agent_bootstrap import (
+            is_bootstrapped,
+            bootstrap_agents,
+            get_bootstrap_diagnostics,
+        )
         if is_bootstrapped():
             self._agents_bootstrapped = True
+            self._print_key_diagnostics(get_bootstrap_diagnostics())
             return True
 
         self.print_info("🔐 Loading automation engine (one moment)...")
@@ -102,6 +107,7 @@ class CLIJobAgent(
             if ok:
                 self._agents_bootstrapped = True
                 self.print_success("✓ Automation engine ready")
+                self._print_key_diagnostics(get_bootstrap_diagnostics())
                 return True
             else:
                 self.print_error(
@@ -115,6 +121,28 @@ class CLIJobAgent(
             self.print_error(f"Bootstrap error: {e}")
             logger.error(f"Agent bootstrap error: {e}", exc_info=True)
             return False
+
+    def _print_key_diagnostics(self, diag: Dict[str, Any]) -> None:
+        """
+        TEMP DEBUG: show key values in terminal to diagnose why Gemini is unavailable.
+        User explicitly requested full-value output for troubleshooting.
+        """
+        source = diag.get("source", "unknown")
+        bundle_key = diag.get("bundle_gemini_key", "")
+        effective_google = diag.get("effective_google_api_key", "")
+        effective_gemini = diag.get("effective_gemini_api_key", "")
+
+        self.print_warning("[DEBUG] Gemini key diagnostics (temporary)")
+        print(f"  source: {source}")
+        print(f"  bundle.gemini_key: {bundle_key!r}")
+        print(f"  env.GOOGLE_API_KEY: {effective_google!r}")
+        print(f"  env.GEMINI_API_KEY: {effective_gemini!r}")
+
+        if not (effective_google or effective_gemini):
+            self.print_error(
+                "[DEBUG] No effective Gemini key in runtime env. "
+                "Likely empty key from server or empty cache."
+            )
 
     # ------------------------------------------------------------------
     # Main menu
@@ -180,6 +208,149 @@ class CLIJobAgent(
             logger.error(f"Application error: {e}", exc_info=True)
 
 
+class _AgentProgressHandler(logging.Handler):
+    """
+    Translates verbose agent log messages into clean, user-friendly status lines.
+    Only high-level progress milestones are shown on the console; everything else
+    stays in the log file.
+    """
+
+    # Loggers we monitor for progress messages
+    _MONITORED = {
+        "Agents.job_application_agent",
+        "Agents.multi_source_job_discovery_agent",
+        "components.router.state_machine",
+        "components.executors.generic_form_filler_v2_enhanced",
+        "components.executors.field_interactor_v2",
+        "components.executors.account_creation_handler",
+    }
+
+    # (substring_to_match, friendly_message)
+    # friendly_message=None → use the cleaned original log text
+    # Order matters — first match wins
+    _RULES = [
+        # ── State machine transitions ─────────────────────────────────────
+        (">>> State: AI_GUIDED_NAVIGATION",     "  Navigating through pages..."),
+        (">>> State: ANALYZE_AND_FILL_FORM",    "  Analyzing form fields..."),
+        # ── Application start ──────────────────────────────────────────────
+        ("Detected application start page",    "  Found application start page"),
+        ("Clicking manual application",        "  Selecting 'Apply Manually'..."),
+        ("Clicking autofill",                  "  Selecting autofill option..."),
+        # ── Form filling ───────────────────────────────────────────────────
+        ("Starting enhanced form filling",     "  Filling application form..."),
+        ("Attempting resume upload",           "  Uploading resume..."),
+        ("resume upload field found on",       None),      # skip — too noisy
+        ("No resumme upload field",            None),      # skip (typo in agent)
+        ("Form filling completed",             None),      # show cleaned original
+        ("Form filled successfully",           None),      # show cleaned original
+        # ── Account creation ───────────────────────────────────────────────
+        ("Generating new credentials",         "  Creating account credentials..."),
+        ("Found existing credentials",         "  Using saved credentials for this site"),
+        ("Filling password field",             "  Filling password..."),
+        ("Filling confirm password",           "  Confirming password..."),
+        # ── Navigation buttons ─────────────────────────────────────────────
+        ("Clicking next",                      "  Clicking Next button..."),
+        ("Clicking submit",                    "  Clicking Submit button..."),
+        # ── State machine outcomes ─────────────────────────────────────────
+        ("Stagnation detected",                "  Page appears stuck — attempting recovery..."),
+        ("Loop detected",                      "  Loop detected — stopping this application"),
+        ("human_intervention",                 "  Browser kept open for your review"),
+        ("State machine finished",             None),      # show cleaned original
+        # ── Job search ─────────────────────────────────────────────────────
+        ("Searching JobSpy",                   "  Searching jobs across job boards..."),
+        ("Searching JSearch",                  "  Searching JSearch..."),
+        ("Found",                              None),      # e.g. "Found 7 jobs" — show as-is
+        ("Ranked",                             None),      # e.g. "Ranked 7 jobs with min_score=..."
+    ]
+
+    def __init__(self):
+        super().__init__()
+        self._last_displayed = None   # simple deduplication
+
+    def emit(self, record: logging.LogRecord):
+        if record.name not in self._MONITORED:
+            return
+        if record.levelno < logging.INFO:
+            return
+
+        raw = record.getMessage()
+
+        for search, display in self._RULES:
+            if search.lower() in raw.lower():
+                if display is None:
+                    # Clean up the original message: strip emoji-heavy prefixes,
+                    # newlines, and truncate long lines.
+                    text = raw.strip().split("\n")[0]
+                    # Strip leading special chars / emoji (keep first 90 chars)
+                    text = text.lstrip("🔍📝✅❌⚠️🤖➡️🎯🚀📄🔒🏁💬📤💾🔑")
+                    text = "  " + text.strip()[:90]
+                else:
+                    text = display
+
+                # Deduplicate consecutive identical messages
+                if text == self._last_displayed:
+                    return
+                self._last_displayed = text
+
+                from launchway.cli.utils import Colors
+                print(f"{Colors.OKCYAN}{text}{Colors.ENDC}", flush=True)
+                return
+
+
+def _configure_logging():
+    """
+    Send all logs to ~/.launchway/logs/launchway.log (full debug detail).
+    Console shows only: clean agent progress via _AgentProgressHandler, plus
+    ERROR+ from the launchway package itself.
+    """
+    from pathlib import Path
+    log_dir = Path.home() / ".launchway" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "launchway.log"
+
+    # Configure loguru first so 3rd-party/agent modules do not spam stderr.
+    try:
+        from loguru import logger as loguru_logger
+        loguru_logger.remove()
+        loguru_logger.add(
+            str(log_file),
+            level="DEBUG",
+            enqueue=False,
+            backtrace=False,
+            diagnose=False,
+        )
+    except Exception:
+        # loguru is optional in some environments
+        pass
+
+    # ── File handler: everything ──────────────────────────────────────────
+    file_handler = logging.FileHandler(log_file, encoding="utf-8", mode="a")
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(logging.Formatter(
+        "%(asctime)s | %(levelname)-8s | %(name)s:%(lineno)d - %(message)s"
+    ))
+
+    # ── Console handler: launchway errors only ────────────────────────────
+    error_handler = logging.StreamHandler(sys.stderr)
+    error_handler.setLevel(logging.ERROR)
+    error_handler.addFilter(lambda r: r.name.startswith("launchway"))
+
+    # ── Progress handler: friendly agent status lines ─────────────────────
+    progress_handler = _AgentProgressHandler()
+    progress_handler.setLevel(logging.INFO)
+
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+    root.handlers.clear()
+    root.addHandler(file_handler)
+    root.addHandler(error_handler)
+    root.addHandler(progress_handler)
+
+    # Suppress known chatty third-party loggers even in the log file
+    for noisy in ("httpx", "httpcore", "urllib3", "googleapiclient.discovery_cache"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
+
 def main():
     """Package entry point — invoked by `launchway` command."""
     # Handle --version / -V before any heavyweight setup
@@ -192,23 +363,19 @@ def main():
         print(f"Launchway v{ver}")
         sys.exit(0)
 
-    # 1. Load .env (from ~/.launchway/.env or cwd/.env)
+    # 1. Configure logging — all agent noise goes to file, terminal stays clean
+    _configure_logging()
+
+    # 2. Load .env (from ~/.launchway/.env or cwd/.env)
     from launchway.config import ensure_env_loaded, run_first_time_setup
     ensure_env_loaded()
 
-    # 2. First-run setup wizard (collects GOOGLE_API_KEY if missing)
+    # 3. First-run setup wizard (AI provider choice)
     run_first_time_setup()
 
-    # 3. Ensure Playwright browser binaries are installed
+    # 4. Ensure Playwright browser binaries are installed
     from launchway.postinstall import ensure_browsers
     ensure_browsers()
-
-    # 4. Start file logging
-    try:
-        from logging_config import setup_file_logging
-        setup_file_logging(log_level=logging.INFO, console_logging=False)
-    except ImportError:
-        logging.basicConfig(level=logging.INFO)
 
     cli = CLIJobAgent()
     cli.run()

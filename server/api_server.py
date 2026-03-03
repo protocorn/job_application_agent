@@ -2922,10 +2922,12 @@ def get_cli_agent_key():
         logging.error("AGENT_RUNTIME_KEY env var is not set on this server")
         return jsonify({"error": "Runtime key not configured on server"}), 500
 
+    gemini_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or ""
+
     return jsonify({
         "key":          key,
         # Shared Gemini key — used when user has not set their own GOOGLE_API_KEY
-        "gemini_key":   os.getenv("GOOGLE_API_KEY", ""),
+        "gemini_key":   gemini_key,
         # Production Mimikree URL — overrides the localhost default in agent code
         "mimikree_url": os.getenv("MIMIKREE_BASE_URL", "https://www.mimikree.com"),
     }), 200

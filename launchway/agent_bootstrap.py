@@ -37,6 +37,19 @@ _PRODUCTION_DEFAULTS = {
 }
 
 
+def _set_gemini_env(key_value: str) -> None:
+    """
+    Set both supported Gemini env var names unless the user explicitly set one.
+    Many agent components look for GEMINI_API_KEY while others use GOOGLE_API_KEY.
+    """
+    if not key_value:
+        return
+    if not os.getenv("GOOGLE_API_KEY"):
+        os.environ["GOOGLE_API_KEY"] = key_value
+    if not os.getenv("GEMINI_API_KEY"):
+        os.environ["GEMINI_API_KEY"] = key_value
+
+
 def _apply_env_defaults():
     """
     Set production defaults and restore server-provided keys on every bootstrap.
@@ -49,11 +62,11 @@ def _apply_env_defaults():
 
     # Gemini key — user's own key takes priority; fall back to the server-provided
     # key that was cached the last time a full bundle fetch was performed.
-    if not os.getenv("GOOGLE_API_KEY"):
+    if not os.getenv("GOOGLE_API_KEY") and not os.getenv("GEMINI_API_KEY"):
         cached = _load_cached_gemini_key()
         if cached:
-            os.environ["GOOGLE_API_KEY"] = cached
-            logger.debug("Restored GOOGLE_API_KEY from local cache")
+            _set_gemini_env(cached)
+            logger.debug("Restored Gemini API key env vars from local cache")
 
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -66,6 +79,12 @@ _ENC_ROOT           = Path(__file__).parent / "encrypted_agents"
 # Module-level state (set once per process)
 _bootstrap_done: bool = False
 _tmp_dir: Optional[str] = None
+_bootstrap_diag: dict = {
+    "source": "none",  # server|cache|none
+    "bundle_gemini_key": "",
+    "effective_google_api_key": "",
+    "effective_gemini_api_key": "",
+}
 
 
 # ── Key helpers ──────────────────────────────────────────────────────────────
@@ -132,6 +151,7 @@ def bootstrap_agents(api_client) -> bool:
     # ── 1. Obtain decryption key ─────────────────────────────────────────────
 
     key_bytes = _load_cached_key()
+    _bootstrap_diag["source"] = "cache" if key_bytes else "server"
 
     # Always inject production env vars that are env-dependent (not stored in key cache)
     # We re-set them every bootstrap even on cache hit, because os.environ resets each process
@@ -152,11 +172,11 @@ def bootstrap_agents(api_client) -> bool:
             if isinstance(bundle, dict):
                 # Gemini API key — needed by systematic_tailoring_complete.py
                 gemini_key = bundle.get("gemini_key", "")
+                _bootstrap_diag["bundle_gemini_key"] = gemini_key
                 if gemini_key:
                     _save_gemini_key(gemini_key)   # persist for future cache-hit runs
-                    if not os.getenv("GOOGLE_API_KEY"):
-                        os.environ["GOOGLE_API_KEY"] = gemini_key
-                        logger.debug("Set GOOGLE_API_KEY from server bundle (Launchway AI)")
+                    _set_gemini_env(gemini_key)
+                    logger.debug("Set Gemini API key env vars from server bundle (Launchway AI)")
 
                 # Mimikree production URL — overrides localhost default in agent code
                 mimikree_url = bundle.get("mimikree_url", "")
@@ -232,17 +252,60 @@ def bootstrap_agents(api_client) -> bool:
             logger.warning(f"Could not copy token.json: {e}")
 
     # ── 6. Write stubs for repo-root utilities that agents import ────────────
+    # These modules exist in the developer's repo but are not shipped.
+    # Stubs let agent code import them without crashing.
 
-    _LOGGING_CONFIG_STUB = '''\
+    _STUBS = {
+        "logging_config.py": '''\
 import logging
 
 def setup_file_logging(log_level=logging.INFO, console_logging=False, **kwargs):
-    """Stub: file logging is handled by the CLI entry point."""
     pass
-'''
-    stub = tmp_dir / "logging_config.py"
-    if not stub.exists():
-        stub.write_text(_LOGGING_CONFIG_STUB, encoding="utf-8")
+''',
+        # database_config is used by CompanyCredentialsService (account creation).
+        # We provide a no-op stub so credentials are generated per-session but
+        # not persisted to a local DB (the server tracks them instead).
+        "database_config.py": '''\
+import logging
+logger = logging.getLogger(__name__)
+
+class _NoopSession:
+    def query(self, *a, **kw): return self
+    def filter(self, *a, **kw): return self
+    def filter_by(self, *a, **kw): return self
+    def first(self): return None
+    def all(self): return []
+    def add(self, obj): pass
+    def commit(self): pass
+    def rollback(self): pass
+    def close(self): pass
+    def __enter__(self): return self
+    def __exit__(self, *a): pass
+
+def get_db():
+    return _NoopSession()
+
+def get_db_session():
+    return _NoopSession()
+
+SessionLocal = _NoopSession
+
+class Base: pass
+
+class User(Base):
+    id = None; email = None; first_name = None; last_name = None
+
+class JobApplication(Base):
+    id = None; job_url = None; user_id = None; company = None; position = None
+
+engine = None
+''',
+    }
+
+    for filename, content in _STUBS.items():
+        stub_path = tmp_dir / filename
+        if not stub_path.exists():
+            stub_path.write_text(content, encoding="utf-8")
 
     # ── 7. Inject into sys.path ───────────────────────────────────────────────
     # Add BOTH tmp_dir and tmp_dir/Agents so that:
@@ -276,6 +339,10 @@ def setup_file_logging(log_level=logging.INFO, console_logging=False, **kwargs):
 
     atexit.register(shutil.rmtree, tmp_dir, ignore_errors=True)
 
+    # Capture final effective env values for diagnostics
+    _bootstrap_diag["effective_google_api_key"] = os.getenv("GOOGLE_API_KEY", "")
+    _bootstrap_diag["effective_gemini_api_key"] = os.getenv("GEMINI_API_KEY", "")
+
     _tmp_dir        = tmp_str
     _bootstrap_done = True
     logger.info("Agent bootstrap complete")
@@ -284,3 +351,8 @@ def setup_file_logging(log_level=logging.INFO, console_logging=False, **kwargs):
 
 def is_bootstrapped() -> bool:
     return _bootstrap_done
+
+
+def get_bootstrap_diagnostics() -> dict:
+    """Return runtime diagnostics for key hydration troubleshooting."""
+    return dict(_bootstrap_diag)
