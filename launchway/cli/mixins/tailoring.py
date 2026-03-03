@@ -5,7 +5,7 @@ import os
 from typing import Optional
 
 from launchway.api_client import LaunchwayAPIError
-from launchway.cli.utils import Colors
+from launchway.cli.utils import Colors, format_credits
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +128,19 @@ class TailoringMixin:
         print("    2. A job description")
         print("    3. Google OAuth connection (token.json)\n")
 
+        # ── Credit check ────────────────────────────────────────────────────
+        try:
+            available, daily = self.api.check_credit_available("resume_tailoring")
+            credit_str = format_credits(daily.get("remaining"), daily.get("limit"), daily.get("reset_time"))
+            if not available:
+                self.print_error(f"Daily resume tailoring limit reached ({credit_str}).")
+                self.print_info("Limits reset at midnight UTC. Check launchway.app/manage-credits")
+                self.pause()
+                return
+            self.print_info(f"Resume Tailoring credits: {credit_str}")
+        except LaunchwayAPIError:
+            pass  # fail open
+
         if self.get_input("Proceed? (y/n): ").strip().lower() != 'y':
             return
 
@@ -164,6 +177,16 @@ class TailoringMixin:
             if tailored_url:
                 self.print_success("\nResume tailored successfully!")
                 self._display_tailored_resume_download(tailored_url, company)
+                # Consume one tailoring credit and show updated balance
+                try:
+                    cr = self.api.consume_credit("resume_tailoring")
+                    self.print_info(
+                        f"Resume Tailoring credits: "
+                        f"{format_credits(cr.get('remaining'), cr.get('limit'), cr.get('reset_time'))}"
+                    )
+                except LaunchwayAPIError as _ce:
+                    if _ce.status_code == 429:
+                        self.print_warning("Daily resume tailoring limit reached.")
             else:
                 self.print_error("Resume tailoring failed — no URL returned.")
 

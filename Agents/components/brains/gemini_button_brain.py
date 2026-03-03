@@ -2,7 +2,7 @@ import json
 import re
 from typing import Dict, List, Optional, Any
 from loguru import logger
-import google.generativeai as genai
+from gemini_compat import genai
 import os
 
 class GeminiButtonBrain:
@@ -258,3 +258,4 @@ IMPORTANT: Only return valid JSON, no other text.
     async def find_submit_button(self, page_text: str, context: str = "") -> Optional[Dict[str, Any]]:
         """Convenience method to find submit button."""
         return await self._find_button(page_text, 'submit', context)
+

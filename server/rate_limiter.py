@@ -70,8 +70,8 @@ class ProductionRateLimiter:
         
         # User-specific limits
         'resume_tailoring_per_user_per_day': RateLimit(5, 86400),
-        'job_applications_per_user_per_day': RateLimit(20, 86400),
-        'job_search_per_user_per_day': RateLimit(5, 86400),
+        'job_applications_per_user_per_day': RateLimit(10, 86400),
+        'job_search_per_user_per_day': RateLimit(20, 86400),
         
         # Global system limits
         'concurrent_tailoring_sessions': RateLimit(3, 1),  # Max 3 concurrent sessions

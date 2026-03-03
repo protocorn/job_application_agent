@@ -6,7 +6,8 @@ import logging
 import sys
 from datetime import datetime
 
-from launchway.cli.utils import Colors
+from launchway.api_client import LaunchwayAPIError
+from launchway.cli.utils import Colors, format_credits
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,19 @@ class JobSearchMixin:
         except ValueError:
             max_results = 20
 
+        # ── Credit check ────────────────────────────────────────────────────
+        try:
+            available, daily = self.api.check_credit_available("job_search")
+            credit_str = format_credits(daily.get("remaining"), daily.get("limit"), daily.get("reset_time"))
+            if not available:
+                self.print_error(f"Daily job search limit reached ({credit_str}).")
+                self.print_info("Limits reset at midnight UTC. Check launchway.app/manage-credits")
+                self.pause()
+                return
+            self.print_info(f"Job Search credits: {credit_str}")
+        except LaunchwayAPIError:
+            pass  # fail open
+
         try:
             from Agents.multi_source_job_discovery_agent import MultiSourceJobDiscoveryAgent
 
@@ -118,6 +132,16 @@ class JobSearchMixin:
                 self.print_info(f"Sources searched: {result.get('sources', {})}")
                 self.pause()
                 return
+
+            # Consume one search credit now that results were returned
+            try:
+                cr = self.api.consume_credit("job_search")
+                self.print_info(
+                    f"Job Search credits: "
+                    f"{format_credits(cr.get('remaining'), cr.get('limit'), cr.get('reset_time'))}"
+                )
+            except LaunchwayAPIError:
+                pass
 
             self.clear_screen()
             self.print_header(f"SEARCH RESULTS ({len(results)} jobs found)")

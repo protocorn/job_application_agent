@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 
 from launchway.api_client import LaunchwayAPIError
-from launchway.cli.utils import Colors
+from launchway.cli.utils import Colors, format_credits
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,6 @@ class ApplyMixin:
 
         self.print_success(f"\n✓ Collected {len(job_urls)} valid job URL(s)")
 
-        headless      = self.get_input("\nRun in headless mode? (y/n, default: n): ").strip().lower() == 'y'
         tailor_option = self.get_input("Tailor resume: (a)ll, (n)one, or (i)ndividual? (a/n/i, default: n): ").strip().lower()
 
         tailor_settings = []
@@ -87,10 +86,34 @@ class ApplyMixin:
                 self.pause()
                 return
 
-        await self.auto_apply_batch(job_urls, tailor_settings, headless)
+        # ── Credit check ────────────────────────────────────────────────────
+        try:
+            available, daily = self.api.check_credit_available("job_applications")
+            remaining = daily.get("remaining")
+            limit = daily.get("limit")
+            credit_str = format_credits(remaining, limit, daily.get("reset_time"))
+            if not available:
+                self.print_error(f"Daily job application limit reached ({credit_str}).")
+                self.print_info("Limits reset at midnight UTC. Check launchway.app/manage-credits")
+                self.pause()
+                return
+            if remaining != "unlimited":
+                rem_int = int(remaining)
+                if rem_int < len(job_urls):
+                    self.print_warning(
+                        f"You only have {rem_int} credit(s) left but requested {len(job_urls)}. "
+                        f"Only the first {rem_int} job(s) will be attempted."
+                    )
+                    job_urls = job_urls[:rem_int]
+                    tailor_settings = tailor_settings[:rem_int]
+            self.print_info(f"Job Application credits: {credit_str}")
+        except LaunchwayAPIError:
+            pass  # fail open
 
-    async def auto_apply_batch(self, job_urls: list, tailor_settings: list, headless: bool = False):
-        from Agents.job_application_agent import RefactoredJobAgent
+        await self.auto_apply_batch(job_urls, tailor_settings)
+
+    async def auto_apply_batch(self, job_urls: list, tailor_settings: list):
+        from Agents.job_application_agent import RefactoredJobAgent, _get_or_create_playwright
 
         total_jobs       = len(job_urls)
         successful_apps  = []
@@ -103,116 +126,124 @@ class ApplyMixin:
         self.print_warning("Do not close browser windows manually during the process")
 
         try:
-            from playwright.async_api import async_playwright
-            async with async_playwright() as playwright:
-                for idx, job_url in enumerate(job_urls, start=1):
-                    tailor     = tailor_settings[idx - 1]
-                    job_result = {
-                        'number':        idx,
-                        'job_url':       job_url,
-                        'job_title':     f'Job #{idx}',
-                        'company':       'Unknown',
-                        'timestamp':     datetime.now().isoformat(),
-                        'success':       False,
-                        'submitted':     False,
-                        'fields_filled': 0,
-                        'field_details': [],
-                        'error':         None,
-                        'tailored':      tailor,
-                    }
+            playwright = await _get_or_create_playwright()
+            for idx, job_url in enumerate(job_urls, start=1):
+                tailor     = tailor_settings[idx - 1]
+                job_result = {
+                    'number':        idx,
+                    'job_url':       job_url,
+                    'job_title':     f'Job #{idx}',
+                    'company':       'Unknown',
+                    'timestamp':     datetime.now().isoformat(),
+                    'success':       False,
+                    'submitted':     False,
+                    'fields_filled': 0,
+                    'field_details': [],
+                    'error':         None,
+                    'tailored':      tailor,
+                }
 
-                    self.print_header(f"JOB {idx}/{total_jobs}")
-                    self.print_info(f"URL: {job_url}")
-                    self.print_info(f"Tailor Resume: {'Yes' if tailor else 'No'}")
+                self.print_header(f"JOB {idx}/{total_jobs}")
+                self.print_info(f"URL: {job_url}")
+                self.print_info(f"Tailor Resume: {'Yes' if tailor else 'No'}")
 
-                    try:
-                        pre_fetched_desc = None
-                        if tailor:
-                            self.print_info("Pre-fetching job description for tailoring...")
-                            try:
-                                pre_fetched_desc = await asyncio.to_thread(
-                                    self._fetch_job_description_from_url, job_url
-                                )
-                                if pre_fetched_desc:
-                                    self.print_success(f"Description fetched ({len(pre_fetched_desc)} chars)")
-                                else:
-                                    self.print_info("Will extract description from page during navigation")
-                            except Exception as _pf_err:
-                                logger.debug(f"Pre-fetch description error: {_pf_err}")
+                try:
+                    pre_fetched_desc = None
+                    if tailor:
+                        self.print_info("Pre-fetching job description for tailoring...")
+                        try:
+                            pre_fetched_desc = await asyncio.to_thread(
+                                self._fetch_job_description_from_url, job_url
+                            )
+                            if pre_fetched_desc:
+                                self.print_success(f"Description fetched ({len(pre_fetched_desc)} chars)")
+                            else:
+                                self.print_info("Will extract description from page during navigation")
+                        except Exception as _pf_err:
+                            logger.debug(f"Pre-fetch description error: {_pf_err}")
 
-                        agent = RefactoredJobAgent(
-                            playwright=playwright,
-                            headless=headless,
-                            keep_open=True,
-                            debug=True,
-                            user_id=str(self.current_user['id']),
-                            tailor_resume=tailor,
-                            mimikree_email=self._session_mimikree_email if tailor else None,
-                            mimikree_password=self._session_mimikree_password if tailor else None,
-                            job_url=job_url,
-                            use_persistent_profile=True,
-                            pre_fetched_description=pre_fetched_desc,
-                            profile_data=self.current_profile,
-                        )
-                        await agent.process_link(job_url)
+                    agent = RefactoredJobAgent(
+                        playwright=playwright,
+                        headless=False,
+                        keep_open=True,
+                        debug=True,
+                        user_id=str(self.current_user['id']),
+                        tailor_resume=tailor,
+                        mimikree_email=self._session_mimikree_email if tailor else None,
+                        mimikree_password=self._session_mimikree_password if tailor else None,
+                        job_url=job_url,
+                        use_persistent_profile=True,
+                        pre_fetched_description=pre_fetched_desc,
+                        profile_data=self.current_profile,
+                    )
+                    await agent.process_link(job_url)
 
-                        if tailor:
-                            profile_ctx = None
-                            if hasattr(agent, 'state_machine') and agent.state_machine:
-                                if hasattr(agent.state_machine, 'app_state'):
-                                    profile_ctx = agent.state_machine.app_state.context.get('profile', {})
-                            if profile_ctx and profile_ctx.get('tailoring_metrics'):
-                                self._display_tailored_resume_download(
-                                    profile_ctx['tailoring_metrics'],
-                                    job_result.get('company', 'Unknown'),
-                                )
+                    if tailor:
+                        profile_ctx = None
+                        if hasattr(agent, 'state_machine') and agent.state_machine:
+                            if hasattr(agent.state_machine, 'app_state'):
+                                profile_ctx = agent.state_machine.app_state.context.get('profile', {})
+                        if profile_ctx and profile_ctx.get('tailoring_metrics'):
+                            self._display_tailored_resume_download(
+                                profile_ctx['tailoring_metrics'],
+                                job_result.get('company', 'Unknown'),
+                            )
 
-                        human_needed = getattr(agent, 'keep_browser_open_for_human', False)
+                    human_needed = getattr(agent, 'keep_browser_open_for_human', False)
 
-                        if hasattr(agent, 'action_recorder') and agent.action_recorder:
-                            for action in agent.action_recorder.actions:
-                                if action.type in ['fill_field', 'enhanced_field_fill', 'select_option'] and action.success:
-                                    job_result['fields_filled'] += 1
-                                    job_result['field_details'].append({
-                                        'label': action.field_label or 'Unknown',
-                                        'value': action.value or '',
-                                        'type':  action.field_type or 'unknown',
-                                    })
-                            submit_actions = [
-                                a for a in agent.action_recorder.actions
-                                if 'submit' in a.type.lower() or
-                                (a.type == 'click' and 'submit' in (a.element_text or '').lower())
-                            ]
-                            if submit_actions and not human_needed:
-                                job_result['submitted'] = True
+                    if hasattr(agent, 'action_recorder') and agent.action_recorder:
+                        for action in agent.action_recorder.actions:
+                            if action.type in ['fill_field', 'enhanced_field_fill', 'select_option'] and action.success:
+                                job_result['fields_filled'] += 1
+                                job_result['field_details'].append({
+                                    'label': action.field_label or 'Unknown',
+                                    'value': action.value or '',
+                                    'type':  action.field_type or 'unknown',
+                                })
+                        submit_actions = [
+                            a for a in agent.action_recorder.actions
+                            if 'submit' in a.type.lower() or
+                            (a.type == 'click' and 'submit' in (a.element_text or '').lower())
+                        ]
+                        if submit_actions and not human_needed:
+                            job_result['submitted'] = True
 
-                        if human_needed:
-                            job_result['submitted'] = False
-                            job_result['error']     = 'Human intervention required'
+                    if human_needed:
+                        job_result['submitted'] = False
+                        job_result['error']     = 'Human intervention required'
 
-                        if job_result['fields_filled'] > 0 and job_result['submitted']:
-                            job_result['success'] = True
-                            self.record_application(job_url)
-                            successful_apps.append({'number': idx, 'url': job_url, 'tailored': tailor})
-                            self.print_success(f"Job #{idx} submitted! ({job_result['fields_filled']} fields filled)")
-                        else:
-                            job_result['success']   = False
-                            job_result['submitted'] = False
-                            if not job_result.get('error'):
-                                job_result['error'] = f"Incomplete ({job_result['fields_filled']} fields filled, not submitted)"
-                            failed_apps.append({'number': idx, 'url': job_url, 'error': job_result['error']})
-                            self.print_warning(f"Job #{idx} incomplete ({job_result['fields_filled']} fields filled)")
+                    if job_result['fields_filled'] > 0 and job_result['submitted']:
+                        job_result['success'] = True
+                        self.record_application(job_url)
+                        successful_apps.append({'number': idx, 'url': job_url, 'tailored': tailor})
+                        self.print_success(f"Job #{idx} submitted! ({job_result['fields_filled']} fields filled)")
+                        # Consume one application credit and show updated balance
+                        try:
+                            cr = self.api.consume_credit("job_applications")
+                            self.print_info(
+                                f"Job Application credits: "
+                                f"{format_credits(cr.get('remaining'), cr.get('limit'), cr.get('reset_time'))}"
+                            )
+                        except LaunchwayAPIError:
+                            pass
+                    else:
+                        job_result['success']   = False
+                        job_result['submitted'] = False
+                        if not job_result.get('error'):
+                            job_result['error'] = f"Incomplete ({job_result['fields_filled']} fields filled, not submitted)"
+                        failed_apps.append({'number': idx, 'url': job_url, 'error': job_result['error']})
+                        self.print_warning(f"Job #{idx} incomplete ({job_result['fields_filled']} fields filled)")
 
-                    except Exception as e:
-                        error_str       = str(e)
-                        job_result['error'] = error_str
-                        self.print_error(f"Job #{idx} failed: {error_str[:100]}")
-                        logger.error(f"Job #{idx} auto apply error: {e}", exc_info=True)
-                        failed_apps.append({'number': idx, 'url': job_url, 'error': error_str})
+                except Exception as e:
+                    error_str       = str(e)
+                    job_result['error'] = error_str
+                    self.print_error(f"Job #{idx} failed: {error_str[:100]}")
+                    logger.error(f"Job #{idx} auto apply error: {e}", exc_info=True)
+                    failed_apps.append({'number': idx, 'url': job_url, 'error': error_str})
 
-                    detailed_results.append(job_result)
-                    if idx < total_jobs:
-                        self.print_info("\n" + "="*60 + "\n")
+                detailed_results.append(job_result)
+                if idx < total_jobs:
+                    self.print_info("\n" + "="*60 + "\n")
 
         except Exception as e:
             self.print_error(f"Batch process error: {str(e)}")
@@ -267,7 +298,6 @@ class ApplyMixin:
 
         from Agents.job_application_agent import RefactoredJobAgent
 
-        headless = self.get_input("Run in headless mode? (y/n, default: n): ").strip().lower() == 'y'
         tailor   = self.get_input("Tailor resume for this job? (y/n, default: n): ").strip().lower() == 'y'
 
         if tailor:
@@ -296,7 +326,7 @@ class ApplyMixin:
             async with async_playwright() as playwright:
                 agent = RefactoredJobAgent(
                     playwright=playwright,
-                    headless=headless,
+                    headless=False,
                     keep_open=True,
                     debug=True,
                     user_id=str(self.current_user['id']),
@@ -386,11 +416,7 @@ class ApplyMixin:
                 self.print_success(f"✓ Opened {len(pages)} application(s) in browser tabs")
                 self.print_info("\nComplete and submit each application, then press Enter here.")
                 input()
-
-                try:
-                    await context.close()
-                except Exception:
-                    pass
+                self.print_info("Keeping browser and tabs open for your review.")
 
         except Exception as e:
             self.print_error(f"Failed to open incomplete applications: {str(e)}")

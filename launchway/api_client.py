@@ -164,6 +164,41 @@ class LaunchwayClient:
         data = self._get("/api/credits")
         return data.get("credits", {})
 
+    def consume_credit(self, service: str) -> Dict[str, Any]:
+        """
+        Consume one credit for a given service (called after a local task completes).
+
+        service: 'resume_tailoring' | 'job_applications' | 'job_search'
+
+        Returns dict with keys: success, remaining, limit, reset_time.
+        Raises LaunchwayAPIError with status_code=429 when daily limit is reached.
+        """
+        return self._post("/api/credits/consume", {"service": service})
+
+    def check_credit_available(self, service: str) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Check whether at least one credit is available for the given service
+        WITHOUT consuming it.
+
+        Returns (available: bool, credit_info: dict).
+        credit_info keys: remaining, limit, reset_time.
+        Fails open (returns True) on network errors so tasks are never blocked.
+        """
+        try:
+            credits = self.get_credits()
+        except LaunchwayAPIError:
+            return True, {}  # fail open
+
+        svc = credits.get(service, {})
+        daily = svc.get("daily", {})
+        remaining = daily.get("remaining", "unlimited")
+        if remaining == "unlimited":
+            return True, daily
+        try:
+            return int(remaining) > 0, daily
+        except (TypeError, ValueError):
+            return True, daily
+
     # ── applications ────────────────────────────────────────────────────────
 
     def get_applications(self, limit: int = 50) -> list:

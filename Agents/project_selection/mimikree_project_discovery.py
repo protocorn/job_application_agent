@@ -9,7 +9,7 @@ import re
 import json
 import logging
 from typing import Dict, List, Optional, Tuple
-import google.generativeai as genai
+from gemini_compat import genai
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -367,3 +367,4 @@ Extract projects now:"""
             project['source'] = 'mimikree_discovery'
 
         return projects
+

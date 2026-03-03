@@ -9,7 +9,7 @@ import re
 import logging
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
-import google.generativeai as genai
+from gemini_compat import genai
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -464,3 +464,4 @@ class ProjectRelevanceEngine:
         total_score = sum(scores['overall_score'] for proj, scores in selected)
 
         return selected_projects, total_score
+

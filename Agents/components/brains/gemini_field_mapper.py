@@ -2,7 +2,7 @@ import json
 import re
 from typing import Dict, List, Optional, Any
 from loguru import logger
-import google.generativeai as genai
+from gemini_compat import genai
 import os
 
 class GeminiFieldMapper:
@@ -1323,7 +1323,7 @@ If no reasonable match exists, return:
 Your response (JSON only):
 """
             
-            import google.generativeai as genai
+            from gemini_compat import genai
             model = genai.GenerativeModel(self.model_name)
             response = model.generate_content(prompt)
             
@@ -1380,7 +1380,7 @@ Your response (JSON only):
             Generated text response or None if generation fails
         """
         try:
-            import google.generativeai as genai
+            from gemini_compat import genai
             
             # Create comprehensive profile context
             profile_context = self._create_profile_context(profile, "text_generation")

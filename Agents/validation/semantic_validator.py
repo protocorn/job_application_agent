@@ -8,7 +8,7 @@ and key facts. Prevents over-aggressive condensation that loses important inform
 import re
 import logging
 from typing import Dict, List, Optional, Tuple
-import google.generativeai as genai
+from gemini_compat import genai
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -426,3 +426,4 @@ SUGGESTION_2: [what to fix]
                 'suggestions': [],
                 'error': str(e)
             }
+

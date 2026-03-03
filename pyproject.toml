@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name        = "launchway"
-version     = "0.2.5"
+version     = "0.2.11"
 description = "AI-powered job application automation — tailor resumes, find jobs, apply autonomously."
 readme      = "README.md"
 requires-python = ">=3.11"
@@ -43,6 +43,8 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "loguru",
 
+    # Runtime DB access used by decrypted local agent components
+    "SQLAlchemy>=2.0.0",
     # ── Local agent runtime dependencies ─────────────────────────────────────
     # These are needed because agents run locally on the user's machine after
     # the encrypted bundle is decrypted.
@@ -52,7 +54,6 @@ dependencies = [
 
     # Google Generative AI (Gemini for field mapping, resume tailoring, etc.)
     "google-genai>=1.0.0",
-    "google-generativeai>=0.8.0",
 
     # Google OAuth / Drive / Docs (for resume tailoring via Google Docs)
     "google-auth>=2.23.0",
@@ -159,3 +160,4 @@ target-version = ["py311"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths    = ["tests"]
+

@@ -14,7 +14,8 @@ from typing import Any, Dict, Optional
 
 import requests
 
-from launchway.cli.utils import Colors
+from launchway.api_client import LaunchwayAPIError
+from launchway.cli.utils import Colors, format_credits
 
 logger = logging.getLogger(__name__)
 
@@ -275,6 +276,17 @@ class ContinuousApplyMixin:
                 automation_state['applications_submitted'] += 1
                 self.record_application(job_url, company=company, title=job_title)
                 self.print_success(f"✓ Application submitted! ({job_result['fields_filled']} fields filled)")
+                # Consume one application credit and show updated balance
+                try:
+                    _cr = self.api.consume_credit("job_applications")
+                    self.print_info(
+                        f"Job Application credits: "
+                        f"{format_credits(_cr.get('remaining'), _cr.get('limit'), _cr.get('reset_time'))}"
+                    )
+                except LaunchwayAPIError as _ce:
+                    if _ce.status_code == 429:
+                        self.print_warning("Daily job application limit reached. Stopping automation.")
+                        automation_state['running'] = False
             else:
                 job_result['success']   = False
                 job_result['submitted'] = False
@@ -493,6 +505,19 @@ class ContinuousApplyMixin:
             self.print_info("Cancelled.")
             self.pause()
             return
+
+        # ── Credit check before launching ────────────────────────────────────
+        try:
+            available, daily = self.api.check_credit_available("job_applications")
+            credit_str = format_credits(daily.get("remaining"), daily.get("limit"), daily.get("reset_time"))
+            if not available:
+                self.print_error(f"Daily job application limit reached ({credit_str}).")
+                self.print_info("Limits reset at midnight UTC. Check launchway.app/manage-credits")
+                self.pause()
+                return
+            self.print_info(f"Job Application credits at start: {credit_str}")
+        except LaunchwayAPIError:
+            pass  # fail open
 
         await self.run_continuous_automation(
             keywords=keywords,
@@ -723,6 +748,20 @@ class ContinuousApplyMixin:
             round_submitted = 0
             round_goal      = min(session_goal, len(job_queue))
             while job_queue and round_submitted < session_goal and automation_state['running']:
+                # Check credits before each job — stop gracefully when exhausted
+                try:
+                    _avail, _daily = self.api.check_credit_available("job_applications")
+                    if not _avail:
+                        _cs = format_credits(
+                            _daily.get("remaining"), _daily.get("limit"), _daily.get("reset_time")
+                        )
+                        self.print_warning(f"\nDaily job application limit reached ({_cs}).")
+                        self.print_info("Stopping continuous mode. Limits reset at midnight UTC.")
+                        automation_state['running'] = False
+                        break
+                except LaunchwayAPIError:
+                    pass  # fail open
+
                 job = job_queue.popleft()
                 automation_state['jobs_processed'] += 1
 

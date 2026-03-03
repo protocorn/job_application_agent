@@ -171,7 +171,7 @@ class ResumeKeywordExtractor:
             raise ValueError("No Gemini API key available. Configure AI Engine in your profile.")
         for model_name in [self.model_name, _FALLBACK_MODEL]:
             try:
-                import google.generativeai as genai
+                from gemini_compat import genai
                 genai.configure(api_key=self.api_key)
                 model = genai.GenerativeModel(model_name)
                 resp = model.generate_content(
@@ -242,3 +242,4 @@ class ResumeKeywordExtractor:
             "years_of_experience": 0,
             "extracted_at": datetime.now(timezone.utc).isoformat(),
         }
+

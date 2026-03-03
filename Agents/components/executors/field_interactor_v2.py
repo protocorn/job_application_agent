@@ -1982,7 +1982,7 @@ class FieldInteractorV2:
             bool: True if upload succeeded, False otherwise
         """
         try:
-            import google.generativeai as genai
+            from gemini_compat import genai
             import json
 
             # Configure Gemini
@@ -2128,7 +2128,7 @@ class FieldInteractorV2:
     async def _get_ai_upload_instructions(self, dom_context: str) -> Optional[Dict[str, Any]]:
         """Ask Gemini to analyze DOM and provide upload interaction instructions."""
         try:
-            import google.generativeai as genai
+            from gemini_compat import genai
             import json
 
             prompt = f"""
@@ -2292,3 +2292,4 @@ Your response (JSON only):
         except Exception as e:
             logger.error(f"Error parsing AI response: {e}")
             return None
+

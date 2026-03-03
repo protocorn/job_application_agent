@@ -1,7 +1,7 @@
 """
 Advanced Cover Letter Tailoring using Google Gemini
 """
-import google.generativeai as genai
+from gemini_compat import genai
 import os
 from dotenv import load_dotenv
 from datetime import datetime
@@ -123,3 +123,4 @@ I am writing to express my interest in the [Job Title] position at [Company Name
         "John Doe"
     )
     print("\n" + tailored)
+

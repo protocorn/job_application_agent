@@ -1356,12 +1356,19 @@ def delete_action_history_api():
 
 @app.route("/api/search-jobs", methods=['POST'])
 @require_auth
+@rate_limit('job_search_per_user_per_day')
 def search_jobs():
     """Search for jobs via Multi-Source Job Discovery Agent. Supports manual or profile-based params."""
     try:
         from Agents.multi_source_job_discovery_agent import MultiSourceJobDiscoveryAgent
 
         user_id = request.current_user['id']
+        # Invalidate credits cache so frontend reflects fresh counts immediately
+        try:
+            from rate_limiter import redis_client as _rc
+            _rc.delete(f"credits_cache:{user_id}")
+        except Exception:
+            pass
         data = request.json or {}
 
         min_relevance_score = data.get('min_relevance_score', 30)
@@ -1474,6 +1481,57 @@ def get_recent_job_listings():
         logging.error(f"Error getting recent job listings: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/credits/consume", methods=['POST'])
+@require_auth
+def consume_credit():
+    """Consume one credit unit for a given service (called by CLI after a local task completes)."""
+    try:
+        user_id = request.current_user['id']
+        data = request.json or {}
+        service = data.get('service')
+
+        SERVICE_MAP = {
+            'resume_tailoring': 'resume_tailoring_per_user_per_day',
+            'job_applications':  'job_applications_per_user_per_day',
+            'job_search':        'job_search_per_user_per_day',
+        }
+
+        if service not in SERVICE_MAP:
+            return jsonify({"error": f"Unknown service '{service}'. Valid: {list(SERVICE_MAP)}"}), 400
+
+        limit_type = SERVICE_MAP[service]
+
+        # check_limit() atomically checks AND increments the counter
+        allowed, info = rate_limiter.check_limit(limit_type, str(user_id))
+
+        # Invalidate the per-user credits cache so GET /api/credits is always fresh
+        try:
+            from rate_limiter import redis_client as _rc
+            _rc.delete(f"credits_cache:{user_id}")
+        except Exception:
+            pass
+
+        if not allowed:
+            return jsonify({
+                "success":    False,
+                "error":      "Daily limit reached",
+                "remaining":  0,
+                "limit":      info.get('limit'),
+                "reset_time": info.get('reset_time'),
+            }), 429
+
+        return jsonify({
+            "success":    True,
+            "remaining":  info.get('remaining'),
+            "limit":      info.get('limit'),
+            "reset_time": info.get('reset_time'),
+        }), 200
+
+    except Exception as e:
+        logging.error(f"Error consuming credit: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/credits", methods=['GET'])
 @require_auth
 def get_user_credits():
@@ -1527,29 +1585,29 @@ def get_user_credits():
             },
             "job_applications": {
                 "daily": {
-                    "limit": "unlimited" if is_admin else daily_applications.get('limit', 20),
+                    "limit": "unlimited" if is_admin else daily_applications.get('limit', 10),
                     "used": 0 if is_admin else daily_applications.get('used', 0),
-                    "remaining": "unlimited" if is_admin else daily_applications.get('remaining', 20),
+                    "remaining": "unlimited" if is_admin else daily_applications.get('remaining', 10),
                     "reset_time": daily_applications.get('reset_time'),
                     "window_hours": 24
                 }
             },
             "job_search": {
                 "daily": {
-                    "limit": "unlimited" if is_admin else daily_search.get('limit', 5),
+                    "limit": "unlimited" if is_admin else daily_search.get('limit', 20),
                     "used": 0 if is_admin else daily_search.get('used', 0),
-                    "remaining": "unlimited" if is_admin else daily_search.get('remaining', 5),
+                    "remaining": "unlimited" if is_admin else daily_search.get('remaining', 20),
                     "reset_time": daily_search.get('reset_time'),
                     "window_hours": 24
                 }
             }
         }
 
-        # Cache the credits info for 10 seconds to reduce Redis load
+        # Cache the credits info for 5 seconds to reduce Redis load
         try:
             import json
             from rate_limiter import redis_client
-            redis_client.setex(cache_key, 10, json.dumps(credits_info))
+            redis_client.setex(cache_key, 5, json.dumps(credits_info))
         except Exception as cache_error:
             # If caching fails, continue without it
             logging.debug(f"Cache set failed: {cache_error}")
@@ -1565,12 +1623,19 @@ def get_user_credits():
 
 @app.route("/api/tailor-resume", methods=['POST'])
 @require_auth
+@rate_limit('resume_tailoring_per_user_per_day')
 @rate_limit('api_requests_per_user_per_minute')
 @validate_input
 def tailor_resume():
     """Submit resume tailoring job to queue"""
     try:
         user_id = request.current_user['id']
+        # Invalidate credits cache so frontend reflects fresh counts immediately
+        try:
+            from rate_limiter import redis_client as _rc
+            _rc.delete(f"credits_cache:{user_id}")
+        except Exception:
+            pass
         data = request.json
         
         # Validate required fields

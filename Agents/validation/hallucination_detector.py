@@ -8,7 +8,7 @@ Prevents fabrication of achievements, skills, or experience.
 import re
 import logging
 from typing import Dict, List, Optional
-import google.generativeai as genai
+from gemini_compat import genai
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -290,3 +290,4 @@ SUMMARY: [brief explanation]"""
         result['bullets_validated'] = len(project_bullets)
 
         return result
+

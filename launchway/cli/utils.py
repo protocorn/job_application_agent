@@ -2,6 +2,32 @@
 
 import os
 import getpass
+import time
+
+
+def format_credits(remaining, limit, reset_time=None) -> str:
+    """
+    Format a single-line credits status string,
+    e.g. '4/5 remaining today (resets in 14h 32m)'.
+    Works for both numeric and 'unlimited' values.
+    """
+    if remaining == "unlimited" or limit == "unlimited":
+        return "unlimited"
+    try:
+        remaining = int(remaining)
+        limit = int(limit)
+    except (TypeError, ValueError):
+        return "unknown"
+
+    resets = ""
+    if reset_time:
+        diff = int(reset_time - time.time())
+        if diff > 0:
+            h = diff // 3600
+            m = (diff % 3600) // 60
+            resets = f" (resets in {h}h {m}m)" if h > 0 else f" (resets in {m}m)"
+
+    return f"{remaining}/{limit} remaining today{resets}"
 
 
 class Colors:
@@ -41,9 +67,16 @@ class PrintMixin:
         print(f"{Colors.WARNING}[WARN] {text}{Colors.ENDC}")
 
     def get_input(self, prompt: str, password: bool = False) -> str:
-        if password:
-            return getpass.getpass(f"{Colors.OKBLUE}{prompt}{Colors.ENDC}")
-        return input(f"{Colors.OKBLUE}{prompt}{Colors.ENDC}")
+        try:
+            if password:
+                return getpass.getpass(f"{Colors.OKBLUE}{prompt}{Colors.ENDC}")
+            return input(f"{Colors.OKBLUE}{prompt}{Colors.ENDC}")
+        except EOFError as e:
+            # Treat stream-closed input the same as Ctrl+C for clean shutdown.
+            raise KeyboardInterrupt() from e
 
     def pause(self):
-        input(f"\n{Colors.OKCYAN}Press Enter to continue...{Colors.ENDC}")
+        try:
+            input(f"\n{Colors.OKCYAN}Press Enter to continue...{Colors.ENDC}")
+        except EOFError:
+            pass

@@ -7,7 +7,7 @@ Generates tailored resume bullets for projects based on job requirements.
 import re
 import logging
 from typing import Dict, List, Optional
-import google.generativeai as genai
+from gemini_compat import genai
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -367,3 +367,4 @@ Return the enhanced bullets in the same order, one per line, starting with dash 
             'score': score,
             'length': len(bullet)
         }
+

@@ -8,7 +8,7 @@ import os
 import json
 import re
 from typing import Dict, Any, List, Optional
-import google.generativeai as genai
+from gemini_compat import genai
 
 logger = logging.getLogger(__name__)
 
@@ -572,3 +572,4 @@ if __name__ == "__main__":
     print(f"\nAlternative queries:")
     for i, var in enumerate(result2.get('variations', []), 1):
         print(f"  {i}. {var}")
+

@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional
 from io import BytesIO
 from playwright.async_api import Page, Error
 from loguru import logger
-import google.generativeai as genai
+from gemini_compat import genai
 from PIL import Image
 from dotenv import load_dotenv
 

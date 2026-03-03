@@ -352,7 +352,7 @@ engine = None
 def is_bootstrapped() -> bool:
     return _bootstrap_done
 
-
 def get_bootstrap_diagnostics() -> dict:
     """Return runtime diagnostics for key hydration troubleshooting."""
     return dict(_bootstrap_diag)
+

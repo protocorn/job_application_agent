@@ -1823,7 +1823,7 @@ If everything matches the profile (even if it seems unusual to you), set approve
             }
         """
         try:
-            import google.generativeai as genai
+            from gemini_compat import genai
             import base64
 
             logger.info("🔍 Final Gemini checkpoint - analyzing if we can progress further...")
@@ -1950,3 +1950,4 @@ If GREEN SIGNAL (nothing can be done), set:
                 "green_signal": True,
                 "instructions": {"action": "stop", "details": {"reasoning": "Checkpoint failed, defaulting to stop"}}
             }
+
