@@ -1045,6 +1045,7 @@ def upload_resume():
             return jsonify({"error": "Failed to process resume with Gemini", "success": False}), 500
 
         # ── Persist extracted text + source type + LLM-extracted profile fields ──
+        import base64
         original_filename = file.filename or f'resume.{source_type}'
         try:
             save_payload = {
@@ -1053,6 +1054,7 @@ def upload_resume():
                 'resume_source_type': source_type,
                 'resume_text': resume_text,
                 'resume_filename': original_filename,
+                'resume_file_base64': base64.b64encode(file_bytes).decode('utf-8'),
             }
             ProfileService.create_or_update_profile(user_id, save_payload)
         except Exception as persist_err:

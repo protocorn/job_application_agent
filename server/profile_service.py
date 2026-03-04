@@ -163,6 +163,7 @@ class ProfileService:
             'resume_source_type': 'resume_source_type',
             'resume_text': 'resume_text',
             'resume_filename': 'resume_filename',
+            'resume_file_base64': 'resume_file_base64',
             'api_primary_mode': 'api_primary_mode',
             'api_secondary_mode': 'api_secondary_mode',
             'custom_gemini_api_key': 'custom_gemini_api_key',
@@ -187,6 +188,7 @@ class ProfileService:
             'resume_source_type': profile.resume_source_type or '',
             'resume_text': profile.resume_text or '',
             'resume_filename': profile.resume_filename or '',
+            'resume_file_base64': profile.resume_file_base64 or '',
             'latex_main_tex_path': profile.latex_main_tex_path or '',
             'latex_file_manifest': profile.latex_file_manifest or [],
             'first name': '',  # Will be populated from User table
@@ -279,6 +281,7 @@ class ProfileService:
             'resume_source_type': '',
             'resume_text': '',
             'resume_filename': '',
+            'resume_file_base64': '',
             'latex_main_tex_path': '',
             'latex_file_manifest': [],
             'first name': '',

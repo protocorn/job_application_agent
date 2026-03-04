@@ -3368,22 +3368,38 @@ def _load_profile_data(user_id=None, profile_data=None):
         current_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.dirname(current_dir)  # Go up one level from Agents/
 
-        # Handle resume - convert Google Docs URL to PDF if needed
+        # Handle resume - convert Google Docs URL to PDF if needed, or reconstruct from stored bytes
         from components.utils.google_docs_converter import GoogleDocsConverter
 
-        resume_url_or_path = profile_data.get('resume_url', '')
-        if not resume_url_or_path:
-            # Fallback to default resume path
-            resume_url_or_path = os.path.join(project_root, 'Resumes', 'Sahil-Chordia-Resume.pdf')
-
-        # Convert to PDF if it's a Google Docs URL
         resumes_dir = os.path.join(project_root, 'Resumes')
-        resume_path = GoogleDocsConverter.convert_to_pdf_if_needed(resume_url_or_path, resumes_dir)
+        os.makedirs(resumes_dir, exist_ok=True)
+
+        resume_url_or_path = profile_data.get('resume_url', '')
+        resume_path = None
+
+        if resume_url_or_path:
+            # Google Docs URL or local path — convert to PDF if needed
+            resume_path = GoogleDocsConverter.convert_to_pdf_if_needed(resume_url_or_path, resumes_dir)
+        else:
+            # No URL — try to reconstruct the original PDF/DOCX from stored base64 bytes
+            resume_file_base64 = profile_data.get('resume_file_base64', '')
+            if resume_file_base64:
+                import base64
+                resume_filename = profile_data.get('resume_filename') or 'resume.pdf'
+                reconstructed_path = os.path.join(resumes_dir, resume_filename)
+                try:
+                    file_bytes = base64.b64decode(resume_file_base64)
+                    with open(reconstructed_path, 'wb') as fh:
+                        fh.write(file_bytes)
+                    resume_path = reconstructed_path
+                    logger.info(f"📄 Reconstructed resume from stored bytes: {reconstructed_path}")
+                except Exception as decode_err:
+                    logger.warning(f"⚠️ Could not reconstruct resume from stored bytes: {decode_err}")
 
         if resume_path and os.path.exists(resume_path):
             logger.info(f"📄 Resume ready: {resume_path}")
         else:
-            logger.warning(f"⚠️ Resume not found or conversion failed: {resume_url_or_path}")
+            logger.warning(f"⚠️ Resume not found or conversion failed: {resume_url_or_path or '(no resume URL or file)'}")
 
         # Map the profile data to our expected format
         mapped_profile = {

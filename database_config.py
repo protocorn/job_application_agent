@@ -145,6 +145,7 @@ class UserProfile(Base):
     resume_source_type = Column(String)  # google_doc | pdf | docx
     resume_text = Column(Text)           # Raw extracted text from PDF/DOCX upload
     resume_filename = Column(String)     # Original filename of the uploaded PDF/DOCX
+    resume_file_base64 = Column(Text)    # Base64-encoded original PDF/DOCX bytes for file attachment
     latex_zip_base64 = Column(Text)  # Base64-encoded source ZIP (Overleaf export)
     latex_main_tex_path = Column(String)  # Relative path of main tex within ZIP
     latex_file_manifest = Column(JSON)  # [{path,size,extension}, ...]
@@ -374,6 +375,7 @@ def _apply_incremental_migrations():
         # resume_text / resume_filename: PDF/DOCX upload support (added Mar 2026)
         "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS resume_text TEXT",
         "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS resume_filename VARCHAR(255)",
+        "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS resume_file_base64 TEXT",
         # AI Engine key config (added Mar 2026)
         "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS api_primary_mode VARCHAR(20)",
         "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS api_secondary_mode VARCHAR(20)",
