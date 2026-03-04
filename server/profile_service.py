@@ -162,6 +162,7 @@ class ProfileService:
             'resume_url': 'resume_url',
             'resume_source_type': 'resume_source_type',
             'resume_text': 'resume_text',
+            'resume_filename': 'resume_filename',
             'api_primary_mode': 'api_primary_mode',
             'api_secondary_mode': 'api_secondary_mode',
             'custom_gemini_api_key': 'custom_gemini_api_key',
@@ -183,8 +184,9 @@ class ProfileService:
             # custom_gemini_api_key is intentionally NOT included here —
             # the encrypted blob is only returned via the dedicated /api/settings/ai-keys endpoint.
             'resume_url': profile.resume_url or '',
-            'resume_source_type': profile.resume_source_type or 'google_doc',
+            'resume_source_type': profile.resume_source_type or '',
             'resume_text': profile.resume_text or '',
+            'resume_filename': profile.resume_filename or '',
             'latex_main_tex_path': profile.latex_main_tex_path or '',
             'latex_file_manifest': profile.latex_file_manifest or [],
             'first name': '',  # Will be populated from User table
@@ -274,8 +276,9 @@ class ProfileService:
             'api_primary_mode': None,   # NULL until user explicitly configures
             'api_secondary_mode': None,
             'resume_url': '',
-            'resume_source_type': 'google_doc',
+            'resume_source_type': '',
             'resume_text': '',
+            'resume_filename': '',
             'latex_main_tex_path': '',
             'latex_file_manifest': [],
             'first name': '',

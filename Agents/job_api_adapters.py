@@ -1087,35 +1087,16 @@ class JobAPIFactory:
 
     @staticmethod
     def get_all_adapters(proxy_manager=None) -> List[JobAPIAdapter]:
-        """Get all available adapters"""
-        # Import JobSpy adapter
+        """Get all available adapters — JobSpy only."""
         try:
             import sys
             import os
             sys.path.insert(0, os.path.dirname(__file__))
             from jobspy_adapter import JobSpyAdapter
-            jobspy_available = True
+            return [JobSpyAdapter(proxy_manager=proxy_manager)]
         except Exception as e:
             logger.warning(f"JobSpy not available: {e}")
-            jobspy_available = False
-        
-        adapters = []
-        
-        # Add JobSpy FIRST (it scrapes multiple sources concurrently!)
-        if jobspy_available:
-            adapters.append(JobSpyAdapter(proxy_manager=proxy_manager))
-        
-        # Add API-based adapters as fallback
-        adapters.extend([
-            JSearchAdapter(),
-            AdzunaAdapter(),
-            ActiveJobsDBAdapter(),
-            GoogleJobsAdapter(),
-            TheMuseAdapter(),
-            TheirStackAdapter()
-        ])
-        
-        return adapters
+            return []
 
     @staticmethod
     def get_adapter(api_name: str) -> Optional[JobAPIAdapter]:

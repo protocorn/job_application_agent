@@ -81,6 +81,9 @@ class AuthMixin:
         print("  ┌──────────────────────────────────────────────────┐")
         print("  │  Next step: check your email to verify your       │")
         print("  │  account, then come back here and log in.         │")
+        print("  │                                                   │")
+        print("  │  Didn't receive the email? You can request a      │")
+        print("  │  new one from the login screen.                   │")
         print("  └──────────────────────────────────────────────────┘\n")
         self.pause()
 
@@ -106,8 +109,11 @@ class AuthMixin:
         try:
             result = self.api.login(email, password)
         except LaunchwayAPIError as e:
-            self.print_error(str(e))
-            self.pause()
+            if e.email_not_verified:
+                self._handle_unverified_email(email)
+            else:
+                self.print_error(str(e))
+                self.pause()
             return False
 
         user  = result.get("user", {})
@@ -141,6 +147,25 @@ class AuthMixin:
         self._check_and_prompt_ai_engine_setup()
 
         return True
+
+    def _handle_unverified_email(self, email: str) -> None:
+        """Show a helpful prompt when a user tries to log in before verifying."""
+        self.clear_screen()
+        self.print_header("EMAIL VERIFICATION REQUIRED")
+        print("\n  Your email address has not been verified yet.")
+        print("  Please check your inbox for the verification link.\n")
+        print("  ┌──────────────────────────────────────────────────┐")
+        print("  │  1. Resend verification email                     │")
+        print("  │  2. Back                                          │")
+        print("  └──────────────────────────────────────────────────┘\n")
+        choice = self.get_input("Select option (1-2): ").strip()
+        if choice == "1":
+            try:
+                self.api.resend_verification_email(email)
+                self.print_success("Verification email sent! Check your inbox and then log in.")
+            except LaunchwayAPIError as e:
+                self.print_error(f"Could not send email: {e}")
+        self.pause()
 
     # ------------------------------------------------------------------
     # Session restoration (called by show_auth_menu before prompting)

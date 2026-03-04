@@ -27,9 +27,10 @@ def _get_base_url() -> str:
 
 class LaunchwayAPIError(Exception):
     """Raised when the backend returns an error response."""
-    def __init__(self, message: str, status_code: int = 0):
+    def __init__(self, message: str, status_code: int = 0, email_not_verified: bool = False):
         super().__init__(message)
         self.status_code = status_code
+        self.email_not_verified = email_not_verified
 
 
 class LaunchwayClient:
@@ -104,7 +105,11 @@ class LaunchwayClient:
             data = {}
         if not resp.ok:
             msg = data.get("error") or data.get("message") or f"HTTP {resp.status_code}"
-            raise LaunchwayAPIError(msg, status_code=resp.status_code)
+            raise LaunchwayAPIError(
+                msg,
+                status_code=resp.status_code,
+                email_not_verified=bool(data.get("email_not_verified")),
+            )
         return data
 
     # ── auth ────────────────────────────────────────────────────────────────
@@ -133,6 +138,10 @@ class LaunchwayClient:
             "first_name": first_name,
             "last_name":  last_name,
         })
+
+    def resend_verification_email(self, email: str) -> Dict[str, Any]:
+        """Request a new verification email for the given address."""
+        return self._post("/api/auth/resend-verification", {"email": email})
 
     def verify_token(self) -> Dict[str, Any]:
         """Verify the current token and refresh user info."""

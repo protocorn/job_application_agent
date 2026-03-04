@@ -142,8 +142,9 @@ class UserProfile(Base):
 
     # Basic Information
     resume_url = Column(String)
-    resume_source_type = Column(String, default='google_doc')  # google_doc, pdf, docx, latex_zip
-    resume_text = Column(Text)  # Raw extracted text from uploaded PDF/DOCX (no Google Doc needed)
+    resume_source_type = Column(String)  # google_doc | pdf | docx
+    resume_text = Column(Text)           # Raw extracted text from PDF/DOCX upload
+    resume_filename = Column(String)     # Original filename of the uploaded PDF/DOCX
     latex_zip_base64 = Column(Text)  # Base64-encoded source ZIP (Overleaf export)
     latex_main_tex_path = Column(String)  # Relative path of main tex within ZIP
     latex_file_manifest = Column(JSON)  # [{path,size,extension}, ...]
@@ -370,8 +371,9 @@ def _apply_incremental_migrations():
         "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS pending_email VARCHAR",
         "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_change_token VARCHAR",
         "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_change_token_expires TIMESTAMP",
-        # resume_text: raw extracted text from PDF/DOCX uploads (added Mar 2026)
+        # resume_text / resume_filename: PDF/DOCX upload support (added Mar 2026)
         "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS resume_text TEXT",
+        "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS resume_filename VARCHAR(255)",
         # AI Engine key config (added Mar 2026)
         "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS api_primary_mode VARCHAR(20)",
         "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS api_secondary_mode VARCHAR(20)",

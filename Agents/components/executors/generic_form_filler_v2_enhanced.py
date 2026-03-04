@@ -297,6 +297,13 @@ class GenericFormFillerV2Enhanced:
         if new_fields_filled > 0:
             logger.info(f"✅ Filled {new_fields_filled} additional fields from final re-scan")
 
+        # Step 7.7: Handle legal disclaimer / terms & conditions checkboxes
+        # (custom KnockoutJS span-based and native checkbox fallback)
+        legal_handled = await self.handle_legal_disclaimer_checkboxes()
+        if legal_handled > 0:
+            logger.info(f"✅ Handled {legal_handled} legal disclaimer checkbox(es)")
+            result["legal_disclaimer_handled"] = legal_handled
+
         # Step 8: Look for Next/Continue button and click it (but never Submit)
         next_button_clicked = await self._try_click_next_button()
         result["next_button_clicked"] = next_button_clicked
@@ -1950,4 +1957,125 @@ If GREEN SIGNAL (nothing can be done), set:
                 "green_signal": True,
                 "instructions": {"action": "stop", "details": {"reasoning": "Checkpoint failed, defaulting to stop"}}
             }
+
+    # ── Legal disclaimer / terms & conditions ─────────────────────────────
+
+    async def handle_legal_disclaimer_checkboxes(self) -> int:
+        """
+        Detect and accept legal disclaimer / terms & conditions checkboxes.
+
+        Handles two patterns:
+
+        Pattern 1 — Oracle HCM / Taleo KnockoutJS custom checkbox:
+            <span class="apply-flow-input-checkbox__button"
+                  data-bind="click: toggleAccepted,
+                             css: {'apply-flow-input-checkbox__button--checked': legalDisclaimer.isAccepted}">
+            </span>
+            The button is a plain <span>; checked state is tracked by the
+            ``--checked`` CSS modifier class, not by a native checked attribute.
+
+        Pattern 2 — Generic native checkbox near legal/agreement text:
+            Any <input type="checkbox"> whose associated label or surrounding
+            text contains terms like "terms", "agree", "legal", "privacy policy",
+            "disclaimer", "acknowledge", or "consent".
+
+        Returns:
+            Number of checkboxes that were accepted (already-accepted ones are
+            counted so the caller knows the page is in a good state).
+        """
+        handled = 0
+
+        try:
+            # ── Pattern 1: Oracle HCM / Taleo apply-flow custom checkbox ──
+            apply_flow_buttons = await self.page.locator(
+                '.apply-flow-input-checkbox__button'
+            ).all()
+
+            for button in apply_flow_buttons:
+                try:
+                    btn_class = await button.get_attribute('class') or ''
+                    already_checked = 'apply-flow-input-checkbox__button--checked' in btn_class
+
+                    if already_checked:
+                        logger.debug('☑️  Legal disclaimer already accepted (apply-flow pattern)')
+                        handled += 1
+                        continue
+
+                    if not await button.is_visible():
+                        continue
+
+                    await button.click()
+                    await self.page.wait_for_timeout(300)
+
+                    # Verify the click registered
+                    updated_class = await button.get_attribute('class') or ''
+                    if 'apply-flow-input-checkbox__button--checked' in updated_class:
+                        logger.info('✅ Accepted legal disclaimer (apply-flow / Oracle HCM pattern)')
+                    else:
+                        logger.warning('⚠️  Clicked apply-flow legal checkbox but --checked class not set')
+
+                    handled += 1
+
+                except Exception as e:
+                    logger.debug(f'apply-flow legal disclaimer click error: {e}')
+
+            if handled:
+                return handled  # Pattern 1 succeeded — no need for generic fallback
+
+            # ── Pattern 2: Generic native checkbox near legal keywords ──
+            LEGAL_KEYWORDS = [
+                'terms', 'conditions', 'i agree', 'privacy policy', 'legal',
+                'disclaimer', 'acknowledge', 'consent', 'certify',
+            ]
+
+            checkboxes = await self.page.locator('input[type="checkbox"]').all()
+            for cb in checkboxes:
+                try:
+                    if await cb.is_checked():
+                        # Already accepted — count it so caller knows it's handled
+                        label_text = await self._get_checkbox_context_text(cb)
+                        if any(kw in label_text for kw in LEGAL_KEYWORDS):
+                            handled += 1
+                        continue
+
+                    if not await cb.is_visible():
+                        continue
+
+                    label_text = await self._get_checkbox_context_text(cb)
+
+                    if any(kw in label_text for kw in LEGAL_KEYWORDS):
+                        await cb.check()
+                        await self.page.wait_for_timeout(300)
+                        logger.info(
+                            f'✅ Checked legal agreement checkbox (generic pattern): '
+                            f'"{label_text[:80]}"'
+                        )
+                        handled += 1
+
+                except Exception as e:
+                    logger.debug(f'Generic legal checkbox error: {e}')
+
+        except Exception as e:
+            logger.error(f'handle_legal_disclaimer_checkboxes error: {e}')
+
+        return handled
+
+    async def _get_checkbox_context_text(self, cb) -> str:
+        """Return lowercase surrounding text for a checkbox element."""
+        try:
+            cb_id = await cb.get_attribute('id')
+            if cb_id:
+                label_el = self.page.locator(f'label[for="{cb_id}"]').first
+                if await label_el.count() > 0:
+                    return (await label_el.inner_text()).lower()
+
+            # Walk up to the nearest container that has visible text
+            return (await cb.evaluate(
+                '''el => {
+                    const container = el.closest("label, li, td, div, span");
+                    return container ? container.innerText : "";
+                }'''
+            )).lower()
+        except Exception:
+            return ''
 

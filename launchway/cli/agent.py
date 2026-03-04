@@ -94,11 +94,9 @@ class CLIJobAgent(
         from launchway.agent_bootstrap import (
             is_bootstrapped,
             bootstrap_agents,
-            get_bootstrap_diagnostics,
         )
         if is_bootstrapped():
             self._agents_bootstrapped = True
-            self._print_key_diagnostics(get_bootstrap_diagnostics())
             return True
 
         self.print_info("🔐 Loading automation engine (one moment)...")
@@ -107,7 +105,6 @@ class CLIJobAgent(
             if ok:
                 self._agents_bootstrapped = True
                 self.print_success("✓ Automation engine ready")
-                self._print_key_diagnostics(get_bootstrap_diagnostics())
                 return True
             else:
                 self.print_error(
@@ -121,28 +118,6 @@ class CLIJobAgent(
             self.print_error(f"Bootstrap error: {e}")
             logger.error(f"Agent bootstrap error: {e}", exc_info=True)
             return False
-
-    def _print_key_diagnostics(self, diag: Dict[str, Any]) -> None:
-        """
-        TEMP DEBUG: show key values in terminal to diagnose why Gemini is unavailable.
-        User explicitly requested full-value output for troubleshooting.
-        """
-        source = diag.get("source", "unknown")
-        bundle_key = diag.get("bundle_gemini_key", "")
-        effective_google = diag.get("effective_google_api_key", "")
-        effective_gemini = diag.get("effective_gemini_api_key", "")
-
-        self.print_warning("[DEBUG] Gemini key diagnostics (temporary)")
-        print(f"  source: {source}")
-        print(f"  bundle.gemini_key: {bundle_key!r}")
-        print(f"  env.GOOGLE_API_KEY: {effective_google!r}")
-        print(f"  env.GEMINI_API_KEY: {effective_gemini!r}")
-
-        if not (effective_google or effective_gemini):
-            self.print_error(
-                "[DEBUG] No effective Gemini key in runtime env. "
-                "Likely empty key from server or empty cache."
-            )
 
     # ------------------------------------------------------------------
     # Main menu

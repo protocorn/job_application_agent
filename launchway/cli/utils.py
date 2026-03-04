@@ -41,6 +41,8 @@ class Colors:
     ENDC      = '\033[0m'
     BOLD      = '\033[1m'
     UNDERLINE = '\033[4m'
+    YELLOW    = '\033[93m'
+    RESET     = '\033[0m'
 
 
 class PrintMixin:

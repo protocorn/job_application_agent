@@ -1174,19 +1174,64 @@ class FieldInteractorV2:
                 # This is the radio button we want to select - click it
                 logger.info(f"✅ Matched radio button: {match_reason}")
 
-                # Try standard click first
-                try:
-                    await asyncio.wait_for(element.click(force=True), timeout=3)
-                except Exception as e:
-                    logger.debug(f"Standard click failed: {e}, trying JavaScript click...")
-                    # Fallback to JavaScript click
-                    await self.page.evaluate('(element) => element.click()', element)
+                # ── Strategy 0: Click the <label for="id"> (most reliable for React/Workday) ──
+                # Workday wraps the hidden <input> in a custom <span> overlay.  Clicking the
+                # associated <label> is the safest cross-ATS approach: it fires native browser
+                # focus/click events which React's SyntheticEvent system always intercepts.
+                label_clicked = False
+                if element_id:
+                    try:
+                        label_el = self.page.locator(f'label[for="{element_id}"]').first
+                        if await label_el.count() > 0 and await label_el.is_visible():
+                            await asyncio.wait_for(label_el.click(), timeout=3)
+                            await asyncio.sleep(0.25)
+                            label_clicked = True
+                            logger.debug(f"🏷️  Clicked label[for='{element_id}'] (Workday-safe strategy)")
+                    except Exception as e:
+                        logger.debug(f"Label click failed: {e}")
 
-                await asyncio.sleep(0.2)  # Brief wait for selection to register
+                # ── Strategy 1: Standard force-click on the input element ──
+                if not label_clicked:
+                    try:
+                        await asyncio.wait_for(element.click(force=True), timeout=3)
+                        await asyncio.sleep(0.2)
+                    except Exception as e:
+                        logger.debug(f"Standard click failed: {e}, trying React event dispatch...")
+                        # ── Strategy 2: Dispatch full React synthetic event sequence ──
+                        # React tracks state internally; a bare DOM click() skips its
+                        # event pipeline.  Dispatching mousedown → mouseup → click → change
+                        # forces React to reconcile and update its virtual DOM.
+                        try:
+                            await self.page.evaluate(
+                                """(el) => {
+                                    const fireEvent = (type, init) => {
+                                        el.dispatchEvent(new MouseEvent(type, {bubbles: true, cancelable: true, ...init}));
+                                    };
+                                    fireEvent('mousedown', {button: 0});
+                                    fireEvent('mouseup',   {button: 0});
+                                    fireEvent('click',     {button: 0});
+                                    el.dispatchEvent(new Event('change', {bubbles: true}));
+                                    el.dispatchEvent(new Event('input',  {bubbles: true}));
+                                }""",
+                                element
+                            )
+                            await asyncio.sleep(0.25)
+                            logger.debug("⚡ React synthetic event sequence dispatched")
+                        except Exception as e2:
+                            logger.debug(f"React event dispatch also failed: {e2}")
 
-                # Verify selection - for radio buttons, check if it's now checked
+                # ── Verification: native is_checked() + Workday aria-checked fallback ──
                 try:
                     is_checked = await asyncio.wait_for(element.is_checked(), timeout=2)
+
+                    # Workday (and some other React ATSs) track state on aria-checked
+                    # rather than the native checked property, so we check both.
+                    if not is_checked:
+                        aria_checked = await element.get_attribute('aria-checked')
+                        is_checked = aria_checked == 'true'
+                        if is_checked:
+                            logger.debug("✅ Verified via aria-checked='true' (Workday pattern)")
+
                     if is_checked:
                         result.update({
                             "success": True,
@@ -1197,7 +1242,7 @@ class FieldInteractorV2:
                         return
                     else:
                         logger.warning(f"Radio button clicked but not showing as checked")
-                        # Still mark as success if click didn't error - verification might be unreliable
+                        # Still mark as success — verification can be unreliable on React ATSs
                         result.update({
                             "success": True,
                             "method": "radio_click_unverified",
@@ -1206,7 +1251,6 @@ class FieldInteractorV2:
                         return
                 except Exception as e:
                     logger.debug(f"Verification check failed: {e}, assuming success")
-                    # If verification fails, assume success (some radio buttons don't support is_checked properly)
                     result.update({
                         "success": True,
                         "method": "radio_click_no_verification",
@@ -1410,40 +1454,131 @@ class FieldInteractorV2:
         field_label: str,
         result: Dict[str, Any]
     ) -> None:
-        """Fill Workday multiselect field."""
+        """
+        Fill a Workday multiselect field.
+
+        Real DOM pattern (from field detection):
+            element  →  <input data-automation-id="searchBox"
+                                data-uxi-widget-type="selectinput"
+                                data-uxi-multiselect-id="<guid>"
+                                placeholder="Search">
+
+        Strategy per value:
+        1. Click the search input to open/focus the multiselect.
+        2. Type a short prefix to filter the option list.
+        3. Wait for [role="option"] items to appear.
+        4. Fuzzy-pick the best match and click it.
+        5. The input auto-clears after selection (Workday default) — repeat.
+        6. Press Escape when all values are selected to close.
+        """
         if isinstance(values, str):
-            values = [v.strip() for v in values.split(',')]
+            values = [v.strip() for v in values.split(',') if v.strip()]
+
+        selected: List[str] = []
 
         try:
-            # Workday multiselect pattern:
-            # 1. Click to open
-            await element.click(timeout=3000)
-            await asyncio.sleep(0.3)
-
-            # 2. For each value, search and select
-            for value in values[:10]:  # Limit to first 10 for performance
+            for value in values[:10]:   # cap at 10 to guard against runaway loops
                 try:
-                    # Type to search
-                    search_input = self.page.locator('input[type="text"][role="combobox"]').first
-                    await search_input.fill(value, timeout=2000)
+                    # ── Step 1: Focus the search input ──────────────────────────
+                    await element.click(timeout=3000)
                     await asyncio.sleep(0.2)
 
-                    # Click matching option
-                    option = self.page.locator(f'[role="option"]:has-text("{value}")').first
-                    await option.click(timeout=2000)
-                    await asyncio.sleep(0.1)
+                    # ── Step 2: Clear + type search prefix ──────────────────────
+                    # Use the first 20 chars as the search term (Workday filters live)
+                    search_prefix = value[:20]
+                    await element.fill('', timeout=2000)   # clear any leftover text
+                    await element.type(search_prefix, delay=50)  # type slowly — Workday is React
+                    await asyncio.sleep(0.6)   # wait for network-backed option list
+
+                    # ── Step 3: Collect visible [role="option"] items ────────────
+                    option_locs = self.page.locator('[role="option"]:not([aria-disabled="true"])')
+                    count = await option_locs.count()
+                    options_list: List[tuple] = []
+                    for i in range(min(count, 50)):
+                        try:
+                            opt = option_locs.nth(i)
+                            if not await opt.is_visible(timeout=200):
+                                continue
+                            text = (await opt.text_content(timeout=300) or '').strip()
+                            if text:
+                                options_list.append((opt, text))
+                        except Exception:
+                            continue
+
+                    if not options_list:
+                        logger.warning(f"  ⚠ Workday multiselect: no options appeared for '{value}' in '{field_label}'")
+                        continue
+
+                    # ── Step 4: Pick the best matching option ────────────────────
+                    stop_words = {"of", "the", "in", "a", "an"}
+
+                    def _toks(s: str):
+                        return {w for w in s.lower().split() if w not in stop_words and len(w) > 1}
+
+                    def _score(target: str, candidate: str) -> float:
+                        tl, cl = target.lower().strip(), candidate.lower().strip()
+                        if tl == cl:
+                            return 1.0
+                        t_toks, c_toks = _toks(tl), _toks(cl)
+                        score = len(t_toks & c_toks) / max(len(t_toks | c_toks), 1)
+                        if tl in cl:
+                            score = max(score, len(tl) / max(len(cl), 1))
+                        elif cl in tl:
+                            score = max(score, len(cl) / max(len(tl), 1))
+                        return score
+
+                    best_loc, best_text, best_score = None, '', 0.0
+                    for opt_loc, opt_text in options_list:
+                        s = _score(value, opt_text)
+                        if s > best_score:
+                            best_score, best_loc, best_text = s, opt_loc, opt_text
+
+                    if best_loc is None or best_score < 0.3:
+                        logger.warning(
+                            f"  ⚠ Workday multiselect: no match ≥ 0.3 for '{value}' "
+                            f"in '{field_label}' (best: '{best_text}' @ {best_score:.2f})"
+                        )
+                        # Close option list and move on
+                        await element.press('Escape')
+                        await asyncio.sleep(0.2)
+                        continue
+
+                    # ── Step 5: Click the chosen option ─────────────────────────
+                    logger.info(
+                        f"✅ Workday multiselect: selecting '{best_text}' "
+                        f"(score={best_score:.2f}) for '{field_label}'"
+                    )
+                    try:
+                        await best_loc.scroll_into_view_if_needed(timeout=1000)
+                    except Exception:
+                        pass
+                    await best_loc.click(timeout=3000)
+                    await asyncio.sleep(0.35)   # wait for Workday to register the selection
+                    selected.append(best_text)
+
                 except Exception as e:
-                    logger.debug(f"Could not select '{value}': {e}")
+                    logger.debug(f"  Workday multiselect: error selecting '{value}': {e}")
 
-            # Close dropdown
-            await element.press('Escape')
-            await asyncio.sleep(0.2)
+            # ── Step 6: Close the dropdown ───────────────────────────────────
+            try:
+                await element.press('Escape')
+                await asyncio.sleep(0.2)
+            except Exception:
+                pass
 
-            result.update({
-                "success": True,
-                "method": "workday_multiselect",
-                "final_value": ", ".join(values)
-            })
+            if selected:
+                result.update({
+                    "success": True,
+                    "method": "workday_multiselect",
+                    "final_value": ", ".join(selected),
+                })
+                logger.info(f"✅ Workday multiselect '{field_label}': selected {len(selected)}/{len(values)}")
+            else:
+                result.update({
+                    "success": False,
+                    "method": "workday_multiselect",
+                    "error": f"Could not select any of: {values}",
+                })
 
         except Exception as e:
             raise DropdownInteractionError(
@@ -1546,6 +1681,11 @@ class FieldInteractorV2:
                     # Determine field category
                     if tag_name == 'select':
                         category = 'dropdown'
+                    # Workday multiselect: search input inside a multiselect container
+                    # Identified by data-uxi-widget-type="selectinput" + data-uxi-multiselect-id
+                    elif (await element.get_attribute('data-uxi-widget-type') == 'selectinput'
+                          and await element.get_attribute('data-uxi-multiselect-id')):
+                        category = 'workday_multiselect'
                     # Greenhouse/React Select: input with role="combobox" and aria-haspopup="true"
                     elif role == 'combobox' and (aria_haspopup == 'true' or aria_autocomplete == 'list'):
                         # Check if this is a multi-select by looking at parent container classes
@@ -1619,7 +1759,28 @@ class FieldInteractorV2:
                             label_text = aria_label or placeholder or name
                         except:
                             pass
-                    
+
+                    # Method 4: Workday multiselect — label lives on the container div
+                    # The input carries data-uxi-multiselect-id pointing to the container,
+                    # and the container has aria-labelledby pointing to the visible label.
+                    if not label_text and category == 'workday_multiselect':
+                        try:
+                            multiselect_id = await element.get_attribute('data-uxi-multiselect-id')
+                            if multiselect_id:
+                                container = self.page.locator(f'[id="{multiselect_id}"]').first
+                                if await container.count() > 0:
+                                    labelledby = await container.get_attribute('aria-labelledby')
+                                    if labelledby:
+                                        for lbl_id in labelledby.split():
+                                            lbl_el = self.page.locator(f'#{lbl_id}').first
+                                            if await lbl_el.count() > 0:
+                                                candidate = (await lbl_el.inner_text()).strip().replace('*', '').strip()
+                                                if candidate:
+                                                    label_text = candidate
+                                                    break
+                        except:
+                            pass
+
                     # Extract options for dropdowns if requested
                     available_options = []
                     if extract_options and category == 'dropdown':

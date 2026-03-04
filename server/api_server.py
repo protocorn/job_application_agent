@@ -1060,12 +1060,14 @@ def upload_resume():
         if profile_data is None:
             return jsonify({"error": "Failed to process resume with Gemini", "success": False}), 500
 
-        # ── Persist extracted text + source type (no resume_url) ─────────
+        # ── Persist extracted text + source type (clear resume_url) ─────
+        original_filename = file.filename or f'resume.{source_type}'
         try:
             ProfileService.create_or_update_profile(user_id, {
-                'resume_url': '',
+                'resume_url': '',            # clear any previously saved Google Doc URL
                 'resume_source_type': source_type,
                 'resume_text': resume_text,
+                'resume_filename': original_filename,
             })
         except Exception as persist_err:
             logging.warning(f"Could not persist resume data: {persist_err}")
@@ -1073,8 +1075,9 @@ def upload_resume():
         return jsonify({
             "success": True,
             "profile_data": profile_data,
-            "resume_url": "",          # no Google Doc — tailoring disabled
+            "resume_url": "",
             "source_type": source_type,
+            "resume_filename": original_filename,
             "tailoring_available": False,
             "message": (
                 f"{source_type.upper()} resume uploaded and profile populated successfully. "
