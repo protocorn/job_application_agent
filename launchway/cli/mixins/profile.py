@@ -353,12 +353,80 @@ class ProfileMixin:
             self.print_warning("No changes made.")
             self.pause()
 
+    def _ensure_google_connected(self) -> bool:
+        """
+        Check whether the user has Google OAuth connected.
+        If not, offer to open the browser auth flow right now.
+        Returns True if connected (or just connected), False if skipped.
+        """
+        try:
+            status = self.api.get_google_oauth_status()
+        except LaunchwayAPIError:
+            status = {}
+
+        if status.get("is_connected"):
+            email = status.get("google_email", "")
+            self.print_success(f"Google account already connected ({email}).")
+            return True
+
+        print(f"\n  {Colors.WARNING}Your Google account is not connected.{Colors.ENDC}")
+        print("  Connecting allows Launchway to access your private Google Docs.")
+        print("  Without it, only publicly shared documents work.\n")
+
+        ans = self.get_input("  Connect your Google account now? (y/n): ").strip().lower()
+        if ans != 'y':
+            print()
+            return False
+
+        try:
+            auth_url = self.api.get_google_oauth_url()
+        except LaunchwayAPIError as e:
+            self.print_error(f"Could not get authorization URL: {e}")
+            return False
+
+        if not auth_url:
+            self.print_error("Server did not return an authorization URL.")
+            return False
+
+        # Open the browser
+        import webbrowser
+        print(f"\n  {Colors.OKCYAN}Opening browser for Google authorization...{Colors.ENDC}")
+        print(f"  If the browser does not open, visit this URL manually:\n")
+        print(f"  {auth_url}\n")
+        try:
+            webbrowser.open(auth_url)
+        except Exception:
+            pass
+
+        self.get_input("  Press Enter after you have authorized in the browser: ")
+
+        # Verify it actually worked
+        try:
+            status = self.api.get_google_oauth_status()
+        except LaunchwayAPIError:
+            status = {}
+
+        if status.get("is_connected"):
+            email = status.get("google_email", "")
+            self.print_success(f"Google account connected ({email}).")
+            return True
+        else:
+            self.print_warning(
+                "Google account does not appear to be connected yet.\n"
+                "  You can still continue — publicly shared documents will work."
+            )
+            return False
+
     def _update_resume_google_doc(self):
         self.clear_screen()
         self.print_header("RESUME — GOOGLE DOCS URL")
-        print("  Paste the sharing link of your Google Doc resume.")
-        print("  The document must be set to 'Anyone with the link can view'.\n")
-        url = _ask("Google Docs URL")
+        print("  Paste the sharing link of your Google Doc resume.\n")
+
+        # Offer Google OAuth connection before asking for the URL
+        self._ensure_google_connected()
+
+        print()
+        url = _ask("Google Docs URL (or blank to cancel)")
         if not url:
             self.print_warning("No changes made.")
             self.pause()

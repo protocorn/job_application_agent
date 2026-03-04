@@ -66,12 +66,17 @@ class GoogleOAuthService:
             redirect_uri=REDIRECT_URI
         )
 
-        # Store user_id in state parameter for callback
+        # Store user_id in state parameter for callback.
+        # code_challenge_method=None explicitly disables PKCE — the token
+        # exchange in handle_oauth_callback is done server-side with the
+        # client_secret, so PKCE is not required and its absence avoids the
+        # "Missing code verifier" error from Google.
         authorization_url, state = flow.authorization_url(
             access_type='offline',
             include_granted_scopes='true',
             state=str(user_id),
-            prompt='consent'  # Force consent to get refresh token
+            prompt='consent',  # Force consent to always get a refresh token
+            code_challenge_method=None,
         )
 
         return authorization_url

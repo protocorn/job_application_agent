@@ -152,6 +152,15 @@ class LaunchwayClient:
         """
         return self._post("/api/process-resume", {"resume_url": resume_url})
 
+    def get_google_oauth_status(self) -> Dict[str, Any]:
+        """Check whether the current user has Google OAuth connected."""
+        return self._get("/api/oauth/status")
+
+    def get_google_oauth_url(self) -> str:
+        """Get the Google OAuth authorization URL to open in a browser."""
+        data = self._get("/api/oauth/authorize")
+        return data.get("authorization_url", "")
+
     def verify_token(self) -> Dict[str, Any]:
         """Verify the current token and refresh user info."""
         return self._get("/api/auth/verify")
