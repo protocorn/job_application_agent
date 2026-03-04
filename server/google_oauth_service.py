@@ -44,41 +44,29 @@ class GoogleOAuthService:
     @staticmethod
     def get_authorization_url(user_id: Union[str, uuid.UUID]) -> str:
         """
-        Generate Google OAuth authorization URL for a user
+        Generate Google OAuth authorization URL for a user.
 
-        Args:
-            user_id: User ID (UUID or string) to associate with this OAuth flow
-
-        Returns:
-            Authorization URL to redirect user to
+        We build the URL manually instead of using Flow.authorization_url()
+        because newer versions of google-auth-oauthlib unconditionally inject
+        PKCE (code_challenge / code_verifier).  The verifier is stored inside
+        the ephemeral Flow object which is discarded before the callback, so
+        the token exchange in handle_oauth_callback would fail with
+        "Missing code verifier".  Building the URL ourselves keeps PKCE out
+        of the picture entirely — safe here because this is a confidential
+        server-side client that authenticates with client_secret.
         """
-        flow = Flow.from_client_config(
-            {
-                "web": {
-                    "client_id": CLIENT_ID,
-                    "client_secret": CLIENT_SECRET,
-                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token",
-                    "redirect_uris": [REDIRECT_URI]
-                }
-            },
-            scopes=SCOPES,
-            redirect_uri=REDIRECT_URI
-        )
-
-        # Store user_id in state parameter for callback.
-        # code_challenge_method=None explicitly disables PKCE — the token
-        # exchange in handle_oauth_callback is done server-side with the
-        # client_secret, so PKCE is not required and its absence avoids the
-        # "Missing code verifier" error from Google.
-        authorization_url, state = flow.authorization_url(
-            access_type='offline',
-            include_granted_scopes='true',
-            state=str(user_id),
-            prompt='consent',  # Force consent to always get a refresh token
-        )
-
-        return authorization_url
+        from urllib.parse import urlencode
+        params = {
+            'client_id':              CLIENT_ID,
+            'redirect_uri':           REDIRECT_URI,
+            'response_type':          'code',
+            'scope':                  ' '.join(SCOPES),
+            'access_type':            'offline',
+            'prompt':                 'consent',
+            'include_granted_scopes': 'true',
+            'state':                  str(user_id),
+        }
+        return f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
 
     @staticmethod
     def handle_oauth_callback(code: str, user_id: Union[str, uuid.UUID]) -> Dict[str, Any]:
