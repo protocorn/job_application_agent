@@ -76,7 +76,6 @@ class GoogleOAuthService:
             include_granted_scopes='true',
             state=str(user_id),
             prompt='consent',  # Force consent to always get a refresh token
-            code_challenge_method=None,
         )
 
         return authorization_url
