@@ -26,11 +26,21 @@ class TailoringMixin:
             self.print_info("Please set your resume source to Google Docs in Profile Management.")
             return False
 
-        resume_url = self.current_profile.get('resume_url')
-        if not resume_url:
-            self.print_error("Please add a resume URL (Google Docs link) in Profile Management first.")
-            return False
-        return True
+        resume_url  = self.current_profile.get('resume_url')
+        resume_text = self.current_profile.get('resume_text')
+        source_type = self.current_profile.get('resume_source_type', '')
+
+        if resume_url:
+            return True
+
+        if resume_text and source_type in ('pdf', 'docx'):
+            return True
+
+        self.print_error(
+            "No resume found. Please upload a PDF/DOCX or add a Google Docs URL "
+            "in Profile Management first."
+        )
+        return False
 
     def ensure_mimikree_connected_for_tailoring(self) -> tuple:
         """
