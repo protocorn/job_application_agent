@@ -367,8 +367,32 @@ class ProfileMixin:
             self.print_warning("That doesn't look like a Google Docs URL. Please try again.")
             self.pause()
             return
-        if self._save_profile_changes({"resume_url": url, "resume_source_type": "google_doc"}):
-            self.print_success("Resume URL saved. Resume tailoring is now enabled.")
+
+        print("\n  Extracting and processing your resume...", end="", flush=True)
+        try:
+            result = self.api.process_resume_url(url)
+            print(" done.\n")
+            if result.get("success"):
+                self.print_success("Resume processed and profile populated.")
+                msg = result.get("message", "")
+                if msg:
+                    self.print_info(msg)
+            else:
+                self.print_error(result.get("error") or "Failed to process resume.")
+        except Exception as e:
+            print(" failed.\n")
+            self.print_error(f"Could not process resume: {e}")
+            self.print_info("The URL has been saved — you can retry processing from this menu.")
+            # Still save the URL so the user doesn't lose it
+            self._save_profile_changes({"resume_url": url, "resume_source_type": "google_doc"})
+            self.pause()
+            return
+
+        # Refresh local profile cache
+        try:
+            self.current_profile = self.api.get_profile()
+        except Exception:
+            pass
         self.pause()
 
     def _update_resume_file(self):

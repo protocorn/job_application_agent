@@ -143,6 +143,15 @@ class LaunchwayClient:
         """Request a new verification email for the given address."""
         return self._post("/api/auth/resend-verification", {"email": email})
 
+    def process_resume_url(self, resume_url: str) -> Dict[str, Any]:
+        """
+        Tell the server to extract the Google Doc at resume_url, run it through
+        the LLM, and save the resulting profile fields.
+
+        Returns dict with keys: success, profile_data, message
+        """
+        return self._post("/api/process-resume", {"resume_url": resume_url})
+
     def verify_token(self) -> Dict[str, Any]:
         """Verify the current token and refresh user info."""
         return self._get("/api/auth/verify")

@@ -919,10 +919,6 @@ def extract_profile_keywords():
 @require_auth
 def process_resume():
     try:
-        # Add debugging
-        print(f"Request JSON: {request.json}")
-        print(f"Request headers: {request.headers}")
-
         user_id = request.current_user['id']
         resume_url = request.json['resume_url']
 
@@ -941,17 +937,17 @@ def process_resume():
                 "success": False
             }), 500
 
-        print(f"Returning profile_data: {profile_data}")
-
-        # Persist resume_url on user's profile
+        # Persist resume_url + all LLM-extracted profile fields
         try:
             from profile_service import ProfileService
-            ProfileService.create_or_update_profile(user_id, {
+            save_payload = {
+                **profile_data,
                 'resume_url': resume_url,
-                'resume_source_type': 'google_doc'
-            })
+                'resume_source_type': 'google_doc',
+            }
+            ProfileService.create_or_update_profile(user_id, save_payload)
         except Exception as persist_err:
-            logging.warning(f"Could not persist resume_url: {persist_err}")
+            logging.warning(f"Could not persist resume data: {persist_err}")
 
         return jsonify({
             "profile_data": profile_data,
