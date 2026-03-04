@@ -445,7 +445,7 @@ class ProfileMixin:
 
         # Refresh cached profile so the user sees updated data
         try:
-            self.current_profile = self.api.get_profile().get("profile", self.current_profile)
+            self.current_profile = self.api.get_profile()
         except Exception:
             pass
         self.pause()
