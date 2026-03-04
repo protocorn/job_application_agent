@@ -379,7 +379,7 @@ def process_resume_with_llm(resume_text: str) -> Dict[str, Any]:
     Return ONLY the filled JSON object (not an array). Do not include any markdown formatting, code blocks, or additional text.
     """
 
-    print(f"Sending prompt to Gemini")
+    logging.info("Sending resume text to Gemini for profile extraction")
 
     try:
         response = client.models.generate_content(
@@ -389,54 +389,38 @@ def process_resume_with_llm(resume_text: str) -> Dict[str, Any]:
                 "response_mime_type": "application/json"
             }
         )
-        
-        print(f"Raw Gemini response: {response.text}")
-        print(f"Response type: {type(response.text)}")
-        print(f"Response length: {len(response.text)}")
-        
+
         # Clean the response text to extract JSON
         response_text = response.text.strip()
-        print(f"Cleaned response text: {response_text[:200]}...")  # First 200 chars
-        
+
         # Remove any markdown formatting if present
         if response_text.startswith('```json'):
             response_text = response_text[7:]
-            print("Removed ```json prefix")
         if response_text.endswith('```'):
             response_text = response_text[:-3]
-            print("Removed ``` suffix")
         if response_text.startswith('```'):
             response_text = response_text[3:]
-            print("Removed ``` prefix")
-            
+
         response_text = response_text.strip()
-        print(f"Final cleaned text: {response_text[:200]}...")  # First 200 chars
-        
+
         try:
             profile_data = json.loads(response_text)
-            print(f"Successfully parsed JSON")
-            print(f"Parsed data type: {type(profile_data)}")
-            print(f"Parsed data keys: {list(profile_data.keys()) if isinstance(profile_data, dict) else 'Not a dict'}")
-            
+
             # Handle case where Gemini returns an array instead of object
             if isinstance(profile_data, list) and len(profile_data) > 0:
-                print("Gemini returned an array, extracting first element")
                 profile_data = profile_data[0]
-                print(f"Extracted object keys: {list(profile_data.keys())}")
             elif not isinstance(profile_data, dict):
-                print(f"ERROR: Expected dict or list, got {type(profile_data)}")
+                logging.error(f"process_resume_with_llm: unexpected response type {type(profile_data)}")
                 return None
-                
-            print(f"Final profile data: {profile_data}")
+
             validated_data = _validate_profile_data(profile_data, profile_schema)
-            print(f"Validated profile data: {validated_data}")
+            logging.info("Resume profile extraction successful")
             return validated_data
         except json.JSONDecodeError as json_err:
-            print(f"JSON parsing error: {json_err}")
-            print(f"Response text that failed to parse: {response_text}")
+            logging.error(f"process_resume_with_llm: JSON parse error: {json_err}")
             return None
     except Exception as e:
-        print(f"Error sending prompt to Gemini: {e}")
+        logging.error(f"process_resume_with_llm: Gemini error: {e}")
         return None
 
 def _validate_profile_data(profile_data: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
@@ -1060,15 +1044,17 @@ def upload_resume():
         if profile_data is None:
             return jsonify({"error": "Failed to process resume with Gemini", "success": False}), 500
 
-        # ── Persist extracted text + source type (clear resume_url) ─────
+        # ── Persist extracted text + source type + LLM-extracted profile fields ──
         original_filename = file.filename or f'resume.{source_type}'
         try:
-            ProfileService.create_or_update_profile(user_id, {
-                'resume_url': '',            # clear any previously saved Google Doc URL
+            save_payload = {
+                **profile_data,                  # all LLM-extracted fields
+                'resume_url': '',                # clear any previously saved Google Doc URL
                 'resume_source_type': source_type,
                 'resume_text': resume_text,
                 'resume_filename': original_filename,
-            })
+            }
+            ProfileService.create_or_update_profile(user_id, save_payload)
         except Exception as persist_err:
             logging.warning(f"Could not persist resume data: {persist_err}")
 

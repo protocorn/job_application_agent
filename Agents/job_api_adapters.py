@@ -1089,14 +1089,21 @@ class JobAPIFactory:
     def get_all_adapters(proxy_manager=None) -> List[JobAPIAdapter]:
         """Get all available adapters — JobSpy only."""
         try:
-            import sys
-            import os
-            sys.path.insert(0, os.path.dirname(__file__))
             from jobspy_adapter import JobSpyAdapter
+        except ImportError as e:
+            logger.error(
+                f"JobSpy adapter could not be imported: {e}. "
+                "Make sure 'python-jobspy' is installed: pip install python-jobspy"
+            )
+            raise RuntimeError(
+                f"Job search is unavailable: failed to load JobSpy ({e}).\n"
+                "Try running: pip install --upgrade python-jobspy"
+            ) from e
+        try:
             return [JobSpyAdapter(proxy_manager=proxy_manager)]
         except Exception as e:
-            logger.warning(f"JobSpy not available: {e}")
-            return []
+            logger.error(f"JobSpyAdapter initialisation failed: {e}", exc_info=True)
+            raise RuntimeError(f"Job search is unavailable: JobSpy initialisation failed ({e}).") from e
 
     @staticmethod
     def get_adapter(api_name: str) -> Optional[JobAPIAdapter]:
