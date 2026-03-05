@@ -499,6 +499,10 @@ def extract_google_doc_with_oauth(resume_url: str, user_id: int) -> str:
     try:
         # Check if user has Google OAuth connected
         if GoogleOAuthService.is_connected(user_id):
+            # When OAuth is connected, use it exclusively.
+            # Do NOT fall back to public access — the doc is likely private,
+            # and a public-access failure would show a misleading "make it public"
+            # error to a user who has already connected their account.
             try:
                 logging.info(f"User {user_id} has OAuth connected, using authenticated access")
                 credentials = GoogleOAuthService.get_credentials(user_id)
@@ -511,13 +515,22 @@ def extract_google_doc_with_oauth(resume_url: str, user_id: int) -> str:
                     logging.info(f"Successfully read private Google Doc via OAuth for user {user_id}")
                     return resume_text
 
-                # OAuth read returned empty — fall through to public fallback
-                logging.warning(f"OAuth read returned empty text for user {user_id}, falling back to public access")
+                # OAuth returned empty text after retries — transient Google API issue.
+                logging.warning(f"OAuth read returned empty text for user {user_id}")
+                raise ValueError(
+                    "Google's API returned an empty response. This is usually temporary — "
+                    "please wait a moment and try again."
+                )
+            except ValueError:
+                raise  # propagate our own clear messages unchanged
             except Exception as oauth_err:
-                logging.warning(f"OAuth access failed, falling back to public access: {oauth_err}")
-                # Fall through to public access method below
+                logging.warning(f"OAuth access failed for user {user_id}: {oauth_err}")
+                raise ValueError(
+                    f"Could not read your Google Doc (temporary error: {oauth_err}). "
+                    "Please try again in a moment."
+                )
 
-        # Fallback to public access method
+        # No OAuth — try public access (doc must be shared as 'Anyone with the link')
         return extract_resume_text(resume_url)
 
     except Exception as e:
@@ -567,10 +580,12 @@ def extract_resume_text(resume_url: str) -> str:
         print(f"Response: {response}")
 
         # Handle specific error cases
-        if response.status_code == 401:
-            raise ValueError("Google Doc is not publicly accessible. If you have connected your Google account, we can access your private docs. Otherwise, please set sharing to 'Anyone with the link can view' in Google Docs.")
-        elif response.status_code == 403:
-            raise ValueError("Access denied to Google Doc. Please connect your Google account or make the document public.")
+        if response.status_code in (401, 403):
+            raise ValueError(
+                "This Google Doc is private. Please either:\n"
+                "  • Connect your Google account (option in the Resume menu), or\n"
+                "  • Set sharing to 'Anyone with the link can view' in Google Docs."
+            )
         elif response.status_code == 404:
             raise ValueError("Google Doc not found. Please check the URL.")
 
@@ -578,16 +593,20 @@ def extract_resume_text(resume_url: str) -> str:
 
         # Return the text content
         return response.text.strip()
+    except ValueError:
+        raise  # propagate our own clear messages unchanged
     except Exception as e:
         logging.error(f"Error fetching Google Doc: {e}")
-        if "401" in str(e):
-            raise ValueError("Google Doc is not publicly accessible. Connect your Google account to access private docs, or make the document public.")
-        elif "403" in str(e):
-            raise ValueError("Access denied to Google Doc. Please connect your Google account or check sharing permissions.")
-        elif "404" in str(e):
+        err = str(e)
+        if "401" in err or "403" in err:
+            raise ValueError(
+                "This Google Doc is private. Please either connect your Google account "
+                "or set sharing to 'Anyone with the link can view'."
+            )
+        elif "404" in err:
             raise ValueError("Google Doc not found. Please check the URL.")
         else:
-            raise ValueError(f"Could not access Google Doc: {str(e)}")
+            raise ValueError(f"Could not access Google Doc: {err}")
 
 def extract_pdf_text(file_obj) -> str:
     """Extract text from PDF file using PyPDF2"""
