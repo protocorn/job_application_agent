@@ -507,8 +507,12 @@ def extract_google_doc_with_oauth(resume_url: str, user_id: int) -> str:
                 docs_service, _ = get_google_services(credentials)
                 resume_text = read_google_doc_content(docs_service, doc_id)
 
-                logging.info(f"Successfully read private Google Doc via OAuth for user {user_id}")
-                return resume_text
+                if resume_text and resume_text.strip():
+                    logging.info(f"Successfully read private Google Doc via OAuth for user {user_id}")
+                    return resume_text
+
+                # OAuth read returned empty — fall through to public fallback
+                logging.warning(f"OAuth read returned empty text for user {user_id}, falling back to public access")
             except Exception as oauth_err:
                 logging.warning(f"OAuth access failed, falling back to public access: {oauth_err}")
                 # Fall through to public access method below

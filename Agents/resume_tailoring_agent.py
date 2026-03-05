@@ -145,15 +145,35 @@ def copy_google_doc(drive_service, doc_id, new_title):
         print(f"An error occurred while copying the document: {error}")
         return None
 
-def read_google_doc_content(docs_service, document_id):
-    """Reads and returns the text content of a Google Doc."""
-    try:
-        document = docs_service.documents().get(documentId=document_id).execute()
-        content = document.get('body').get('content')
-        return read_structural_elements(content)
-    except HttpError as error:
-        print(f"An error occurred while reading the document: {error}")
-        return None
+def read_google_doc_content(docs_service, document_id, max_retries=3):
+    """Reads and returns the text content of a Google Doc.
+
+    Retries on transient HTTP errors (503, 429, 502, 504) with exponential
+    backoff so that brief Google API outages don't surface as hard failures.
+    """
+    import time as _time
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            document = docs_service.documents().get(documentId=document_id).execute()
+            content = document.get('body', {}).get('content')
+            if not content:
+                return None
+            return read_structural_elements(content)
+        except HttpError as error:
+            last_error = error
+            status = getattr(error, 'resp', None)
+            status_code = int(status.status) if status else 0
+            # Retry on transient server-side errors
+            if status_code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
+                wait = 2 ** attempt  # 1s, 2s, 4s …
+                print(f"Transient error ({status_code}) reading Google Doc, retrying in {wait}s (attempt {attempt+1}/{max_retries})...")
+                _time.sleep(wait)
+                continue
+            print(f"An error occurred while reading the document: {error}")
+            return None
+    print(f"An error occurred while reading the document: {last_error}")
+    return None
 
 def read_structural_elements(elements):
     """Recursively reads text from Google Docs structural elements with styling info."""
