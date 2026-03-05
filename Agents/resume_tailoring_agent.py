@@ -148,8 +148,12 @@ def copy_google_doc(drive_service, doc_id, new_title):
 def read_google_doc_content(docs_service, document_id, max_retries=3):
     """Reads and returns the text content of a Google Doc.
 
-    Retries on transient HTTP errors (503, 429, 502, 504) with exponential
-    backoff so that brief Google API outages don't surface as hard failures.
+    Retries on:
+    - Transient HTTP errors (429, 500, 502, 503, 504)
+    - Empty body responses (Google sometimes returns an empty body immediately
+      after a 401 token-refresh cycle — a known transient API behaviour)
+    - Empty extracted text (handles docs whose content couldn't be parsed on
+      the first attempt, e.g. due to a partial/stale response)
     """
     import time as _time
     last_error = None
@@ -158,8 +162,23 @@ def read_google_doc_content(docs_service, document_id, max_retries=3):
             document = docs_service.documents().get(documentId=document_id).execute()
             content = document.get('body', {}).get('content')
             if not content:
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt
+                    print(f"Google Doc returned empty body, retrying in {wait}s (attempt {attempt + 1}/{max_retries})...")
+                    _time.sleep(wait)
+                    continue
+                print(f"Google Doc returned empty body after {max_retries} attempts")
                 return None
-            return read_structural_elements(content)
+            text = read_structural_elements(content)
+            if not text or not text.strip():
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt
+                    print(f"Google Doc returned empty text, retrying in {wait}s (attempt {attempt + 1}/{max_retries})...")
+                    _time.sleep(wait)
+                    continue
+                print(f"Google Doc returned empty text after {max_retries} attempts")
+                return None
+            return text
         except HttpError as error:
             last_error = error
             status = getattr(error, 'resp', None)
@@ -167,7 +186,7 @@ def read_google_doc_content(docs_service, document_id, max_retries=3):
             # Retry on transient server-side errors
             if status_code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
                 wait = 2 ** attempt  # 1s, 2s, 4s …
-                print(f"Transient error ({status_code}) reading Google Doc, retrying in {wait}s (attempt {attempt+1}/{max_retries})...")
+                print(f"Transient error ({status_code}) reading Google Doc, retrying in {wait}s (attempt {attempt + 1}/{max_retries})...")
                 _time.sleep(wait)
                 continue
             print(f"An error occurred while reading the document: {error}")
@@ -176,7 +195,11 @@ def read_google_doc_content(docs_service, document_id, max_retries=3):
     return None
 
 def read_structural_elements(elements):
-    """Recursively reads text from Google Docs structural elements with styling info."""
+    """Recursively reads text from Google Docs structural elements with styling info.
+
+    Handles both paragraph and table elements so that resumes using table-based
+    layouts are fully extracted (previously table content was silently skipped).
+    """
     text = ''
     for value in elements:
         if 'paragraph' in value:
@@ -200,16 +223,30 @@ def read_structural_elements(elements):
                         content = f'<i>{content}</i>'
                     
                     text += content
+        elif 'table' in value:
+            # Recurse into every table cell so table-formatted resumes are read
+            for row in value.get('table', {}).get('tableRows', []):
+                for cell in row.get('tableCells', []):
+                    cell_content = cell.get('content', [])
+                    text += read_structural_elements(cell_content)
     return text
 
 def read_structural_elements_plain(elements):
-    """Reads plain text from Google Docs structural elements without styling tags."""
+    """Reads plain text from Google Docs structural elements without styling tags.
+
+    Handles both paragraph and table elements so table-formatted resumes are
+    fully extracted.
+    """
     text = ''
     for value in elements:
         if 'paragraph' in value:
             para_elements = value.get('paragraph').get('elements')
             for elem in para_elements:
                 text += elem.get('textRun', {}).get('content', '')
+        elif 'table' in value:
+            for row in value.get('table', {}).get('tableRows', []):
+                for cell in row.get('tableCells', []):
+                    text += read_structural_elements_plain(cell.get('content', []))
     return text
 
 def extract_document_structure(docs_service, document_id):
