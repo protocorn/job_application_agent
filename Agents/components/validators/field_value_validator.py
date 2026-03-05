@@ -111,7 +111,7 @@ class FieldValueValidator:
             return value
 
         # Convert to string for processing
-        value_str = str(value)
+        value_str = str(value).strip()
         field_label_lower = field_label.lower()
 
         # Phone number fields

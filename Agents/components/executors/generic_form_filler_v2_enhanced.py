@@ -1445,40 +1445,43 @@ If none of the flagged issues represent a true contradiction with the profile, r
             comprehensive_profile_context = field_mapper._create_profile_context(profile, context_type="final_review")
 
             prompt = f"""
-You are reviewing a completed job application form. Your ONLY job is to verify that the values filled in the form match what is stated in the applicant's profile.
+You are reviewing a completed job application form. Your job is to verify two things:
+  A. Each filled value matches the correct field in the applicant's profile.
+  B. Each filled value is the RIGHT TYPE of data for that field label.
 
-CRITICAL RULES - YOU MUST FOLLOW THESE EXACTLY:
-1. The profile is ABSOLUTE TRUTH. Never question, second-guess, or flag any data that comes directly from the profile.
-2. You may ONLY flag a field if what was FILLED IN THE FORM directly contradicts a specific value in the profile.
-3. You must NEVER flag something based on your own reasoning or general knowledge (e.g., "F-1 visa holders usually can't work" or "Indian nationality with US phone is unusual"). If the profile says it, it's correct.
-4. You must NEVER flag formatting issues (phone number hyphens, country codes, etc.) - those are intentional.
-5. You must NEVER flag missing fields - your job is only to check accuracy of what IS filled.
-6. You must NEVER make inferences about what "should" be true based on other fields. Treat each filled field independently against the profile.
+RULE SET:
 
-EXAMPLES OF WHAT YOU SHOULD FLAG (contradicts profile):
-- Profile says name is "John Smith" but form was filled with "Jane Smith" → flag it
-- Profile says email is "john@gmail.com" but form was filled with "jane@yahoo.com" → flag it
+1. VALUE-FIELD TYPE MISMATCH (most important — flag these):
+   These are cases where a valid profile value ended up in the WRONG field:
+   - Any field whose label contains "LinkedIn", "LinkedIn Profile", "LinkedIn URL" → must contain a LinkedIn URL (e.g. linkedin.com/in/...). If it contains a city, name, state, or any non-URL text → FLAG IT.
+   - Any field whose label contains "GitHub", "Github", "Portfolio", "Website", "URL", "Link" → must contain a URL or empty. If it contains a city, state, or plain text → FLAG IT.
+   - Any field whose label is "City" or "Town" → must contain a city name, NOT a URL or date → flag if URL found.
+   - Any field whose label is "State" or "Province" → must contain a state name/code, NOT a URL → flag if URL found.
+   - Any essay / long-answer field (label contains "tell us", "describe", "why", "what", "ideal", "start date", "experience", "internship", "feedback", "skill") → must contain a meaningful sentence or paragraph. If it contains only a URL, a city name, a state code, or a single unrelated word → FLAG IT.
 
-EXAMPLES OF WHAT YOU MUST NOT FLAG (these are fine):
-- Profile has Indian nationality but US phone number → NOT a contradiction, both values are in the profile
-- Profile says "authorized to work: Yes" and "requires sponsorship: Yes" → NOT contradictory, the profile explicitly has both values
-- Phone number without hyphens → NOT a problem
-- Visa type and work authorization both answering yes → trust the profile completely
+2. VALUE CONTRADICTS PROFILE (also flag):
+   - Profile says name is "John Smith" but form filled "Jane Smith" → flag it.
+   - Profile says email is "john@gmail.com" but form filled "jane@yahoo.com" → flag it.
+
+3. DO NOT FLAG (these are fine):
+   - Formatting differences (phone without dashes, URL with/without https, etc.)
+   - Missing fields — only check what IS filled.
+   - Values that seem unusual but are directly in the profile (Indian nationality + US phone, visa + work auth both Yes, etc.).
 
 {comprehensive_profile_context}
 
-Filled Fields:
+Filled Fields (label → value):
 {filled_list}
 
 Respond in JSON format:
 {{
   "approved": true/false,
-  "issues": ["field_name: filled_value vs profile_value explanation"],
+  "issues": ["field_label: 'filled_value' — reason (expected: what it should be)"],
   "confidence": 0.0-1.0
 }}
 
-Only set approved=false if a filled value DIRECTLY contradicts a specific profile field value.
-If everything matches the profile (even if it seems unusual to you), set approved=true with empty issues list.
+Set approved=false if ANY field has a value of the wrong type for its label, or if a value directly contradicts the profile.
+If everything looks correct, set approved=true with empty issues list.
 """
 
             response = client.models.generate_content(

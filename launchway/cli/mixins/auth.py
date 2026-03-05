@@ -262,9 +262,16 @@ class AuthMixin:
         If the user has never configured their AI Engine, show a banner and
         immediately redirect them to the AI Engine setup screen.
         """
+        # Fast path: check the already-loaded profile before making an extra API call
+        if (self.current_profile or {}).get("api_primary_mode"):
+            return
+
         try:
             data = self.api.get_ai_key_settings()
             if data.get("api_primary_mode"):
+                # Sync into local profile cache so the fast path works next time
+                if self.current_profile is not None:
+                    self.current_profile["api_primary_mode"] = data["api_primary_mode"]
                 return   # already configured — nothing to do
         except Exception:
             return   # can't check → don't block startup

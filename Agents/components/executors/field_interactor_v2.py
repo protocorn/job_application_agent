@@ -133,23 +133,24 @@ class FieldInteractorV2:
 
         # Phase 1: Parse the new stable_id prefix format and build a direct locator.
         # Format: <prefix>:<value>  e.g. aria_label:First Name, name:email, id:q123
-        # The OLD format was "tagname_xxx" — handled below by falling through to
-        # phase 3 (live attribute reading) when no prefix matches.
+        # Value may have uniquifying suffix (_0, _1) — strip it for locator (real attr has no suffix).
+        def _strip_uniquify_suffix(s: str) -> str:
+            return re.sub(r'_\d+$', '', s) if s else s
         if stable_id:
             if stable_id.startswith('name:'):
-                v = stable_id[5:]
+                v = _strip_uniquify_suffix(stable_id[5:])
                 element = _name_loc(v)
                 logger.debug(f"🎯 stable_id → name locator: [{v}]")
             elif stable_id.startswith('aria_label:'):
-                v = stable_id[11:]
+                v = _strip_uniquify_suffix(stable_id[11:])
                 element = self.page.locator(f'[aria-label="{v}"]').first
                 logger.debug(f"🎯 stable_id → aria-label locator: [{v}]")
             elif stable_id.startswith('placeholder:'):
-                v = stable_id[12:]
+                v = _strip_uniquify_suffix(stable_id[12:])
                 element = self.page.locator(f'[placeholder="{v}"]').first
                 logger.debug(f"🎯 stable_id → placeholder locator: [{v}]")
             elif stable_id.startswith('id:'):
-                v = stable_id[3:]
+                v = _strip_uniquify_suffix(stable_id[3:])
                 element = self.page.locator(f'[id="{v}"]').first
                 logger.debug(f"🎯 stable_id → id locator: [{v}]")
             # label_hash: and pos: have no direct CSS equivalent → fall through
@@ -1648,6 +1649,60 @@ class FieldInteractorV2:
         except Exception:
             return ""
 
+    async def _extract_ashby_field_schema(self) -> Dict[str, Dict[str, Any]]:
+        """
+        If the current page is an Ashby job application, extract the complete field
+        schema from window.__appData.  Returns a dict keyed by field path/id:
+            { "b068965a-...": {"title": "LinkedIn Profile", "type": "String", "options": []} }
+        Returns an empty dict on non-Ashby pages or on any error.
+        """
+        try:
+            schema = await self.page.evaluate("""
+                () => {
+                    const appData = window.__appData;
+                    if (!appData) return null;
+
+                    const result = {};
+
+                    function processEntries(entries) {
+                        if (!Array.isArray(entries)) return;
+                        for (const entry of entries) {
+                            const field = entry.field;
+                            if (!field) continue;
+                            const path = field.path || field.id;
+                            if (!path) continue;
+                            const selectableValues = field.selectableValues || [];
+                            result[path] = {
+                                title: field.title || '',
+                                type: field.type || 'String',
+                                options: selectableValues.map(v => ({
+                                    text: v.label || v.value,
+                                    value: v.value
+                                }))
+                            };
+                        }
+                    }
+
+                    // Main application form
+                    const appForm = appData.posting && appData.posting.applicationForm;
+                    if (appForm) processEntries(appForm.fieldEntries || []);
+
+                    // Survey forms (EEO etc.)
+                    const surveyForms = appData.posting && appData.posting.surveyForms;
+                    if (Array.isArray(surveyForms)) {
+                        for (const sf of surveyForms) processEntries(sf.fieldEntries || []);
+                    }
+
+                    return Object.keys(result).length ? result : null;
+                }
+            """)
+            if schema:
+                logger.info(f"📋 Ashby schema extracted: {len(schema)} fields from window.__appData")
+            return schema or {}
+        except Exception as e:
+            logger.debug(f"Ashby schema extraction skipped: {e}")
+            return {}
+
     async def get_all_form_fields(self, extract_options: bool = True) -> List[Dict[str, Any]]:
         """
         Detect all form fields on the page including inputs, selects, textareas, radio buttons, and checkboxes.
@@ -1659,6 +1714,10 @@ class FieldInteractorV2:
             List of field dictionaries with metadata
         """
         fields = []
+
+        # Try to read Ashby's embedded form schema — gives us exact field titles and types
+        # keyed by the field path used as the DOM input's name attribute.
+        ashby_schema = await self._extract_ashby_field_schema()
         
         try:
             # Detect all standard form input types
@@ -1810,20 +1869,52 @@ class FieldInteractorV2:
                     #
                     # Each variant uses an explicit prefix so _get_fresh_element can
                     # reconstruct the right CSS selector without guessing.
+                    # IMPORTANT: We must ensure stable_id is UNIQUE per field so that
+                    # catalog/mapping never overwrites one field with another (which
+                    # caused wrong values in wrong fields, e.g. city in LinkedIn).
                     if name:
-                        stable_id = f"name:{name}"
+                        base_id = f"name:{name}"
                     elif aria_label:
-                        stable_id = f"aria_label:{aria_label}"
+                        base_id = f"aria_label:{aria_label}"
                     elif placeholder:
-                        stable_id = f"placeholder:{placeholder}"
+                        base_id = f"placeholder:{placeholder}"
                     elif label_text:
                         label_hash = hashlib.md5(label_text.encode()).hexdigest()[:8]
-                        stable_id = f"label_hash:{label_hash}"
+                        base_id = f"label_hash:{label_hash}"
                     elif id_attr:
-                        stable_id = f"id:{id_attr}"
+                        base_id = f"id:{id_attr}"
                     else:
-                        stable_id = f"pos:{len(fields)}"
-                    
+                        base_id = f"pos:{len(fields)}"
+                    # Uniquify: if this base_id was already used, append _0, _1, ...
+                    existing_stable_ids = {f.get('stable_id') for f in fields}
+                    stable_id = base_id
+                    if stable_id in existing_stable_ids:
+                        suffix = 0
+                        while stable_id in existing_stable_ids:
+                            stable_id = f"{base_id}_{suffix}"
+                            suffix += 1
+                    # Ashby enrichment: if the field's `name` matches a path from
+                    # window.__appData, override the label (and options) with the
+                    # authoritative values from the schema — prevents any mislabeling
+                    # that can arise from DOM label-scraping on React SPAs.
+                    ashby_info = ashby_schema.get(name) or ashby_schema.get(id_attr) or {}
+                    if ashby_info:
+                        ashby_title = ashby_info.get('title', '').strip()
+                        if ashby_title:
+                            label_text = ashby_title
+                            logger.debug(f"🎯 Ashby schema override: '{name}' → '{ashby_title}'")
+                        # Carry Ashby options for ValueSelect fields (dropdown/radio)
+                        if ashby_info.get('options') and not available_options:
+                            available_options = ashby_info['options']
+                        # Map Ashby types to field categories
+                        ashby_type = ashby_info.get('type', '')
+                        if ashby_type == 'Boolean' and category not in ('radio', 'checkbox'):
+                            category = 'ashby_button_group'
+                        elif ashby_type == 'ValueSelect' and category == 'text_input':
+                            category = 'ashby_button_group'
+                        elif ashby_type == 'LongText' and category == 'text_input':
+                            category = 'textarea'
+
                     field_data = {
                         'element': element,
                         'field_category': category,

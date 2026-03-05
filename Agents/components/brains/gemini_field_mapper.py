@@ -261,6 +261,15 @@ MANDATORY FILLS in full auto mode (NEVER use NEEDS_HUMAN_INPUT for these):
         prompt = f"""
 You are helping to fill out a job application form. I will provide you with a catalog of all form fields with their unique IDs, and you need to map each field to the appropriate action.
 
+**CRITICAL - MATCH VALUE TO THE FIELD'S LABEL:**
+Each form field has a unique ID and a Label. You MUST assign the value that BELONGS to that specific field:
+- A field whose Label is "LinkedIn Profile" or "LinkedIn" must get the profile's linkedin URL (e.g. linkedin.com/in/...). NEVER put city, state, or location there.
+- A field whose Label is "Github" / "Portfolio" / "Website" must get the profile's github/portfolio URL. NEVER put city or state there.
+- A field whose Label is "City" must get the profile's city (e.g. Brooklyn). NEVER put a URL or state there.
+- A field whose Label is "State" must get the profile's state (e.g. NY). NEVER put a URL or city there.
+- Essay/long-answer fields (e.g. "Tell us about yourself", "Ideal start dates") must get MANUAL or a short description — never paste a URL or single word like a city.
+Double-check: the value you assign to each ID must make sense for THAT field's Label.
+
 USER PROFILE:
 {profile_context}
 
