@@ -249,6 +249,101 @@ def read_structural_elements_plain(elements):
                     text += read_structural_elements_plain(cell.get('content', []))
     return text
 
+def _extract_paragraph_metadata(paragraph, line_number, default_page_width=468, avg_char_width=7):
+    """Extract line metadata from a single Google Docs paragraph element.
+
+    Returns a metadata dict, or None if the paragraph is empty.
+    """
+    para_style = paragraph.get('paragraphStyle', {})
+    bullet = paragraph.get('bullet', None)
+
+    alignment_map = {
+        'START': 'left',
+        'CENTER': 'center',
+        'END': 'right',
+        'JUSTIFIED': 'justified',
+    }
+    alignment = alignment_map.get(para_style.get('alignment', 'START'), 'left')
+
+    indent_start = para_style.get('indentStart', {}).get('magnitude', 0)
+    indent_first_line = para_style.get('indentFirstLine', {}).get('magnitude', 0)
+
+    bullet_level = 0
+    if bullet:
+        nesting_level = bullet.get('nestingLevel', 0)
+        bullet_level = nesting_level + 1
+        indent_start += bullet_level * 36
+
+    line_text = ''
+    for elem in paragraph.get('elements', []):
+        if 'textRun' in elem:
+            line_text += elem.get('textRun', {}).get('content', '')
+
+    line_text_stripped = line_text.rstrip('\n')
+    if not line_text_stripped:
+        return None
+
+    first_line_width = default_page_width - indent_start - indent_first_line
+    first_line_char_limit = max(0, int(first_line_width / avg_char_width))
+    continuation_width = default_page_width - indent_start
+    continuation_char_limit = max(0, int(continuation_width / avg_char_width))
+
+    current_length = len(line_text_stripped)
+    visual_lines = 1
+    if current_length > first_line_char_limit:
+        remaining_chars = current_length - first_line_char_limit
+        additional_lines = (remaining_chars + continuation_char_limit - 1) // continuation_char_limit
+        visual_lines += additional_lines
+
+    if visual_lines == 1:
+        char_buffer = max(0, first_line_char_limit - current_length)
+    else:
+        chars_before_last_line = first_line_char_limit + (visual_lines - 2) * continuation_char_limit
+        chars_on_last_line = current_length - chars_before_last_line
+        char_buffer = max(0, continuation_char_limit - chars_on_last_line)
+
+    return {
+        'text': line_text_stripped,
+        'alignment': alignment,
+        'bullet_level': bullet_level,
+        'indent_start': indent_start,
+        'indent_first_line': indent_first_line,
+        'char_limit_first_line': first_line_char_limit,
+        'char_limit_continuation': continuation_char_limit,
+        'current_length': current_length,
+        'char_buffer': char_buffer,
+        'visual_lines': visual_lines,
+        'line_number': line_number,
+    }
+
+
+def _collect_structure_elements(elements, line_metadata, line_number_ref,
+                                default_page_width=468, avg_char_width=7):
+    """Recursively collect line metadata from body elements (paragraphs + tables).
+
+    ``line_number_ref`` is a one-element list used as a mutable integer so
+    the counter persists across recursive calls without needing nonlocal.
+    """
+    for element in elements:
+        if 'paragraph' in element:
+            meta = _extract_paragraph_metadata(
+                element['paragraph'], line_number_ref[0],
+                default_page_width, avg_char_width,
+            )
+            if meta is not None:
+                line_metadata.append(meta)
+                line_number_ref[0] += 1
+        elif 'table' in element:
+            # Recurse into every cell so table-formatted resumes are fully extracted
+            for row in element.get('table', {}).get('tableRows', []):
+                for cell in row.get('tableCells', []):
+                    _collect_structure_elements(
+                        cell.get('content', []),
+                        line_metadata, line_number_ref,
+                        default_page_width, avg_char_width,
+                    )
+
+
 def extract_document_structure(docs_service, document_id):
     """Extract line-by-line structure with formatting metadata, detecting natural line wraps.
 
@@ -261,6 +356,9 @@ def extract_document_structure(docs_service, document_id):
     - char_limit: estimated max characters before line wrap
     - line_number: sequential line number
     - visual_lines: number of lines this text spans on page
+
+    Handles both paragraph and table elements so table-formatted resumes
+    (very common in professional Google Doc templates) are fully parsed.
     """
     try:
         document = docs_service.documents().get(documentId=document_id).execute()
@@ -272,92 +370,12 @@ def extract_document_structure(docs_service, document_id):
         avg_char_width = 7
 
         line_metadata = []
-        line_number = 0
+        line_number_ref = [0]  # mutable counter shared across recursive calls
 
-        for element in content:
-            if 'paragraph' in element:
-                paragraph = element['paragraph']
-                para_style = paragraph.get('paragraphStyle', {})
-                bullet = paragraph.get('bullet', None)
-
-                # Get alignment (default: START/left)
-                alignment_map = {
-                    'START': 'left',
-                    'CENTER': 'center',
-                    'END': 'right',
-                    'JUSTIFIED': 'justified'
-                }
-                alignment = alignment_map.get(para_style.get('alignment', 'START'), 'left')
-
-                # Get indentation
-                indent_start = para_style.get('indentStart', {}).get('magnitude', 0)
-                indent_first_line = para_style.get('indentFirstLine', {}).get('magnitude', 0)
-
-                # Determine bullet level
-                bullet_level = 0
-                if bullet:
-                    # Bullet level is determined by nesting level
-                    nesting_level = bullet.get('nestingLevel', 0)
-                    bullet_level = nesting_level + 1
-                    # Add extra indent for bullets (typically 36 points per level)
-                    indent_start += bullet_level * 36
-
-                # Extract text content from paragraph
-                para_elements = paragraph.get('elements', [])
-                line_text = ''
-                for elem in para_elements:
-                    if 'textRun' in elem:
-                        line_text += elem.get('textRun', {}).get('content', '')
-
-                # Remove trailing newlines for analysis
-                line_text_stripped = line_text.rstrip('\n')
-
-                # Skip empty lines (but keep them in structure)
-                if not line_text_stripped:
-                    continue
-
-                # Calculate available width for FIRST line (with first line indent)
-                first_line_width = default_page_width - indent_start - indent_first_line
-                first_line_char_limit = max(0, int(first_line_width / avg_char_width))
-
-                # Calculate available width for CONTINUATION lines (without first line indent)
-                continuation_width = default_page_width - indent_start
-                continuation_char_limit = max(0, int(continuation_width / avg_char_width))
-
-                # Estimate how many visual lines this paragraph spans
-                current_length = len(line_text_stripped)
-                visual_lines = 1  # At least 1 line
-
-                if current_length > first_line_char_limit:
-                    # Text wraps beyond first line
-                    remaining_chars = current_length - first_line_char_limit
-                    additional_lines = (remaining_chars + continuation_char_limit - 1) // continuation_char_limit
-                    visual_lines += additional_lines
-
-                # For char_buffer calculation, use the last line's remaining space
-                if visual_lines == 1:
-                    char_buffer = max(0, first_line_char_limit - current_length)
-                else:
-                    # Calculate chars on the last line
-                    chars_before_last_line = first_line_char_limit + (visual_lines - 2) * continuation_char_limit
-                    chars_on_last_line = current_length - chars_before_last_line
-                    char_buffer = max(0, continuation_char_limit - chars_on_last_line)
-
-                line_metadata.append({
-                    'text': line_text_stripped,
-                    'alignment': alignment,
-                    'bullet_level': bullet_level,
-                    'indent_start': indent_start,
-                    'indent_first_line': indent_first_line,
-                    'char_limit_first_line': first_line_char_limit,
-                    'char_limit_continuation': continuation_char_limit,
-                    'current_length': current_length,
-                    'char_buffer': char_buffer,
-                    'visual_lines': visual_lines,
-                    'line_number': line_number
-                })
-
-                line_number += 1
+        _collect_structure_elements(
+            content, line_metadata, line_number_ref,
+            default_page_width, avg_char_width,
+        )
 
         return line_metadata
 
