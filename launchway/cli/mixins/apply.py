@@ -280,10 +280,9 @@ class ApplyMixin:
         incomplete_count = len([j for j in detailed_results if not j['submitted']])
         if incomplete_count > 0:
             self.print_warning(f"\n{incomplete_count} application(s) were not fully submitted.")
-            if self.get_input("Open incomplete applications for manual completion? (y/n): ").strip().lower() == 'y':
-                await self._open_incomplete_applications(report_filename)
+            self.print_info("The browser window is already open — complete and submit manually.")
         else:
-            self.print_warning("\nAll browser windows are still open for your review.")
+            self.print_info("\nAll browser windows are still open for your review.")
 
         self.pause()
 

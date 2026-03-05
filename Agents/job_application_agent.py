@@ -3489,19 +3489,61 @@ def _load_profile_data(user_id=None, profile_data=None):
 # Global playwright instance for persistent browser reuse
 _global_playwright_instance = None
 _global_playwright_lock = None
+_global_playwright_loop_id: int = -1  # id() of the event loop that created the instance
+
+
+def _playwright_is_alive(pw) -> bool:
+    """Return True if the playwright instance is still connected to a live transport."""
+    try:
+        impl = getattr(pw, '_impl_obj', None)
+        if impl is None:
+            return False
+        conn = getattr(impl, '_connection', None)
+        if conn is None:
+            return False
+        # The transport is set to None when the connection is closed.
+        return getattr(conn, '_transport', None) is not None
+    except Exception:
+        return False
+
 
 async def _get_or_create_playwright():
-    """Get or create global playwright instance for browser reuse"""
-    global _global_playwright_instance, _global_playwright_lock
-    
-    # Initialize lock if needed
+    """Get or create global playwright instance for browser reuse.
+
+    Handles the case where the caller re-enters from a new asyncio.run() call
+    (which creates a fresh event loop).  The old playwright instance is bound to
+    the previous (now-closed) event loop and must be discarded.
+    """
+    global _global_playwright_instance, _global_playwright_lock, _global_playwright_loop_id
+
+    current_loop_id = id(asyncio.get_running_loop())
+
+    # If the event loop changed since the last run, the old playwright and its
+    # lock are bound to the dead loop — reset everything.
+    if current_loop_id != _global_playwright_loop_id:
+        _global_playwright_instance = None
+        _global_playwright_lock = None
+        _global_playwright_loop_id = current_loop_id
+        logger.info("🔄 New event loop detected — resetting Playwright instance")
+
     if _global_playwright_lock is None:
         _global_playwright_lock = asyncio.Lock()
-    
+
     async with _global_playwright_lock:
+        # Also guard against a stale instance that somehow survived a loop
+        # switch (e.g. same loop id but transport was closed externally).
+        if _global_playwright_instance is not None and not _playwright_is_alive(_global_playwright_instance):
+            logger.warning("⚠️  Stale Playwright instance detected — creating a fresh one")
+            try:
+                await _global_playwright_instance.stop()
+            except Exception:
+                pass
+            _global_playwright_instance = None
+
         if _global_playwright_instance is None:
             _global_playwright_instance = await async_playwright().start()
             logger.info("🎭 Created global Playwright instance for browser reuse")
+
         return _global_playwright_instance
 
 async def run_links_with_refactored_agent(links: list[str], headless: bool, keep_open: bool, debug: bool, hold_seconds: int, slow_mo_ms: int, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False, resume_path: str = None, full_auto_mode: bool = False):

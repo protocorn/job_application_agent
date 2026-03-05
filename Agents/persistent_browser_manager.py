@@ -15,6 +15,26 @@ logger = logging.getLogger(__name__)
 
 # Global registry to track active browser contexts per user
 _active_contexts: Dict[str, BrowserContext] = {}
+# Track which event loop the contexts were created in
+_active_contexts_loop_id: int = -1
+
+
+def _clear_stale_contexts_if_new_loop() -> None:
+    """If asyncio.run() was called again a new event loop is running.
+    All previously stored contexts are bound to the old (closed) loop and
+    must be discarded before we try to use them.
+    """
+    global _active_contexts, _active_contexts_loop_id
+    try:
+        import asyncio
+        current = id(asyncio.get_running_loop())
+    except RuntimeError:
+        return  # not in an async context — nothing to do
+    if current != _active_contexts_loop_id:
+        if _active_contexts:
+            logger.info(f"🔄 New event loop — discarding {len(_active_contexts)} stale browser context(s)")
+        _active_contexts = {}
+        _active_contexts_loop_id = current
 
 
 class PersistentBrowserManager:
@@ -59,6 +79,10 @@ class PersistentBrowserManager:
         Returns:
             BrowserContext that persists across sessions
         """
+        # Discard all contexts from a previous asyncio.run() event loop before
+        # checking the cache — they are tied to the old (closed) loop.
+        _clear_stale_contexts_if_new_loop()
+
         # Check if browser is already open for this user
         if user_id in _active_contexts:
             context = _active_contexts[user_id]

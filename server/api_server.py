@@ -937,13 +937,18 @@ def process_resume():
                 "success": False
             }), 500
 
-        # Persist resume_url + all LLM-extracted profile fields
+        # Persist resume_url + all LLM-extracted profile fields.
+        # Explicitly clear PDF-specific fields so stale data from a previous
+        # PDF/DOCX upload never bleeds into a Google Doc profile.
         try:
             from profile_service import ProfileService
             save_payload = {
                 **profile_data,
                 'resume_url': resume_url,
                 'resume_source_type': 'google_doc',
+                'resume_text': '',          # clear any previously stored PDF text
+                'resume_filename': '',      # clear previously uploaded filename
+                'resume_file_base64': '',   # clear previously uploaded file bytes
             }
             ProfileService.create_or_update_profile(user_id, save_payload)
         except Exception as persist_err:

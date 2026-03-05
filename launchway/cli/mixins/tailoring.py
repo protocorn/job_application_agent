@@ -154,13 +154,21 @@ class TailoringMixin:
         if self.get_input("Proceed? (y/n): ").strip().lower() != 'y':
             return
 
-        job_description = self.get_input("\nEnter job description: ").strip()
+        print("\nEnter job description:")
+        print("  (Paste the full text — press Enter on a blank line twice when done)\n")
+        jd_lines = []
+        while True:
+            line = input("  > ")
+            if line == "" and jd_lines and jd_lines[-1] == "":
+                break
+            jd_lines.append(line)
+        job_description = "\n".join(jd_lines).strip()
         if not job_description:
             self.print_error("Job description is required.")
             self.pause()
             return
 
-        job_title = self.get_input("Job Title: ").strip() or "Position"
+        job_title = self.get_input("\nJob Title: ").strip() or "Position"
         company   = self.get_input("Company Name: ").strip() or "Company"
 
         try:
