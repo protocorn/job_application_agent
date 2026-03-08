@@ -56,17 +56,17 @@ class PrintMixin:
         print(f"{Colors.HEADER}{Colors.BOLD}{text.center(60)}{Colors.ENDC}")
         print(f"{Colors.HEADER}{Colors.BOLD}{'=' * 60}{Colors.ENDC}\n")
 
-    def print_success(self, text: str):
-        print(f"{Colors.OKGREEN}[OK] {text}{Colors.ENDC}")
+    def print_success(self, text: str, *args, **kwargs):
+        print(f"{Colors.OKGREEN}[OK] {text}{Colors.ENDC}", *args, **kwargs)
 
-    def print_error(self, text: str):
-        print(f"{Colors.FAIL}[ERROR] {text}{Colors.ENDC}")
+    def print_error(self, text: str, *args, **kwargs):
+        print(f"{Colors.FAIL}[ERROR] {text}{Colors.ENDC}", *args, **kwargs)
 
-    def print_info(self, text: str):
-        print(f"{Colors.OKCYAN}[INFO] {text}{Colors.ENDC}")
+    def print_info(self, text: str, *args, **kwargs):
+        print(f"{Colors.OKCYAN}[INFO] {text}{Colors.ENDC}", *args, **kwargs)
 
-    def print_warning(self, text: str):
-        print(f"{Colors.WARNING}[WARN] {text}{Colors.ENDC}")
+    def print_warning(self, text: str, *args, **kwargs):
+        print(f"{Colors.WARNING}[WARN] {text}{Colors.ENDC}", *args, **kwargs)
 
     def get_input(self, prompt: str, password: bool = False) -> str:
         try:
@@ -76,6 +76,22 @@ class PrintMixin:
         except EOFError as e:
             # Treat stream-closed input the same as Ctrl+C for clean shutdown.
             raise KeyboardInterrupt() from e
+
+    def get_input_yn(self, prompt: str, default: str = None) -> bool:
+        """
+        Prompt for y/n; re-prompt until input is 'y', 'n', or empty (empty uses default).
+        default: 'y', 'n', or None (no default — empty not allowed).
+        Returns True for yes, False for no.
+        """
+        while True:
+            raw = self.get_input(prompt).strip().lower()
+            if raw in ('y', 'yes'):
+                return True
+            if raw in ('n', 'no'):
+                return False
+            if raw == '' and default is not None:
+                return default == 'y'
+            self.print_warning("Please enter y or n" + (f" (or press Enter for {default})" if default else "") + ".")
 
     def pause(self):
         try:

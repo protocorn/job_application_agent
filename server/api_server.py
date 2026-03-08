@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify, send_file
 import os
 import sys
 import requests
+import secrets
+import html
 from google import genai
 from googleapiclient.discovery import build
 import json
@@ -11,6 +13,7 @@ import logging
 import time
 import base64
 import uuid
+import hashlib
 import asyncio
 import redis
 from datetime import datetime
@@ -26,7 +29,7 @@ from latex_tailoring_agent import parse_latex_zip, get_main_tex_preview_from_bas
 from job_application_agent import run_links_with_refactored_agent
 from logging_config import setup_file_logging
 from components.session.session_manager import SessionManager
-from auth import AuthService, require_auth
+from auth import AuthService, require_auth, require_admin
 from profile_service import ProfileService
 from job_search_service import JobSearchService
 from google_oauth_service import GoogleOAuthService
@@ -137,6 +140,74 @@ def after_request(response):
 
 JOBS: Dict[str, Dict[str, Any]] = {}
 INTERVENTIONS: Dict[str, Dict[str, Any]] = {}  # Store intervention requests from job agents
+
+# Ephemeral OAuth state storage: state_token -> {"user_id": str, "origin": str, "expires_at": float}
+OAUTH_STATE_STORE: Dict[str, Dict[str, Any]] = {}
+OAUTH_STATE_TTL_SECONDS = int(os.getenv("OAUTH_STATE_TTL_SECONDS", "600"))
+
+
+def _cleanup_oauth_state() -> None:
+    now = time.time()
+    expired_tokens = [
+        state for state, payload in OAUTH_STATE_STORE.items()
+        if payload.get("expires_at", 0) <= now
+    ]
+    for token in expired_tokens:
+        OAUTH_STATE_STORE.pop(token, None)
+
+
+def _create_oauth_state(user_id: str, origin: str) -> str:
+    _cleanup_oauth_state()
+    state_token = secrets.token_urlsafe(32)
+    OAUTH_STATE_STORE[state_token] = {
+        "user_id": str(user_id),
+        "origin": origin,
+        "expires_at": time.time() + OAUTH_STATE_TTL_SECONDS,
+    }
+    return state_token
+
+
+def _consume_oauth_state(state_token: str) -> Dict[str, Any]:
+    _cleanup_oauth_state()
+    payload = OAUTH_STATE_STORE.pop(state_token, None)
+    if not payload:
+        return {}
+    if payload.get("expires_at", 0) <= time.time():
+        return {}
+    return payload
+
+
+def _get_default_frontend_origin() -> str:
+    # Explicit override takes precedence.
+    explicit_origin = (
+        os.getenv("OAUTH_POSTMESSAGE_ORIGIN")
+        or os.getenv("FRONTEND_URL")
+        or ""
+    ).strip()
+    if explicit_origin.startswith("http"):
+        return explicit_origin
+
+    http_origins = [
+        origin for origin in allowed_origins
+        if isinstance(origin, str) and origin.startswith("http")
+    ]
+    non_localhost = [
+        origin for origin in http_origins
+        if "localhost" not in origin and "127.0.0.1" not in origin
+    ]
+
+    # In production, prefer non-localhost origins to avoid wrong fallback target.
+    if flask_env != "development":
+        if non_localhost:
+            return non_localhost[0]
+        if http_origins:
+            return http_origins[0]
+        return "https://www.launchway.app/"
+
+    # In development, prefer localhost origins first.
+    if http_origins:
+        return http_origins[0]
+    return "http://localhost:3000"
 
 # Initialize session manager with proper path
 import os
@@ -719,7 +790,7 @@ def get_profile():
 
     except Exception as e:
         logging.error(f"Error getting profile: {e}")
-        return jsonify({"error": f"Failed to get profile: {str(e)}"}), 500
+        return jsonify({"error": "Failed to get profile"}), 500
 
 @app.route("/api/profile", methods=["POST"])
 @require_auth
@@ -748,7 +819,7 @@ def save_profile():
 
     except Exception as e:
         logging.error(f"Error saving profile: {e}")
-        return jsonify({"error": f"Failed to save profile: {str(e)}"}), 500
+        return jsonify({"error": "Failed to save profile"}), 500
 
 @app.route("/api/settings/ai-keys", methods=['GET'])
 @require_auth
@@ -793,7 +864,7 @@ def get_ai_key_settings():
 
     except Exception as e:
         logging.error(f"Error getting AI key settings: {e}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to get AI key settings"}), 500
 
 
 @app.route("/api/settings/ai-keys", methods=['POST'])
@@ -859,6 +930,8 @@ def save_ai_key_settings():
 
 @app.route("/api/profile/keywords/extract", methods=['POST'])
 @require_auth
+@rate_limit('profile_keyword_extract_per_user_per_day')
+@rate_limit('api_requests_per_user_per_minute')
 def extract_profile_keywords():
     """
     Extract structured keywords from the authenticated user's resume using Gemini.
@@ -935,11 +1008,13 @@ def extract_profile_keywords():
         }), 403
     except Exception as e:
         logging.error(f"Error extracting resume keywords: {e}", exc_info=True)
-        return jsonify({"error": f"Keyword extraction failed: {str(e)}"}), 500
+        return jsonify({"error": "Keyword extraction failed"}), 500
 
 
 @app.route("/api/process-resume", methods=['POST'])
 @require_auth
+@rate_limit('resume_processing_per_user_per_day')
+@rate_limit('api_requests_per_user_per_minute')
 def process_resume():
     try:
         user_id = request.current_user['id']
@@ -986,10 +1061,12 @@ def process_resume():
 
     except Exception as e:
         logging.error(f"Error processing resume: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to process resume"}), 500
 
 @app.route("/api/upload-resume", methods=['POST'])
 @require_auth
+@rate_limit('resume_processing_per_user_per_day')
+@rate_limit('api_requests_per_user_per_minute')
 def upload_resume():
     """
     Handle PDF/DOCX resume file upload.
@@ -1035,7 +1112,7 @@ def upload_resume():
                 resume_text = "\n".join(pages).strip()
             except Exception as pdf_err:
                 logging.error(f"PDF text extraction failed: {pdf_err}")
-                return jsonify({"error": f"Could not read PDF: {pdf_err}"}), 400
+                return jsonify({"error": "Could not read PDF"}), 400
 
         elif filename.endswith('.docx'):
             source_type = 'docx'
@@ -1051,7 +1128,7 @@ def upload_resume():
                 resume_text = "\n".join(p.text for p in doc.paragraphs if p.text.strip()).strip()
             except Exception as docx_err:
                 logging.error(f"DOCX text extraction failed: {docx_err}")
-                return jsonify({"error": f"Could not read DOCX: {docx_err}"}), 400
+                return jsonify({"error": "Could not read DOCX"}), 400
 
         if not resume_text or len(resume_text) < 50:
             return jsonify({
@@ -1100,11 +1177,13 @@ def upload_resume():
 
     except Exception as e:
         logging.error(f"Error uploading resume: {e}")
-        return jsonify({"error": f"Failed to upload resume: {str(e)}"}), 500
+        return jsonify({"error": "Failed to upload resume"}), 500
 
 
 @app.route("/api/upload-latex-resume", methods=['POST'])
 @require_auth
+@rate_limit('resume_processing_per_user_per_day')
+@rate_limit('api_requests_per_user_per_minute')
 def upload_latex_resume():
     """Handle LaTeX ZIP upload (Overleaf exports), store in profile, and parse profile data."""
     try:
@@ -1498,6 +1577,7 @@ def get_recent_job_listings():
 
 @app.route("/api/credits/consume", methods=['POST'])
 @require_auth
+@rate_limit('api_requests_per_user_per_minute')
 def consume_credit():
     """Consume one credit unit for a given service (called by CLI after a local task completes)."""
     try:
@@ -1638,7 +1718,6 @@ def get_user_credits():
 
 @app.route("/api/tailor-resume", methods=['POST'])
 @require_auth
-@rate_limit('resume_tailoring_per_user_per_day')
 @rate_limit('api_requests_per_user_per_minute')
 @validate_input
 def tailor_resume():
@@ -1827,7 +1906,8 @@ def tailor_resume_sync():
                     credentials=credentials,
                     user_full_name=user_full_name,
                     mimikree_email=mimikree_email,
-                    mimikree_password=mimikree_password
+                    mimikree_password=mimikree_password,
+                    user_id=user_id,
                 )
                 # Extract URL (now returns dict with metrics)
                 tailored_url = tailoring_result.get('url') if isinstance(tailoring_result, dict) else tailoring_result
@@ -2049,19 +2129,36 @@ def signup():
         required_fields = ['email', 'password', 'first_name', 'last_name']
         for field in required_fields:
             if not data.get(field):
-                return jsonify({"error": f"{field} is required"}), 400
+                pretty = field.replace('_', ' ').title()
+                return jsonify({
+                    "success": False,
+                    "error": f"{pretty} is required",
+                    "error_code": "validation_failed",
+                    "field_errors": {field: f"{pretty} is required."}
+                }), 400
 
         email = data['email'].strip().lower()
         password = data['password']
         first_name = data['first_name'].strip()
         last_name = data['last_name'].strip()
 
-        # Basic validation
-        if len(password) < 6:
-            return jsonify({"error": "Password must be at least 6 characters long"}), 400
-
+        # Field validation with actionable feedback
+        field_errors = {}
         if '@' not in email:
-            return jsonify({"error": "Please provide a valid email address"}), 400
+            field_errors['email'] = "Please provide a valid email address."
+        if len(password) < 8:
+            field_errors['password'] = "Password must be at least 8 characters long."
+        if not first_name:
+            field_errors['first_name'] = "First name is required."
+        if not last_name:
+            field_errors['last_name'] = "Last name is required."
+        if field_errors:
+            return jsonify({
+                "success": False,
+                "error": "Please fix the highlighted fields.",
+                "field_errors": field_errors,
+                "error_code": "validation_failed"
+            }), 400
 
         # Register user
         result = AuthService.register_user(email, password, first_name, last_name)
@@ -2069,7 +2166,8 @@ def signup():
         if result['success']:
             return jsonify(result), 201
         else:
-            return jsonify(result), 400
+            status_code = 409 if result.get('error_code') == 'email_already_exists' else 400
+            return jsonify(result), status_code
 
     except Exception as e:
         logging.error(f"Error in signup endpoint: {e}")
@@ -2997,24 +3095,19 @@ def get_cli_agent_key():
     Also returns shared service credentials so agents work out-of-the-box for
     users who chose "Launchway AI" (no personal API key).
     """
-    key = os.getenv("AGENT_RUNTIME_KEY")
-    if not key:
-        logging.error("AGENT_RUNTIME_KEY env var is not set on this server")
-        return jsonify({"error": "Runtime key not configured on server"}), 500
-
-    gemini_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or ""
-
+    runtime_key_configured = bool(os.getenv("AGENT_RUNTIME_KEY"))
+    shared_gemini_configured = bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"))
     return jsonify({
-        "key":          key,
-        # Shared Gemini key — used when user has not set their own GOOGLE_API_KEY
-        "gemini_key":   gemini_key,
-        # Production Mimikree URL — overrides the localhost default in agent code
+        "runtime_key_configured": runtime_key_configured,
+        "shared_gemini_configured": shared_gemini_configured,
         "mimikree_url": os.getenv("MIMIKREE_BASE_URL", "https://www.mimikree.com"),
+        "message": "Server secrets are not exposed through this endpoint.",
     }), 200
 
 
 @app.route("/api/cli/apply", methods=['POST'])
 @require_auth
+@rate_limit('api_requests_per_user_per_minute')
 def cli_submit_apply():
     """Submit a job application job to the server-side queue (CLI endpoint)."""
     try:
@@ -3027,6 +3120,20 @@ def cli_submit_apply():
         job_url = (data.get("job_url") or "").strip()
         if not job_url:
             return jsonify({"error": "job_url is required"}), 400
+
+        # Short idempotency window blocks rapid duplicate queue submissions.
+        normalized_job_url = job_url.rstrip('/').lower()
+        dedupe_hash = hashlib.sha256(f"{user_id}:{normalized_job_url}".encode('utf-8')).hexdigest()
+        dedupe_key = f"cli_apply_dedupe:{dedupe_hash}"
+        try:
+            from rate_limiter import redis_client as _rc
+            if not _rc.set(dedupe_key, "1", ex=120, nx=True):
+                return jsonify({
+                    "error": "Duplicate apply request detected. Please wait 2 minutes before retrying this URL."
+                }), 409
+        except Exception:
+            # Continue if dedupe store is unavailable; rate limits still apply.
+            pass
 
         tailor_resume_flag = data.get("tailor_resume", False)
 
@@ -3192,141 +3299,116 @@ def oauth_authorize():
     """Get Google OAuth authorization URL"""
     try:
         user_id = request.current_user['id']
-        auth_url = GoogleOAuthService.get_authorization_url(user_id)
+        request_origin = request.headers.get("Origin", "")
+        trusted_origin = request_origin if request_origin in allowed_origins else _get_default_frontend_origin()
+        state_token = _create_oauth_state(user_id=user_id, origin=trusted_origin)
+        auth_url = GoogleOAuthService.get_authorization_url(user_id, state_token)
         return jsonify({
             "success": True,
             "authorization_url": auth_url
         }), 200
     except Exception as e:
         logging.error(f"Error generating OAuth URL: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to generate OAuth authorization URL"}), 500
 
 @app.route("/api/oauth/callback", methods=['GET'])
 def oauth_callback():
     """Handle Google OAuth callback"""
     try:
-        # Check for error parameter from Google (user denied access, scope changed, etc.)
-        error = request.args.get('error')
-        if error:
-            error_description = request.args.get('error_description', 'Authorization denied')
-            logging.warning(f"OAuth error from Google: {error} - {error_description}")
+        state_token = request.args.get('state')
+        state_payload = _consume_oauth_state(state_token or "")
+        callback_origin = state_payload.get("origin") or _get_default_frontend_origin()
+
+        def _popup_html(success: bool, message: str, email: str = "", error_message: str = "") -> str:
+            safe_message = html.escape(message or "")
+            safe_email = html.escape(email or "")
+            payload = {
+                "type": "GOOGLE_AUTH_SUCCESS" if success else "GOOGLE_AUTH_ERROR",
+                "email": email or "",
+                "error": error_message or message or "",
+            }
+            payload_json = json.dumps(payload)
+            target_origin_json = json.dumps(callback_origin)
+            status_color = "#2e7d32" if success else "#d32f2f"
+            status_title = "Authorization Successful!" if success else "Authorization Failed"
             return f"""
                 <html>
                     <head>
                         <style>
                             body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
-                            .error {{ color: #d32f2f; }}
+                            .status {{ color: {status_color}; }}
+                            .countdown {{ font-size: 14px; color: #666; margin-top: 10px; }}
                         </style>
                     </head>
                     <body>
-                        <h2 class="error">✗ Authorization Failed</h2>
-                        <p>{error_description}</p>
-                        <p>Please close this window and try connecting your Google account again.</p>
-                        <script>
-                            // Send error message to parent window
-                            if (window.opener) {{
-                                window.opener.postMessage({{
-                                    type: 'GOOGLE_AUTH_ERROR',
-                                    error: '{error_description}'
-                                }}, '*');
-                            }}
-                        </script>
-                    </body>
-                </html>
-            """
-
-        code = request.args.get('code')
-        state = request.args.get('state')  # user_id (UUID string)
-
-        if not code or not state:
-            return jsonify({"error": "Missing code or state parameter"}), 400
-
-        user_id = state  # Keep as UUID string, don't convert to int
-        result = GoogleOAuthService.handle_oauth_callback(code, user_id)
-
-        if result['success']:
-            # Send success message to parent window and auto-close
-            return f"""
-                <html>
-                    <head>
-                        <style>
-                            body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
-                            .success {{ color: #2e7d32; }}
-                            .countdown {{
-                                font-size: 14px;
-                                color: #666;
-                                margin-top: 10px;
-                            }}
-                        </style>
-                    </head>
-                    <body>
-                        <h2 class="success">✓ Authorization Successful!</h2>
-                        <p>Your Google account has been connected successfully.</p>
-                        <p>Email: {result.get('google_email', '')}</p>
+                        <h2 class="status">{'✓' if success else '✗'} {status_title}</h2>
+                        <p>{safe_message}</p>
+                        {"<p>Email: " + safe_email + "</p>" if safe_email else ""}
                         <p class="countdown">This window will close automatically in <span id="countdown">3</span> seconds...</p>
-                        <p style="font-size: 12px; color: #999;">You can close this window manually if it doesn't close automatically.</p>
                         <script>
-                            // Send success message to parent window
-                            if (window.opener) {{
-                                window.opener.postMessage({{
-                                    type: 'GOOGLE_AUTH_SUCCESS',
-                                    email: '{result.get('google_email', '')}'
-                                }}, '*');
+                            const payload = {payload_json};
+                            const targetOrigin = {target_origin_json};
+                            if (window.opener && targetOrigin) {{
+                                window.opener.postMessage(payload, targetOrigin);
                             }}
 
-                            // Countdown and auto-close
                             let countdown = 2;
                             const countdownElement = document.getElementById('countdown');
                             const interval = setInterval(() => {{
                                 countdown--;
-                                if (countdownElement) {{
-                                    countdownElement.textContent = countdown;
-                                }}
+                                if (countdownElement) countdownElement.textContent = countdown;
                                 if (countdown <= 0) {{
                                     clearInterval(interval);
-                                    // Try to close the window
                                     window.close();
-                                    // If window.close() doesn't work, try alternative methods
-                                    setTimeout(() => {{
-                                        if (!window.closed) {{
-                                            // Create a fallback if browser blocks window.close()
-                                            document.body.innerHTML = '<div style="text-align: center; padding: 50px; font-family: Arial;"><h2 style="color: #2e7d32;">✓ Success!</h2><p>You can close this window now.</p></div>';
-                                        }}
-                                    }}, 500);
                                 }}
                             }}, 1000);
                         </script>
                     </body>
                 </html>
             """
+
+        if not state_payload:
+            logging.warning("OAuth callback rejected due to invalid/expired state")
+            return _popup_html(
+                success=False,
+                message="Invalid or expired OAuth session. Please try connecting again.",
+                error_message="Invalid or expired OAuth session.",
+            )
+
+        # Check for error parameter from Google (user denied access, scope changed, etc.)
+        error = request.args.get('error')
+        if error:
+            error_description = request.args.get('error_description', 'Authorization denied')
+            logging.warning(f"OAuth error from Google: {error} - {error_description}")
+            return _popup_html(
+                success=False,
+                message="Google denied authorization. Please try connecting again.",
+                error_message=error_description,
+            )
+
+        code = request.args.get('code')
+
+        if not code:
+            return jsonify({"error": "Missing code parameter"}), 400
+
+        user_id = state_payload["user_id"]
+        result = GoogleOAuthService.handle_oauth_callback(code, user_id)
+
+        if result['success']:
+            return _popup_html(
+                success=True,
+                message="Your Google account has been connected successfully.",
+                email=result.get('google_email', ''),
+            )
         else:
-            return f"""
-                <html>
-                    <head>
-                        <style>
-                            body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
-                            .error {{ color: #d32f2f; }}
-                        </style>
-                    </head>
-                    <body>
-                        <h2 class="error">✗ Authorization Failed</h2>
-                        <p>{result.get('error', 'Unknown error occurred')}</p>
-                        <p>Please close this window and try connecting your Google account again.</p>
-                        <script>
-                            // Send error message to parent window
-                            if (window.opener) {{
-                                window.opener.postMessage({{
-                                    type: 'GOOGLE_AUTH_ERROR',
-                                    error: '{result.get('error', 'Unknown error occurred')}'
-                                }}, '*');
-                            }}
-                        </script>
-                    </body>
-                </html>
-            """
+            return _popup_html(
+                success=False,
+                message="Google account connection failed. Please try again.",
+                error_message=result.get('error', 'Unknown error occurred'),
+            )
     except Exception as e:
         logging.error(f"Error in OAuth callback: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "OAuth callback failed"}), 500
 
 @app.route("/api/oauth/status", methods=['GET'])
 @require_auth
@@ -3344,7 +3426,7 @@ def oauth_status():
         }), 200
     except Exception as e:
         logging.error(f"Error checking OAuth status: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to check OAuth status"}), 500
 
 @app.route("/api/oauth/disconnect", methods=['POST'])
 @require_auth
@@ -3360,7 +3442,7 @@ def oauth_disconnect():
             return jsonify(result), 400
     except Exception as e:
         logging.error(f"Error disconnecting Google account: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to disconnect Google account"}), 500
 
 # ============================================================
 # MIMIKREE CONNECTION ENDPOINTS
@@ -4252,6 +4334,7 @@ def save_discovered_projects():
 
 @app.route("/api/admin/system-status", methods=['GET'])
 @require_auth
+@require_admin
 def get_system_status():
     """Get comprehensive system status for monitoring"""
     try:
@@ -4271,16 +4354,18 @@ def get_system_status():
         
     except Exception as e:
         logging.error(f"Error getting system status: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to get system status"}), 500
 
 @app.route("/api/admin/job-queue/stats", methods=['GET'])
 @require_auth
+@require_admin
 def get_job_queue_stats():
     """Get detailed job queue statistics"""
     try:
         return jsonify(job_queue.get_queue_stats()), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logging.error(f"Error getting job queue stats: {e}")
+        return jsonify({"error": "Failed to get job queue stats"}), 500
 
 @app.route("/api/jobs/<job_id>/status", methods=['GET'])
 @require_auth
@@ -4337,6 +4422,7 @@ def get_user_jobs_api():
 
 @app.route("/api/admin/backups", methods=['GET'])
 @require_auth
+@require_admin
 def list_backups_api():
     """List all available backups"""
     try:
@@ -4346,10 +4432,11 @@ def list_backups_api():
         
     except Exception as e:
         logging.error(f"Error listing backups: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to list backups"}), 500
 
 @app.route("/api/admin/backups/create", methods=['POST'])
 @require_auth
+@require_admin
 def create_backup_api():
     """Create a new backup"""
     try:
@@ -4371,10 +4458,11 @@ def create_backup_api():
         
     except Exception as e:
         logging.error(f"Error creating backup: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to create backup"}), 500
 
 @app.route("/api/admin/backups/<backup_id>/restore", methods=['POST'])
 @require_auth
+@require_admin
 def restore_backup_api(backup_id):
     """Restore from a backup"""
     try:
@@ -4384,10 +4472,11 @@ def restore_backup_api(backup_id):
         
     except Exception as e:
         logging.error(f"Error restoring backup: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to restore backup"}), 500
 
 @app.route("/api/admin/security/events", methods=['GET'])
 @require_auth
+@require_admin
 def get_security_events_api():
     """Get recent security events"""
     try:
@@ -4397,10 +4486,11 @@ def get_security_events_api():
         
     except Exception as e:
         logging.error(f"Error getting security events: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to get security events"}), 500
 
 @app.route("/api/admin/security/audit", methods=['POST'])
 @require_auth
+@require_admin
 def run_security_audit_api():
     """Run security audit"""
     try:
@@ -4409,7 +4499,7 @@ def run_security_audit_api():
         
     except Exception as e:
         logging.error(f"Error running security audit: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to run security audit"}), 500
 
 if __name__ == "__main__":
     # Set up file logging for API server with DEBUG level to capture everything

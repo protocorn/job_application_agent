@@ -16,7 +16,7 @@ class ApplyMixin:
 
     async def auto_apply_menu(self):
         self.clear_screen()
-        self.print_header("AUTO APPLY TO JOB(S)")
+        self.print_header("ASSISTED AUTO-APPLY (BATCH)")
 
         if not self._ensure_agents_bootstrapped():
             self.pause()
@@ -26,8 +26,9 @@ class ApplyMixin:
             self.pause()
             return
 
-        self.print_info("Automatically fill and submit job applications.")
-        self.print_info("You can apply to multiple jobs (up to 10) in one batch.\n")
+        self.print_info("Automatically fill and submit job applications in a controlled batch.")
+        self.print_info("Warning: the agent can still make mistakes and may submit an application.")
+        self.print_info("Credits: 1 credit is consumed per successful application.\n")
 
         num_jobs_str = self.get_input("How many jobs do you want to apply to? (1-10, default: 1): ").strip()
         if not num_jobs_str:
@@ -74,17 +75,14 @@ class ApplyMixin:
             self.print_info("✓ Will tailor resume for all jobs")
         elif tailor_option == 'i':
             for i, url in enumerate(job_urls):
-                tailor = self.get_input(f"  Tailor for job #{i+1}? (y/n, default: n): ").strip().lower() == 'y'
+                tailor = self.get_input_yn(f"  Tailor for job #{i+1}? (y/n, default: n): ", default='n')
                 tailor_settings.append(tailor)
         else:
             tailor_settings = [False] * len(job_urls)
             self.print_info("✓ Will not tailor resume for any jobs")
 
         if any(tailor_settings):
-            mimikree_email, mimikree_password = self.ensure_mimikree_connected_for_tailoring()
-            if not mimikree_email or not mimikree_password:
-                self.pause()
-                return
+            self.ensure_mimikree_connected_for_tailoring()
 
         # ── Credit check ────────────────────────────────────────────────────
         try:
@@ -92,6 +90,11 @@ class ApplyMixin:
             remaining = daily.get("remaining")
             limit = daily.get("limit")
             credit_str = format_credits(remaining, limit, daily.get("reset_time"))
+            if daily.get("error") == "credit_check_unavailable":
+                self.print_error("Could not verify credits (backend unavailable).")
+                self.print_info("Blocking cost-bearing automation to prevent untracked usage.")
+                self.pause()
+                return
             if not available:
                 self.print_error(f"Daily job application limit reached ({credit_str}).")
                 self.print_info("Limits reset at midnight UTC. Check launchway.app/manage-credits")
@@ -108,7 +111,9 @@ class ApplyMixin:
                     tailor_settings = tailor_settings[:rem_int]
             self.print_info(f"Job Application credits: {credit_str}")
         except LaunchwayAPIError:
-            pass  # fail open
+            self.print_error("Could not verify credits. Please retry in a moment.")
+            self.pause()
+            return
 
         await self.auto_apply_batch(job_urls, tailor_settings)
 
@@ -118,6 +123,7 @@ class ApplyMixin:
         total_jobs       = len(job_urls)
         successful_apps  = []
         failed_apps      = []
+        billing_pending_apps = []
         detailed_results = []
 
         self.print_info(f"\n{'='*60}")
@@ -141,6 +147,7 @@ class ApplyMixin:
                     'field_details': [],
                     'error':         None,
                     'tailored':      tailor,
+                    'billing_pending': False,
                 }
 
                 self.print_header(f"JOB {idx}/{total_jobs}")
@@ -225,7 +232,14 @@ class ApplyMixin:
                                 f"{format_credits(cr.get('remaining'), cr.get('limit'), cr.get('reset_time'))}"
                             )
                         except LaunchwayAPIError:
-                            pass
+                            job_result['billing_pending'] = True
+                            job_result['error'] = "Credit debit failed after submission; billing reconciliation pending"
+                            billing_pending_apps.append({'number': idx, 'url': job_url})
+                            self.print_warning(
+                                "Credit debit failed after submission. Marked billing_pending and stopping batch."
+                            )
+                            detailed_results.append(job_result)
+                            break
                     else:
                         job_result['success']   = False
                         job_result['submitted'] = False
@@ -276,6 +290,10 @@ class ApplyMixin:
             self.print_error(f"\nFailed applications: {len(failed_apps)}")
             for app in failed_apps:
                 self.print_error(f"  Job #{app['number']}: {str(app.get('error',''))[:100]}")
+        if billing_pending_apps:
+            self.print_warning(f"\nSubmitted with billing pending: {len(billing_pending_apps)}")
+            for app in billing_pending_apps:
+                self.print_warning(f"  Job #{app['number']}: {app['url'][:100]}")
 
         incomplete_count = len([j for j in detailed_results if not j['submitted']])
         if incomplete_count > 0:
@@ -297,13 +315,23 @@ class ApplyMixin:
 
         from Agents.job_application_agent import RefactoredJobAgent
 
-        tailor   = self.get_input("Tailor resume for this job? (y/n, default: n): ").strip().lower() == 'y'
+        tailor   = self.get_input_yn("Tailor resume for this job? (y/n, default: n): ", default='n')
+
+        # Block expensive single-run apply when credits cannot be verified.
+        available, daily = self.api.check_credit_available("job_applications")
+        if daily.get("error") == "credit_check_unavailable":
+            self.print_error("Could not verify credits (backend unavailable).")
+            self.print_info("Blocking automation to prevent untracked usage.")
+            self.pause()
+            return
+        if not available:
+            credit_str = format_credits(daily.get("remaining"), daily.get("limit"), daily.get("reset_time"))
+            self.print_error(f"Daily job application limit reached ({credit_str}).")
+            self.pause()
+            return
 
         if tailor:
-            mimikree_email, mimikree_password = self.ensure_mimikree_connected_for_tailoring()
-            if not mimikree_email or not mimikree_password:
-                self.pause()
-                return
+            self.ensure_mimikree_connected_for_tailoring()
 
         try:
             self.print_info("\nStarting automated job application...")
@@ -348,7 +376,21 @@ class ApplyMixin:
                         self._display_tailored_resume_download(profile_ctx['tailoring_metrics'], 'Company')
 
             self.record_application(job_url)
+            billing_pending = False
+            try:
+                cr = self.api.consume_credit("job_applications")
+                self.print_info(
+                    f"Job Application credits: "
+                    f"{format_credits(cr.get('remaining'), cr.get('limit'), cr.get('reset_time'))}"
+                )
+            except LaunchwayAPIError:
+                billing_pending = True
+                self.print_warning(
+                    "Application was submitted, but credit debit failed. Marking as billing_pending."
+                )
             self.print_success("Application process completed!")
+            if billing_pending:
+                self.print_warning("Status: submitted=true, billing_pending=true")
             self.print_info("Check the browser for final status.")
             self.pause()
 
@@ -384,7 +426,7 @@ class ApplyMixin:
                 print(f"\n{i}. {app.get('job_title','Unknown')} at {app.get('company','Unknown')}")
                 print(f"   URL: {str(app.get('job_url','N/A'))[:70]}...")
 
-            if self.get_input(f"\nOpen all {len(incomplete_apps)} application(s) in browser? (y/n): ").strip().lower() != 'y':
+            if not self.get_input_yn(f"\nOpen all {len(incomplete_apps)} application(s) in browser? (y/n): ", default=None):
                 self.print_info("Cancelled.")
                 return
 

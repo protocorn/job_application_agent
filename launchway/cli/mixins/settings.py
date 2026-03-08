@@ -17,19 +17,21 @@ class SettingsMixin:
             user = self.current_user or {}
             print(f"  Logged in as: {user.get('email','')}\n")
 
-            provider = os.getenv("AI_PROVIDER", "launchway")
+            provider = os.getenv("AI_PROVIDER", "")
             has_key  = bool(os.getenv("GOOGLE_API_KEY"))
             if has_key:
                 ai_status = f"Custom Gemini key ({Colors.OKGREEN}set{Colors.ENDC})"
             elif provider == "custom":
                 ai_status = f"Custom Gemini key ({Colors.WARNING}key missing{Colors.ENDC})"
-            else:
+            elif provider == "launchway":
                 ai_status = "Launchway AI"
+            else:
+                ai_status = f"{Colors.WARNING}Not configured{Colors.ENDC}"
 
             print(f"  1. View Account Info")
             print(f"  2. Change Password")
             print(f"  3. Update Email")
-            print(f"  4. AI Provider  [{ai_status}]")
+            print(f"  4. AI Engine  [{ai_status}]")
             print(f"  5. Back to Main Menu\n")
 
             choice = self.get_input("Select option (1-5): ").strip()
@@ -107,17 +109,19 @@ class SettingsMixin:
 
     def ai_provider_settings(self):
         self.clear_screen()
-        self.print_header("AI PROVIDER SETTINGS")
+        self.print_header("AI ENGINE SETTINGS")
 
-        provider = os.getenv("AI_PROVIDER", "launchway")
+        provider = os.getenv("AI_PROVIDER", "")
         has_key  = bool(os.getenv("GOOGLE_API_KEY"))
 
         print(f"\n  AI powers job matching, form filling, and resume tailoring.\n")
         print(f"  Current setting:")
         if has_key:
             print(f"    {Colors.OKGREEN}Custom Gemini API key is active.{Colors.ENDC}")
-        else:
+        elif provider == "launchway":
             print(f"    {Colors.OKCYAN}Launchway AI is active (no API key needed).{Colors.ENDC}")
+        else:
+            print(f"    {Colors.WARNING}Not configured yet.{Colors.ENDC}")
 
         print(f"""
   Options:

@@ -37,7 +37,7 @@ class BrowserSetupMixin:
         print("\nThis creates a persistent profile used for all future sessions.")
         print("=" * 60 + "\n")
 
-        if self.get_input("Setup persistent profile now? (y/n): ").strip().lower() != 'y':
+        if not self.get_input_yn("Setup persistent profile now? (y/n): ", default=None):
             self.print_info("Setup cancelled.")
             self.pause()
             return
@@ -60,7 +60,7 @@ class BrowserSetupMixin:
                 ).strip()
 
                 if choice == '2':
-                    if self.get_input("Delete existing profile? (y/n): ").strip().lower() == 'y':
+                    if self.get_input_yn("Delete existing profile? (y/n): ", default=None):
                         manager.delete_profile(str(self.current_user['id']))
                         self.print_success("Existing profile deleted.")
                     else:

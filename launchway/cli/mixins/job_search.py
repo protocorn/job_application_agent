@@ -24,8 +24,7 @@ class JobSearchMixin:
             "resume keywords yet.\n"
             "  Extracting them once improves job relevance matching for any profession."
         )
-        ans = self.get_input("  Extract keywords from your resume now? (y/n, default: y): ").strip().lower()
-        if ans == 'n':
+        if not self.get_input_yn("  Extract keywords from your resume now? (y/n, default: y): ", default='y'):
             return True
 
         resume_url = (self.current_profile or {}).get("resume_url", "")
@@ -69,6 +68,7 @@ class JobSearchMixin:
         self._ensure_resume_keywords()
 
         self.print_info("Search for jobs across multiple sources (Indeed, LinkedIn, etc.)")
+        self.print_info("Credits: Job search consumes 1 credit after successful results are returned.")
         print(f"\n{Colors.BOLD}Search Parameters:{Colors.ENDC}")
 
         keywords = self.get_input("Job Keywords (e.g., 'Software Engineer'): ").strip()
@@ -78,8 +78,8 @@ class JobSearchMixin:
             return
 
         location       = self.get_input("Location (optional): ").strip()
-        remote         = self.get_input("Remote only? (y/n): ").strip().lower() == 'y'
-        easy_apply     = self.get_input("Easy Apply only? (y/n, default: n): ").strip().lower() == 'y'
+        remote         = self.get_input_yn("Remote only? (y/n, default: n): ", default='n')
+        easy_apply     = self.get_input_yn("Easy Apply only? (y/n, default: n): ", default='n')
         hours_old_str  = self.get_input("Only jobs posted in last N hours? (optional): ").strip()
         hours_old      = None
         if hours_old_str:
@@ -98,6 +98,11 @@ class JobSearchMixin:
         try:
             available, daily = self.api.check_credit_available("job_search")
             credit_str = format_credits(daily.get("remaining"), daily.get("limit"), daily.get("reset_time"))
+            if daily.get("error") == "credit_check_unavailable":
+                self.print_error("Could not verify credits (backend unavailable).")
+                self.print_info("Blocking search to prevent untracked scraping usage.")
+                self.pause()
+                return
             if not available:
                 self.print_error(f"Daily job search limit reached ({credit_str}).")
                 self.print_info("Limits reset at midnight UTC. Check launchway.app/manage-credits")
@@ -105,7 +110,9 @@ class JobSearchMixin:
                 return
             self.print_info(f"Job Search credits: {credit_str}")
         except LaunchwayAPIError:
-            pass  # fail open
+            self.print_error("Could not verify credits. Please retry in a moment.")
+            self.pause()
+            return
 
         try:
             from Agents.multi_source_job_discovery_agent import MultiSourceJobDiscoveryAgent
@@ -141,7 +148,9 @@ class JobSearchMixin:
                     f"{format_credits(cr.get('remaining'), cr.get('limit'), cr.get('reset_time'))}"
                 )
             except LaunchwayAPIError:
-                pass
+                self.print_error("Credit debit failed. Search results are not shown to avoid untracked usage.")
+                self.pause()
+                return
 
             self.clear_screen()
             self.print_header(f"SEARCH RESULTS ({len(results)} jobs found)")

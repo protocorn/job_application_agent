@@ -126,7 +126,8 @@ def handle_resume_tailoring(payload: Dict[str, Any]) -> Dict[str, Any]:
                     credentials=credentials,
                     mimikree_email=mimikree_email,
                     mimikree_password=mimikree_password,
-                    user_full_name=user_full_name
+                    user_full_name=user_full_name,
+                    user_id=user_id,
                 )
 
             # Increment global Gemini usage counters
@@ -190,6 +191,7 @@ def handle_job_application(payload: Dict[str, Any]) -> Dict[str, Any]:
     start_time = time.time()
     user_id = payload.get('user_id')
     
+    concurrency_slot_key = None
     try:
         logger.info(f"Starting job application for user {user_id}")
         
@@ -208,10 +210,17 @@ def handle_job_application(payload: Dict[str, Any]) -> Dict[str, Any]:
         if not allowed:
             raise Exception(f"Daily job application limit exceeded. Try again in {info.get('retry_after', 3600)} seconds.")
         
-        # Check concurrent session limits
-        allowed, info = rate_limiter.check_limit('concurrent_job_applications', str(user_id))
+        # Check true concurrent session limits using distributed slot leasing.
+        concurrent_limit = rate_limiter.LIMITS['concurrent_job_applications'].requests
+        allowed, info = rate_limiter.acquire_concurrency_slot(
+            'job_applications',
+            str(user_id),
+            limit=concurrent_limit,
+            ttl_seconds=1800
+        )
         if not allowed:
             raise Exception("Maximum concurrent job applications reached. Please wait for current applications to complete.")
+        concurrency_slot_key = info.get("key")
         
         # Determine which resume to use
         final_resume_url = tailored_resume_url if use_tailored and tailored_resume_url else resume_url
@@ -246,9 +255,8 @@ def handle_job_application(payload: Dict[str, Any]) -> Dict[str, Any]:
             result = loop.run_until_complete(run_application())
         finally:
             loop.close()
-        
-        # Increment usage counter
-        rate_limiter.increment_usage('job_applications_per_user_per_day', str(user_id))
+            rate_limiter.release_concurrency_slot(concurrency_slot_key)
+            concurrency_slot_key = None
         
         # Log successful application
         security_manager.log_security_event(
@@ -275,6 +283,8 @@ def handle_job_application(payload: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         error_msg = f"Job application failed for user {user_id}: {str(e)}"
         logger.error(error_msg)
+        if concurrency_slot_key:
+            rate_limiter.release_concurrency_slot(concurrency_slot_key)
         
         # Log security event for failures
         security_manager.log_security_event(
@@ -323,9 +333,6 @@ def handle_job_search(payload: Dict[str, Any]) -> Dict[str, Any]:
         
         if 'error' in response:
             raise Exception(response['error'])
-        
-        # Increment usage counter
-        rate_limiter.increment_usage('job_search_per_user_per_day', str(user_id))
         
         # Log successful search
         security_manager.log_security_event(

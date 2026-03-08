@@ -1,4 +1,4 @@
-"""Continuous auto-apply mixin — 100% local automation mode."""
+"""Continuous auto-apply mixin — fully autonomous automation mode."""
 
 import asyncio
 import json
@@ -109,7 +109,7 @@ class ContinuousApplyMixin:
 
         if automation_state['rate_limit_hits'] > 5:
             self.print_error("\n❌ Multiple rate limit hits detected. This may be a daily quota limit.")
-            if self.get_input("\nStop automation? (y/n, default: n): ").strip().lower() == 'y':
+            if self.get_input_yn("\nStop automation? (y/n, default: n): ", default='n'):
                 automation_state['running'] = False
                 return
 
@@ -173,9 +173,8 @@ class ContinuousApplyMixin:
         if incomplete_count > 0:
             print("\n" + "=" * 60)
             self.print_warning(f"⚠️  {incomplete_count} application(s) were not fully submitted.")
-            choice = self.get_input("\nOpen incomplete applications? (y/n): ").strip().lower()
-            self._should_open_incomplete   = (choice == 'y')
-            self._incomplete_report_file   = report_filename if choice == 'y' else None
+            self._should_open_incomplete   = self.get_input_yn("\nOpen incomplete applications? (y/n): ", default=None)
+            self._incomplete_report_file   = report_filename if self._should_open_incomplete else None
 
     async def _apply_to_single_job_automated(
         self,
@@ -203,6 +202,7 @@ class ContinuousApplyMixin:
             'error':            None,
             'rate_limit_error': False,
             'duration_seconds': 0,
+            'billing_pending':  False,
         }
 
         try:
@@ -283,10 +283,13 @@ class ContinuousApplyMixin:
                         f"Job Application credits: "
                         f"{format_credits(_cr.get('remaining'), _cr.get('limit'), _cr.get('reset_time'))}"
                     )
-                except LaunchwayAPIError as _ce:
-                    if _ce.status_code == 429:
-                        self.print_warning("Daily job application limit reached. Stopping automation.")
-                        automation_state['running'] = False
+                except LaunchwayAPIError:
+                    job_result['billing_pending'] = True
+                    job_result['error'] = "Credit debit failed after submission; billing reconciliation pending"
+                    self.print_warning(
+                        "Credit debit failed after submission. Marked billing_pending and stopping automation."
+                    )
+                    automation_state['running'] = False
             else:
                 job_result['success']   = False
                 job_result['submitted'] = False
@@ -334,7 +337,7 @@ class ContinuousApplyMixin:
                 print(f"\n{i}. {app.get('job_title','Unknown')} at {app.get('company','Unknown')}")
                 print(f"   URL: {str(app.get('job_url','N/A'))[:70]}")
 
-            if self.get_input(f"\nOpen all {len(incomplete_apps)} application(s) in browser? (y/n): ").strip().lower() != 'y':
+            if not self.get_input_yn(f"\nOpen all {len(incomplete_apps)} application(s) in browser? (y/n): ", default=None):
                 self.print_info("Cancelled.")
                 return
 
@@ -376,7 +379,7 @@ class ContinuousApplyMixin:
 
     async def continuous_auto_apply_menu(self):
         self.clear_screen()
-        self.print_header("🚀 100% AUTO JOB APPLY - CONTINUOUS MODE")
+        self.print_header("🚀 FULLY AUTONOMOUS AUTO-APPLY (CONTINUOUS)")
 
         if not self._ensure_agents_bootstrapped():
             self.pause()
@@ -386,7 +389,8 @@ class ContinuousApplyMixin:
             self.pause()
             return
 
-        self.print_warning("⚠️  WARNING: This mode runs continuously and AUTOMATICALLY SUBMITS applications!")
+        self.print_info("This mode runs continuously and can submit applications automatically.")
+        self.print_info("Warning: the agent can make mistakes and may submit an application.")
         self.print_info("\nThis mode will:")
         self.print_info("  • Continuously search for relevant jobs")
         self.print_info("  • Automatically tailor your resume for each job")
@@ -394,6 +398,7 @@ class ContinuousApplyMixin:
         self.print_info("  • Handle rate limits gracefully (pause & retry)")
         self.print_info("  • Rotate proxies to avoid IP bans")
         self.print_info("  • Generate detailed progress reports")
+        self.print_info("  • Consume 1 credit per successful application")
         self.print_info("\nYou can stop anytime by pressing Ctrl+C\n")
 
         keywords = self.get_input("Job Keywords (e.g., 'Software Engineer'): ").strip()
@@ -403,8 +408,8 @@ class ContinuousApplyMixin:
             return
 
         location      = self.get_input("Location (optional, leave blank for any): ").strip()
-        remote        = self.get_input("Remote only? (y/n, default: n): ").strip().lower() == 'y'
-        easy_apply    = self.get_input("Easy Apply only? (y/n, default: n): ").strip().lower() == 'y'
+        remote        = self.get_input_yn("Remote only? (y/n, default: n): ", default='n')
+        easy_apply    = self.get_input_yn("Easy Apply only? (y/n, default: n): ", default='n')
         hours_old_str = self.get_input("Only jobs posted in last N hours? (optional): ").strip()
         hours_old     = None
         if hours_old_str:
@@ -413,18 +418,14 @@ class ContinuousApplyMixin:
             except ValueError:
                 self.print_warning("Invalid hours value. Using no recency filter.")
 
-        tailor_all = self.get_input("Tailor resume for each job? (y/n, default: y): ").strip().lower()
-        tailor_all = tailor_all != 'n'
+        tailor_all = self.get_input_yn("Tailor resume for each job? (y/n, default: y): ", default='y')
 
         if tailor_all:
-            mimikree_email, mimikree_password = self.ensure_mimikree_connected_for_tailoring()
-            if not mimikree_email or not mimikree_password:
-                self.pause()
-                return
+            self.ensure_mimikree_connected_for_tailoring()
 
-        headless = self.get_input("Run in headless mode? (y/n, default: n): ").strip().lower() == 'y'
+        headless = self.get_input_yn("Run in headless mode? (y/n, default: n): ", default='n')
 
-        use_proxies   = self.get_input("Use proxies to avoid IP bans? (y/n, default: n): ").strip().lower() == 'y'
+        use_proxies   = self.get_input_yn("Use proxies to avoid IP bans? (y/n, default: n): ", default='n')
         proxy_manager = None
 
         if use_proxies:
@@ -510,6 +511,11 @@ class ContinuousApplyMixin:
         try:
             available, daily = self.api.check_credit_available("job_applications")
             credit_str = format_credits(daily.get("remaining"), daily.get("limit"), daily.get("reset_time"))
+            if daily.get("error") == "credit_check_unavailable":
+                self.print_error("Could not verify credits (backend unavailable).")
+                self.print_info("Blocking continuous mode to prevent untracked usage.")
+                self.pause()
+                return
             if not available:
                 self.print_error(f"Daily job application limit reached ({credit_str}).")
                 self.print_info("Limits reset at midnight UTC. Check launchway.app/manage-credits")
@@ -517,7 +523,9 @@ class ContinuousApplyMixin:
                 return
             self.print_info(f"Job Application credits at start: {credit_str}")
         except LaunchwayAPIError:
-            pass  # fail open
+            self.print_error("Could not verify credits. Please retry in a moment.")
+            self.pause()
+            return
 
         await self.run_continuous_automation(
             keywords=keywords,
@@ -549,6 +557,9 @@ class ContinuousApplyMixin:
         from Agents.gemini_query_optimizer import GeminiQueryOptimizer
 
         self.print_header("🚀 STARTING AUTOMATION ENGINE")
+        max_rounds = max(1, int(os.getenv("LAUNCHWAY_CONTINUOUS_MAX_ROUNDS", "12")))
+        max_runtime_hours = max(1.0, float(os.getenv("LAUNCHWAY_CONTINUOUS_MAX_RUNTIME_HOURS", "8")))
+        max_submissions = max(1, int(os.getenv("LAUNCHWAY_CONTINUOUS_MAX_SUBMISSIONS", "50")))
 
         if proxy_manager:
             stats = proxy_manager.get_stats()
@@ -652,6 +663,9 @@ class ContinuousApplyMixin:
 
         self.print_success("✓ Automation engine initialized")
         self.print_info(f"✓ Goal: {session_goal} jobs per round, {cooldown_minutes} min cooldown")
+        self.print_info(
+            f"✓ Safety caps: {max_rounds} rounds, {max_submissions} submissions, {max_runtime_hours:.1f}h max runtime"
+        )
         self.print_info(f"✓ Progress report: {report_filename}")
         self.print_info("✓ Press Ctrl+C to stop gracefully\n")
 
@@ -751,6 +765,10 @@ class ContinuousApplyMixin:
                 # Check credits before each job — stop gracefully when exhausted
                 try:
                     _avail, _daily = self.api.check_credit_available("job_applications")
+                    if _daily.get("error") == "credit_check_unavailable":
+                        self.print_error("Credit check unavailable mid-run. Stopping automation.")
+                        automation_state['running'] = False
+                        break
                     if not _avail:
                         _cs = format_credits(
                             _daily.get("remaining"), _daily.get("limit"), _daily.get("reset_time")
@@ -760,7 +778,9 @@ class ContinuousApplyMixin:
                         automation_state['running'] = False
                         break
                 except LaunchwayAPIError:
-                    pass  # fail open
+                    self.print_error("Credit check failed mid-run. Stopping automation.")
+                    automation_state['running'] = False
+                    break
 
                 job = job_queue.popleft()
                 automation_state['jobs_processed'] += 1
@@ -818,6 +838,19 @@ class ContinuousApplyMixin:
 
         try:
             while automation_state['running']:
+                elapsed_hours = (datetime.now() - automation_state['start_time']).total_seconds() / 3600
+                if elapsed_hours >= max_runtime_hours:
+                    self.print_warning(f"Max runtime reached ({max_runtime_hours:.1f}h). Stopping safely.")
+                    automation_state['running'] = False
+                    break
+                if automation_state['round_number'] >= max_rounds:
+                    self.print_warning(f"Max rounds reached ({max_rounds}). Stopping safely.")
+                    automation_state['running'] = False
+                    break
+                if automation_state['applications_submitted'] >= max_submissions:
+                    self.print_warning(f"Max submissions reached ({max_submissions}). Stopping safely.")
+                    automation_state['running'] = False
+                    break
                 automation_state['round_number'] += 1
 
                 goal_met = await _fill_queue_to_goal()

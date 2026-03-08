@@ -135,9 +135,9 @@ class CLIJobAgent(
             print(f"  {Colors.BOLD}1.{Colors.ENDC}  Profile Management")
             print(f"  {Colors.BOLD}2.{Colors.ENDC}  Resume Tailoring")
             print(f"  {Colors.BOLD}3.{Colors.ENDC}  Search Jobs")
-            print(f"  {Colors.BOLD}4.{Colors.ENDC}  Auto Apply to Job(s)  (Batch Mode, up to 10)")
+            print(f"  {Colors.BOLD}4.{Colors.ENDC}  Assisted Auto-Apply (Batch, up to 10)")
             print(f"  {Colors.BOLD}5.{Colors.ENDC}  View Application History")
-            print(f"  {Colors.BOLD}6.{Colors.ENDC}  100% Auto Job Apply — Continuous Mode")
+            print(f"  {Colors.BOLD}6.{Colors.ENDC}  Fully Autonomous Auto-Apply — Continuous")
             print(f"  {Colors.BOLD}7.{Colors.ENDC}  Browser Profile Setup (One-Time Setup)")
             print(f"  {Colors.BOLD}8.{Colors.ENDC}  Settings")
             print(f"  {Colors.BOLD}9.{Colors.ENDC}  Logout")
@@ -345,7 +345,7 @@ def main():
     from launchway.config import ensure_env_loaded, run_first_time_setup
     ensure_env_loaded()
 
-    # 3. First-run setup wizard (AI provider choice)
+    # 3. First-run setup wizard (AI Engine choice)
     run_first_time_setup()
 
     # 4. Ensure Playwright browser binaries are installed

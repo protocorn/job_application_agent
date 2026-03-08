@@ -1,7 +1,7 @@
 """
 Configuration management for Launchway CLI.
 
-AI provider story:
+AI Engine story:
   - "launchway"  (default): no API key needed; uses Launchway's built-in AI
   - "custom":               user supplies their own GOOGLE_API_KEY
 
@@ -46,10 +46,14 @@ def ensure_env_loaded():
 
 def _setup_already_done() -> bool:
     """
-    True if the user has already made an AI provider choice.
-    We treat having either AI_PROVIDER or GOOGLE_API_KEY set as 'done'.
+    True if first-time setup already ran.
+    We treat AI_SETUP_DONE=1, AI_PROVIDER, or GOOGLE_API_KEY as done.
     """
-    return bool(os.getenv("AI_PROVIDER") or os.getenv("GOOGLE_API_KEY"))
+    return bool(
+        os.getenv("AI_SETUP_DONE") == "1"
+        or os.getenv("AI_PROVIDER")
+        or os.getenv("GOOGLE_API_KEY")
+    )
 
 
 def _append_to_user_env(entries: dict[str, str]):
@@ -85,7 +89,7 @@ def _append_to_user_env(entries: dict[str, str]):
 
 def run_first_time_setup():
     """
-    Optional first-run wizard.  Lets users choose their AI provider (or skip).
+    Optional first-run wizard. Lets users choose their AI Engine mode (or skip).
     Skipped silently if a choice was already saved.
     """
     ensure_env_loaded()
@@ -126,26 +130,27 @@ application forms. Choose how you want to power AI features:
         api_key = getpass.getpass("  Gemini API Key: ").strip()
 
         if api_key:
-            _append_to_user_env({"GOOGLE_API_KEY": api_key, "AI_PROVIDER": "custom"})
+            _append_to_user_env({"GOOGLE_API_KEY": api_key, "AI_PROVIDER": "custom", "AI_SETUP_DONE": "1"})
             print("\n  [OK] Custom Gemini key saved.")
             print(f"  Config file: {_USER_ENV_FILE}")
         else:
             # User pressed Enter — treat as "use Launchway AI"
-            _append_to_user_env({"AI_PROVIDER": "launchway"})
+            _append_to_user_env({"AI_PROVIDER": "launchway", "AI_SETUP_DONE": "1"})
             print("\n  No key entered — Launchway AI will be used.")
 
     elif choice == "3":
         # ── Skip entirely — do not write anything ────────────────────────────
         print()
         print("  [OK] Setup skipped.")
-        print("  You can configure your AI provider anytime from:")
-        print("    launchway  →  Settings  →  AI Provider")
-        # Mark as done so the wizard does not repeat on next launch
-        _append_to_user_env({"AI_PROVIDER": "launchway"})
+        print("  You can configure your AI Engine anytime from:")
+        print("    launchway  →  Settings  →  AI Engine")
+        # Mark as done so the wizard does not repeat on next launch,
+        # but intentionally leave AI engine choice unset.
+        _append_to_user_env({"AI_PROVIDER": "", "AI_SETUP_DONE": "1"})
 
     else:
         # ── Default: Launchway AI ────────────────────────────────────────────
-        _append_to_user_env({"AI_PROVIDER": "launchway"})
+        _append_to_user_env({"AI_PROVIDER": "launchway", "AI_SETUP_DONE": "1"})
         print()
         print("  [OK] Launchway AI selected — no API key needed.")
 
@@ -155,7 +160,9 @@ application forms. Choose how you want to power AI features:
 def get_config() -> dict:
     """Return a snapshot of the active configuration (safe to log)."""
     ensure_env_loaded()
-    provider = os.getenv("AI_PROVIDER", "launchway" if not os.getenv("GOOGLE_API_KEY") else "custom")
+    provider = os.getenv("AI_PROVIDER", "")
+    if not provider:
+        provider = "custom" if os.getenv("GOOGLE_API_KEY") else "not_configured"
     return {
         "AI_PROVIDER":          provider,
         "GOOGLE_API_KEY":       bool(os.getenv("GOOGLE_API_KEY")),

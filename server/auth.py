@@ -3,6 +3,7 @@ import jwt
 import os
 import secrets
 import uuid
+from functools import wraps
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from database_config import User, SessionLocal, get_db
@@ -11,9 +12,17 @@ import logging
 from email_service import email_service
 
 # JWT Configuration
-JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'your-secret-key-change-this-in-production')
+JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY')
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRATION_HOURS = 24
+
+# Strict admin authorization list.
+# Example env value: ADMIN_EMAILS="admin1@example.com,admin2@example.com"
+ADMIN_EMAILS = {
+    email.strip().lower()
+    for email in os.getenv("ADMIN_EMAILS", "").split(",")
+    if email.strip()
+}
 
 class AuthService:
 
@@ -65,7 +74,8 @@ class AuthService:
             if existing_user:
                 return {
                     'success': False,
-                    'error': 'User with this email already exists'
+                    'error': 'An account with this email already exists. Please sign in or reset your password.',
+                    'error_code': 'email_already_exists'
                 }
 
             # Hash password
@@ -134,7 +144,8 @@ class AuthService:
             logging.error(f"Error registering user: {e}")
             return {
                 'success': False,
-                'error': 'Failed to register user'
+                'error': 'Failed to register user',
+                'error_code': 'registration_failed'
             }
         finally:
             db.close()
@@ -272,15 +283,15 @@ class AuthService:
 
             if not user:
                 return {
-                    'success': False,
-                    'error': 'No account found with this email address'
+                    'success': True,
+                    'message': 'If an account exists for this email, a verification email will be sent.'
                 }
 
             # Check if already verified
             if user.email_verified:
                 return {
-                    'success': False,
-                    'error': 'Email is already verified. You can log in now.'
+                    'success': True,
+                    'message': 'If an account exists for this email, a verification email will be sent.'
                 }
 
             # Generate new verification token
@@ -505,6 +516,28 @@ def require_auth(f):
 
         # Add user to request context
         request.current_user = user
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
+def require_admin(f):
+    """Decorator to require strict admin role for privileged API endpoints."""
+    from flask import request, jsonify
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        current_user = getattr(request, "current_user", None)
+        user_email = (current_user or {}).get("email", "").strip().lower()
+
+        # Fail closed when admin list is not configured.
+        if not ADMIN_EMAILS:
+            logging.error("ADMIN_EMAILS is not configured; denying admin endpoint access")
+            return jsonify({'error': 'Admin access is not configured'}), 403
+
+        if not user_email or user_email not in ADMIN_EMAILS:
+            return jsonify({'error': 'Admin access required'}), 403
+
         return f(*args, **kwargs)
 
     return decorated_function

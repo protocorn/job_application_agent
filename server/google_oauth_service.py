@@ -42,7 +42,7 @@ class GoogleOAuthService:
             raise ValueError(f"Invalid user ID format: {user_id}")
 
     @staticmethod
-    def get_authorization_url(user_id: Union[str, uuid.UUID]) -> str:
+    def get_authorization_url(user_id: Union[str, uuid.UUID], state_token: str) -> str:
         """
         Generate Google OAuth authorization URL for a user.
 
@@ -64,7 +64,7 @@ class GoogleOAuthService:
             'access_type':            'offline',
             'prompt':                 'consent',
             'include_granted_scopes': 'true',
-            'state':                  str(user_id),
+            'state':                  state_token,
         }
         return f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
 
@@ -157,7 +157,7 @@ class GoogleOAuthService:
 
         except Exception as e:
             logging.error(f"Error in OAuth callback: {e}")
-            return {'success': False, 'error': str(e)}
+            return {'success': False, 'error': 'OAuth callback processing failed'}
 
     @staticmethod
     def get_credentials(user_id: Union[str, uuid.UUID]) -> Optional[Credentials]:
@@ -269,7 +269,7 @@ class GoogleOAuthService:
         except Exception as e:
             db.rollback()
             logging.error(f"Error disconnecting Google account: {e}")
-            return {'success': False, 'error': str(e)}
+            return {'success': False, 'error': 'Failed to disconnect Google account'}
         finally:
             db.close()
 

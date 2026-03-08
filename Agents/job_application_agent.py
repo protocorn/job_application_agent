@@ -1875,8 +1875,8 @@ Return ONLY a JSON object:
                     
                     if ai_decision and ai_decision.get('action') == 'click_element':
                         # AI suggested clicking a specific element
-                        selector = ai_decision.get('selector')
-                        if selector:
+                        selector = (ai_decision.get('selector') or '').strip()
+                        if selector and self._is_safe_popup_selector(selector):
                             logger.info(f"🎯 AI suggests clicking element: {selector}")
                             try:
                                 await self.page.click(selector)
@@ -1884,6 +1884,10 @@ Return ONLY a JSON object:
                                 logger.info("✅ AI-guided popup resolution successful")
                             except Exception as e:
                                 logger.error(f"❌ AI-guided click failed: {e}")
+                        else:
+                            logger.warning("⚠️ AI selector rejected by popup safety policy")
+                            state.context['human_intervention_reason'] = "Popup action requires manual confirmation for safety."
+                            return 'human_intervention'
                     
                     elif ai_decision and ai_decision.get('action') == 'human_intervention':
                         logger.warning("🤔 AI cannot resolve popup - requesting human intervention")
@@ -2936,6 +2940,19 @@ IMPORTANT:
         except Exception as e:
             logger.error(f"AI popup analysis failed: {e}")
             return {"action": "human_intervention", "reason": "AI analysis failed"}
+
+    def _is_safe_popup_selector(self, selector: str) -> bool:
+        """Allow only low-risk popup dismissal selectors from AI output."""
+        if not selector or len(selector) > 160:
+            return False
+
+        normalized = selector.strip().lower()
+        denylist = ("submit", "apply", "delete", "remove", "withdraw", "logout", "signout")
+        if any(term in normalized for term in denylist):
+            return False
+
+        allow_indicators = ("close", "dismiss", "cancel", "accept", "agree", "consent", "ok", "x")
+        return any(term in normalized for term in allow_indicators)
 
     async def _state_ai_analyze_page(self, state: ApplicationState) -> Optional[str]:
         logger.info(">>> State: AI_ANALYZE_PAGE")

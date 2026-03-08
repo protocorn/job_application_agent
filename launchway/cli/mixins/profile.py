@@ -373,8 +373,7 @@ class ProfileMixin:
         print("  Connecting allows Launchway to access your private Google Docs.")
         print("  Without it, only publicly shared documents work.\n")
 
-        ans = self.get_input("  Connect your Google account now? (y/n): ").strip().lower()
-        if ans != 'y':
+        if not self.get_input_yn("  Connect your Google account now? (y/n): ", default=None):
             print()
             return False
 

@@ -1754,7 +1754,7 @@ JOB DESCRIPTION:
         return json.dumps({"replacements": [], "lines_added": 0, "lines_freed": 0, "net_lines": 0})
 
 def tailor_resume_and_return_url(original_resume_url, job_description, job_title, company,
-                                   credentials=None, mimikree_email=None, mimikree_password=None, user_full_name=None):
+                                   credentials=None, mimikree_email=None, mimikree_password=None, user_full_name=None, user_id=None):
     """Tailor resume and return publicly accessible Google Doc URL
 
     Args:
@@ -1766,6 +1766,7 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
         mimikree_email: Optional Mimikree account email for profile integration
         mimikree_password: Optional Mimikree account password for profile integration
         user_full_name: Optional user's full name for document naming
+        user_id: Optional user identifier for scoped cache isolation
     """
     try:
         # Get Google Services (with user-specific credentials if provided)
@@ -1869,7 +1870,7 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
                         # Check cache first
                         cached_data = None
                         if SYSTEMATIC_TAILORING_AVAILABLE:
-                            cached_data = get_cached_mimikree_data(job_description)
+                            cached_data = get_cached_mimikree_data(job_description, user_id=user_id)
 
                         if cached_data:
                             print("✅ Using cached Mimikree data")
@@ -1918,7 +1919,7 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
                                                     'responses': mimikree_responses,
                                                     'formatted_data': mimikree_data
                                                 }
-                                                cache_mimikree_data(job_description, cache_data)
+                                                cache_mimikree_data(job_description, cache_data, user_id=user_id)
                                                 print(f"💾 Cached Mimikree data for future runs")
 
                                             print(f"✅ Mimikree integration complete!")
@@ -2179,17 +2180,8 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
             traceback.print_exc()
             raise
 
-        # Make the document publicly accessible
-        print("Making document publicly accessible...")
-        permission = {
-            'role': 'reader',
-            'type': 'anyone'
-        }
-        
-        drive_service.permissions().create(
-            fileId=copied_doc_id,
-            body=permission
-        ).execute()
+        # Keep tailored resumes private by default (owner-only access).
+        print("Keeping tailored document private (owner access only)...")
 
         # Also download the final resume as a PDF (for backup)
         print("Downloading the tailored resume as a PDF...")

@@ -15,6 +15,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 from requests import Response, Session
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +52,27 @@ class LaunchwayClient:
         self.timeout  = timeout
         self._session = Session()
         self._session.headers.update({"Content-Type": "application/json"})
+        self._configure_retries()
+
+    def _configure_retries(self) -> None:
+        """
+        Configure conservative transport retries for transient network/server issues.
+        POST is excluded to avoid accidental duplicate write operations.
+        """
+        retry_cfg = Retry(
+            total=3,
+            connect=3,
+            read=3,
+            status=3,
+            backoff_factor=0.5,
+            status_forcelist=(429, 500, 502, 503, 504),
+            allowed_methods=frozenset({"GET", "PUT", "DELETE", "HEAD", "OPTIONS"}),
+            raise_on_status=False,
+            respect_retry_after_header=True,
+        )
+        adapter = HTTPAdapter(max_retries=retry_cfg)
+        self._session.mount("https://", adapter)
+        self._session.mount("http://", adapter)
 
     # ── internal ────────────────────────────────────────────────────────────
 
@@ -209,12 +232,17 @@ class LaunchwayClient:
 
         Returns (available: bool, credit_info: dict).
         credit_info keys: remaining, limit, reset_time.
-        Fails open (returns True) on network errors so tasks are never blocked.
+        Fails closed on network errors for cost-bearing operations.
         """
         try:
             credits = self.get_credits()
         except LaunchwayAPIError:
-            return True, {}  # fail open
+            return False, {
+                "remaining": 0,
+                "limit": "unknown",
+                "reset_time": None,
+                "error": "credit_check_unavailable"
+            }
 
         svc = credits.get(service, {})
         daily = svc.get("daily", {})
@@ -224,7 +252,10 @@ class LaunchwayClient:
         try:
             return int(remaining) > 0, daily
         except (TypeError, ValueError):
-            return True, daily
+            return False, {
+                **daily,
+                "error": "invalid_credit_state"
+            }
 
     # ── applications ────────────────────────────────────────────────────────
 

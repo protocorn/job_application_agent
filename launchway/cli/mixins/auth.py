@@ -55,7 +55,7 @@ class AuthMixin:
 
         first_name = self.get_input("First Name: ").strip()
         last_name  = self.get_input("Last Name: ").strip()
-        password   = self.get_input("Password (min 6 chars): ", password=True)
+        password   = self.get_input("Password (min 8 chars): ", password=True)
         confirm    = self.get_input("Confirm Password: ", password=True)
 
         if password != confirm:
@@ -63,8 +63,8 @@ class AuthMixin:
             self.pause()
             return
 
-        if len(password) < 6:
-            self.print_error("Password must be at least 6 characters.")
+        if len(password) < 8:
+            self.print_error("Password must be at least 8 characters.")
             self.pause()
             return
 
@@ -178,6 +178,7 @@ class AuthMixin:
         Returns True if the session is valid and the user is now logged in.
         """
         from launchway.session import load_session
+        self._session_restore_reason = None
         token, user = load_session()
         if not token or not user:
             return False
@@ -191,10 +192,17 @@ class AuthMixin:
             live_user = verified.get("user", {})
             if not live_user:
                 raise LaunchwayAPIError("No user in verify response")
-        except LaunchwayAPIError:
-            # Token expired or revoked — clear the stale session
-            clear_session()
-            self.api.token = None
+        except LaunchwayAPIError as e:
+            # Differentiate between an actually invalid token vs transient
+            # connectivity/backend issues during startup verification.
+            if e.status_code in (401, 403):
+                clear_session()
+                self.api.token = None
+                self._session_restore_reason = "expired"
+            else:
+                # Keep saved session on disk so user can retry once network recovers.
+                self.api.token = None
+                self._session_restore_reason = "network"
             return False
 
         # Merge live user data (may have been updated on the website)
@@ -288,8 +296,7 @@ class AuthMixin:
         print("  │  your own Gemini API key for a private quota.           │")
         print("  └─────────────────────────────────────────────────────────┘\n")
 
-        choice = self.get_input("  Set up AI Engine now? (y/n, default: y): ").strip().lower()
-        if choice in ("", "y", "yes"):
+        if self.get_input_yn("  Set up AI Engine now? (y/n, default: y): ", default='y'):
             self.update_ai_engine()
         else:
             print("\n  ⚠️  AI features will be unavailable until you configure the AI Engine.")
@@ -320,8 +327,7 @@ class AuthMixin:
         print("  ║  Please set up your AI Engine before continuing.        ║")
         print("  ╚══════════════════════════════════════════════════════════╝\n")
 
-        choice = self.get_input("  Configure AI Engine now? (y/n, default: y): ").strip().lower()
-        if choice in ("", "y", "yes"):
+        if self.get_input_yn("  Configure AI Engine now? (y/n, default: y): ", default='y'):
             self.update_ai_engine()
             # Re-check after setup
             try:
@@ -368,6 +374,13 @@ class AuthMixin:
             self.pause()
             self.show_main_menu()
             return
+        if getattr(self, "_session_restore_reason", None) == "expired":
+            self.print_warning("Your saved session has expired. Please log in again.")
+            self.pause()
+        elif getattr(self, "_session_restore_reason", None) == "network":
+            self.print_warning("Could not verify saved session due to a network/backend error.")
+            self.print_info("Your session was kept. Please retry when connectivity is stable.")
+            self.pause()
 
         # ── Interactive auth loop ───────────────────────────────────────
         while self.running:

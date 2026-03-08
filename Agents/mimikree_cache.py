@@ -20,7 +20,12 @@ def get_job_description_hash(job_description: str) -> str:
     return hashlib.md5(normalized.encode()).hexdigest()[:12]
 
 
-def get_cached_mimikree_data(job_description: str) -> Optional[Dict[str, Any]]:
+def _get_user_scope(user_id: Optional[str]) -> str:
+    scoped_user = (str(user_id).strip().lower() if user_id is not None else "anonymous")
+    return hashlib.sha256(scoped_user.encode()).hexdigest()[:12]
+
+
+def get_cached_mimikree_data(job_description: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     Retrieve cached Mimikree data for a job description.
 
@@ -31,7 +36,8 @@ def get_cached_mimikree_data(job_description: str) -> Optional[Dict[str, Any]]:
         Cached data dict or None if not cached
     """
     job_hash = get_job_description_hash(job_description)
-    cache_file = CACHE_DIR / f"mimikree_{job_hash}.json"
+    user_scope = _get_user_scope(user_id)
+    cache_file = CACHE_DIR / f"mimikree_{user_scope}_{job_hash}.json"
 
     if cache_file.exists():
         try:
@@ -47,7 +53,7 @@ def get_cached_mimikree_data(job_description: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def cache_mimikree_data(job_description: str, mimikree_data: Dict[str, Any]) -> str:
+def cache_mimikree_data(job_description: str, mimikree_data: Dict[str, Any], user_id: Optional[str] = None) -> str:
     """
     Cache Mimikree data for a job description.
 
@@ -59,7 +65,8 @@ def cache_mimikree_data(job_description: str, mimikree_data: Dict[str, Any]) -> 
         Path to the cache file
     """
     job_hash = get_job_description_hash(job_description)
-    cache_file = CACHE_DIR / f"mimikree_{job_hash}.json"
+    user_scope = _get_user_scope(user_id)
+    cache_file = CACHE_DIR / f"mimikree_{user_scope}_{job_hash}.json"
 
     try:
         with open(cache_file, 'w', encoding='utf-8') as f:
@@ -89,8 +96,12 @@ def list_cached_jobs() -> list:
         try:
             with open(cache_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            job_hash = cache_file.stem.replace("mimikree_", "")
+            raw = cache_file.stem.replace("mimikree_", "")
+            parts = raw.split("_", 1)
+            user_scope = parts[0] if len(parts) == 2 else "legacy"
+            job_hash = parts[1] if len(parts) == 2 else raw
             cached_jobs.append({
+                'user_scope': user_scope,
                 'hash': job_hash,
                 'file': str(cache_file),
                 'timestamp': cache_file.stat().st_mtime
