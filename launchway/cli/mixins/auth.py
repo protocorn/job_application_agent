@@ -111,6 +111,8 @@ class AuthMixin:
         except LaunchwayAPIError as e:
             if e.email_not_verified:
                 self._handle_unverified_email(email)
+            elif e.beta_not_approved:
+                self._handle_beta_not_approved()
             else:
                 self.print_error(str(e))
                 self.pause()
@@ -167,6 +169,21 @@ class AuthMixin:
                 self.print_error(f"Could not send email: {e}")
         self.pause()
 
+    def _handle_beta_not_approved(self) -> None:
+        """Show a clear message when a user's account is not yet beta-approved."""
+        self.clear_screen()
+        self.print_header("BETA ACCESS REQUIRED")
+        print("\n  Launchway is currently in private beta.")
+        print("  Your account has not been approved for access yet.\n")
+        print("  ┌──────────────────────────────────────────────────┐")
+        print("  │  To request beta access, visit:                  │")
+        print(f"  │  {_app_url()}/beta-request")
+        print("  │                                                   │")
+        print("  │  You will receive an email once your request      │")
+        print("  │  has been reviewed and approved.                  │")
+        print("  └──────────────────────────────────────────────────┘\n")
+        self.pause()
+
     # ------------------------------------------------------------------
     # Session restoration (called by show_auth_menu before prompting)
     # ------------------------------------------------------------------
@@ -207,6 +224,14 @@ class AuthMixin:
 
         # Merge live user data (may have been updated on the website)
         self.current_user = {**user, **live_user}
+
+        # Beta gate: if the saved session belongs to a non-approved user, block them
+        if not live_user.get('beta_access_approved', False):
+            clear_session()
+            self.api.token = None
+            self.current_user = None
+            self._session_restore_reason = "beta_not_approved"
+            return False
 
         # Fetch profile
         try:
@@ -380,6 +405,10 @@ class AuthMixin:
         elif getattr(self, "_session_restore_reason", None) == "network":
             self.print_warning("Could not verify saved session due to a network/backend error.")
             self.print_info("Your session was kept. Please retry when connectivity is stable.")
+            self.pause()
+        elif getattr(self, "_session_restore_reason", None) == "beta_not_approved":
+            self.print_warning("Beta access is required to use Launchway.")
+            self.print_info(f"Visit {_app_url()}/beta-request to request access.")
             self.pause()
 
         # ── Interactive auth loop ───────────────────────────────────────

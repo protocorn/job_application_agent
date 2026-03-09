@@ -185,6 +185,25 @@ class AuthService:
                     'error': 'User account is deactivated'
                 }
 
+            # Check beta access — issue a temp token so the user can reach /api/beta/* endpoints
+            if not user.beta_access_approved:
+                temp_token = AuthService.create_jwt_token(user.id, user.email)
+                return {
+                    'success': False,
+                    'error': 'Your account is pending beta access approval. Please request beta access to continue.',
+                    'beta_not_approved': True,
+                    'beta_access_requested': user.beta_access_requested or False,
+                    'temp_token': temp_token,
+                    'user': {
+                        'id': str(user.id),
+                        'email': user.email,
+                        'first_name': user.first_name,
+                        'last_name': user.last_name,
+                        'beta_access_requested': user.beta_access_requested or False,
+                        'beta_access_approved': False,
+                    }
+                }
+
             # Create JWT token
             token = AuthService.create_jwt_token(user.id, user.email)
 
@@ -513,6 +532,15 @@ def require_auth(f):
         user = AuthService.get_user_from_token(token)
         if not user:
             return jsonify({'error': 'Invalid or expired token'}), 401
+
+        # Beta access gate — routes that must work before approval are exempt
+        _BETA_EXEMPT = ('/api/beta/', '/api/auth/', '/api/admin/beta/')
+        if not any(request.path.startswith(p) for p in _BETA_EXEMPT):
+            if not user.get('beta_access_approved'):
+                return jsonify({
+                    'error': 'Beta access required. Please request beta access to continue.',
+                    'beta_not_approved': True
+                }), 403
 
         # Add user to request context
         request.current_user = user

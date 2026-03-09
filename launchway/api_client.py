@@ -29,10 +29,11 @@ def _get_base_url() -> str:
 
 class LaunchwayAPIError(Exception):
     """Raised when the backend returns an error response."""
-    def __init__(self, message: str, status_code: int = 0, email_not_verified: bool = False):
+    def __init__(self, message: str, status_code: int = 0, email_not_verified: bool = False, beta_not_approved: bool = False):
         super().__init__(message)
         self.status_code = status_code
         self.email_not_verified = email_not_verified
+        self.beta_not_approved = beta_not_approved
 
 
 class LaunchwayClient:
@@ -132,6 +133,7 @@ class LaunchwayClient:
                 msg,
                 status_code=resp.status_code,
                 email_not_verified=bool(data.get("email_not_verified")),
+                beta_not_approved=bool(data.get("beta_not_approved")),
             )
         return data
 
@@ -142,8 +144,15 @@ class LaunchwayClient:
         Authenticate and get a JWT token.
 
         Returns dict with keys: token, user {id, email, first_name, last_name, ...}
+        Raises LaunchwayAPIError with beta_not_approved=True if the account is
+        awaiting beta approval (backend returns HTTP 200 with success=False).
         """
         data = self._post("/api/auth/login", {"email": email, "password": password})
+        if data.get("beta_not_approved"):
+            raise LaunchwayAPIError(
+                data.get("error", "Beta access required. Please request access at the Launchway website."),
+                beta_not_approved=True,
+            )
         if data.get("token"):
             self.token = data["token"]
         return data
