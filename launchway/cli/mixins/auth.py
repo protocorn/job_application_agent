@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 # The public website URL shown to users when they need to complete their profile.
 # Override via the LAUNCHWAY_APP_URL environment variable.
-_DEFAULT_APP_URL = "https://jobapplicationagent-production.up.railway.app"
+_DEFAULT_APP_URL = "https://www.launchway.app"
 
 def _app_url() -> str:
     return os.getenv("LAUNCHWAY_APP_URL", _DEFAULT_APP_URL)
