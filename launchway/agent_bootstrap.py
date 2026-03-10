@@ -17,6 +17,8 @@ automatically when the process exits.
 """
 
 import atexit
+import importlib.abc
+import importlib.util
 import logging
 import os
 import shutil
@@ -81,10 +83,125 @@ _bootstrap_done: bool = False
 _tmp_dir: Optional[str] = None
 _bootstrap_diag: dict = {
     "source": "none",  # server|cache|none
+    "loader_mode": "disk_decrypt",
     "bundle_gemini_key": "",
     "effective_google_api_key": "",
     "effective_gemini_api_key": "",
 }
+
+_import_finder = None
+
+
+class _SyntheticPackageLoader(importlib.abc.Loader):
+    """Creates an empty package module used as a namespace anchor."""
+
+    def create_module(self, spec):
+        return None
+
+    def exec_module(self, module):
+        return None
+
+
+class _EncryptedModuleLoader(importlib.abc.Loader):
+    """
+    Decrypts a single encrypted module in memory and executes it.
+    No plaintext Python source is written to disk.
+    """
+
+    def __init__(self, fullname: str, enc_file: Path, is_package: bool, fernet_obj, runtime_root: Path):
+        self.fullname = fullname
+        self.enc_file = enc_file
+        self.is_package = is_package
+        self.fernet_obj = fernet_obj
+        self.runtime_root = runtime_root
+
+    def create_module(self, spec):
+        return None
+
+    def exec_module(self, module):
+        encrypted = self.enc_file.read_bytes()
+        decrypted = self.fernet_obj.decrypt(encrypted)
+        source = decrypted.decode("utf-8")
+
+        if self.fullname.startswith("Agents."):
+            rel_parts = self.fullname.split(".")[1:]
+        else:
+            rel_parts = self.fullname.split(".")
+
+        if self.is_package:
+            pseudo_file = self.runtime_root.joinpath(*rel_parts, "__init__.py")
+        else:
+            pseudo_file = self.runtime_root.joinpath(*rel_parts).with_suffix(".py")
+
+        pseudo_file.parent.mkdir(parents=True, exist_ok=True)
+        filename = str(pseudo_file)
+        code = compile(source, filename, "exec")
+
+        module.__file__ = filename
+        module.__loader__ = self
+        module.__package__ = self.fullname if self.is_package else self.fullname.rpartition(".")[0]
+        if self.is_package:
+            module.__path__ = [str(pseudo_file.parent)]
+
+        exec(code, module.__dict__)
+
+        # Best-effort cleanup of sensitive plaintext in local scope.
+        del source
+        del decrypted
+        del encrypted
+
+
+class _EncryptedAgentsFinder(importlib.abc.MetaPathFinder):
+    """
+    Resolves encrypted agent modules from launchway/encrypted_agents.
+    Supports both:
+      - Agents.xxx imports
+      - top-level imports expected by legacy agent code (e.g. components.*)
+    """
+
+    def __init__(self, enc_root: Path, fernet_obj, runtime_root: Path):
+        self.enc_root = enc_root
+        self.fernet_obj = fernet_obj
+        self.runtime_root = runtime_root
+        self._pkg_loader = _SyntheticPackageLoader()
+
+    def _resolve_under_root(self, module_path: str):
+        rel = module_path.replace(".", "/")
+        mod_file = self.enc_root / f"{rel}.enc"
+        if mod_file.exists():
+            return mod_file, False
+        pkg_init = self.enc_root / rel / "__init__.enc"
+        if pkg_init.exists():
+            return pkg_init, True
+        return None, False
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "Agents":
+            return importlib.util.spec_from_loader(fullname, self._pkg_loader, is_package=True)
+
+        enc_file = None
+        is_pkg = False
+
+        if fullname.startswith("Agents."):
+            stripped = fullname[len("Agents."):]
+            if stripped:
+                enc_file, is_pkg = self._resolve_under_root(stripped)
+        else:
+            # Legacy intra-agent imports often reference top-level modules/packages
+            # that physically live under Agents/ in source.
+            enc_file, is_pkg = self._resolve_under_root(fullname)
+
+        if not enc_file:
+            return None
+
+        loader = _EncryptedModuleLoader(
+            fullname=fullname,
+            enc_file=enc_file,
+            is_package=is_pkg,
+            fernet_obj=self.fernet_obj,
+            runtime_root=self.runtime_root,
+        )
+        return importlib.util.spec_from_loader(fullname, loader, is_package=is_pkg)
 
 
 # ── Key helpers ──────────────────────────────────────────────────────────────
@@ -137,7 +254,7 @@ def bootstrap_agents(api_client) -> bool:
 
     Returns True on success, False on failure.
     """
-    global _bootstrap_done, _tmp_dir
+    global _bootstrap_done, _tmp_dir, _import_finder
 
     if _bootstrap_done:
         return True
@@ -194,32 +311,38 @@ def bootstrap_agents(api_client) -> bool:
         logger.error(f"Encrypted agents not found at {_ENC_ROOT}")
         return False
 
-    # ── 3. Decrypt to a fresh temp directory ─────────────────────────────────
+    # ── 3. Configure in-memory encrypted importer ────────────────────────────
 
-    f       = Fernet(key_bytes)
-    tmp_dir = Path(tempfile.mkdtemp(prefix="lw_agents_"))
+    if not key_bytes:
+        logger.error(
+            "Runtime key missing/empty from server. "
+            "Cannot decrypt encrypted agents."
+        )
+        return False
 
     try:
-        enc_files = list(_ENC_ROOT.rglob("*.enc"))
-        for enc_file in enc_files:
-            rel      = enc_file.relative_to(_ENC_ROOT)
-            out_file = tmp_dir / "Agents" / rel.with_suffix(".py")
-            out_file.parent.mkdir(parents=True, exist_ok=True)
-            out_file.write_bytes(f.decrypt(enc_file.read_bytes()))
-
-        logger.debug(f"Decrypted {len(enc_files)} agent files to {tmp_dir}")
-
-    except InvalidToken:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-        # Stale cached key — delete cache and signal caller to retry
-        _KEY_CACHE_PATH.unlink(missing_ok=True)
-        logger.error("Decryption failed: cached key is invalid. "
-                     "Deleted key cache — restart launchway to re-fetch.")
-        return False
+        f = Fernet(key_bytes)
     except Exception as e:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-        logger.error(f"Decryption error: {e}")
+        logger.error(
+            f"Invalid runtime key format from server: {e}. "
+            "Expected Fernet base64 key."
+        )
         return False
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="lw_agents_"))
+    runtime_agents_root = tmp_dir / "Agents"
+    runtime_agents_root.mkdir(parents=True, exist_ok=True)
+
+    _import_finder = _EncryptedAgentsFinder(
+        enc_root=_ENC_ROOT,
+        fernet_obj=f,
+        runtime_root=runtime_agents_root,
+    )
+    if _import_finder not in sys.meta_path:
+        sys.meta_path.insert(0, _import_finder)
+
+    _bootstrap_diag["loader_mode"] = "memory_decrypt_import"
+    logger.debug("Encrypted agent importer installed (in-memory decrypt)")
 
     # ── 4. Decrypt support files (credentials.json, etc.) ───────────────────
     # These go to tmp_dir/ (the "project_root" the agents expect)
@@ -307,16 +430,11 @@ engine = None
         if not stub_path.exists():
             stub_path.write_text(content, encoding="utf-8")
 
-    # ── 7. Inject into sys.path ───────────────────────────────────────────────
-    # Add BOTH tmp_dir and tmp_dir/Agents so that:
-    #   - "from Agents.xxx import yyy"  (called by CLI mixins) works via tmp_dir
-    #   - "from xxx import yyy"          (inter-agent imports)  works via tmp_dir/Agents
-
+    # ── 7. Inject tmp root into sys.path ─────────────────────────────────────
+    # Keep tmp_dir importable for support modules and compatibility stubs.
     tmp_str       = str(tmp_dir)
-    tmp_agents    = str(tmp_dir / "Agents")
-    for p in (tmp_agents, tmp_str):   # agents dir first so intra-agent imports win
-        if p not in sys.path:
-            sys.path.insert(0, p)
+    if tmp_str not in sys.path:
+        sys.path.insert(0, tmp_str)
 
     # ── 8. Persist token.json back to ~/.launchway/ on exit ──────────────────
     # The agent writes a new/refreshed token.json to tmp_dir after OAuth.

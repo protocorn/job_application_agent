@@ -3121,13 +3121,21 @@ def get_cli_agent_key():
     Also returns shared service credentials so agents work out-of-the-box for
     users who chose "Launchway AI" (no personal API key).
     """
-    runtime_key_configured = bool(os.getenv("AGENT_RUNTIME_KEY"))
-    shared_gemini_configured = bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"))
+    runtime_key = (os.getenv("AGENT_RUNTIME_KEY") or "").strip()
+    if not runtime_key:
+        logging.error("CLI agent key request failed: AGENT_RUNTIME_KEY is not configured")
+        return jsonify({
+            "error": "AGENT_RUNTIME_KEY is not configured on the server."
+        }), 500
+
+    gemini_key = (os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or "").strip()
+    shared_gemini_configured = bool(gemini_key)
     return jsonify({
-        "runtime_key_configured": runtime_key_configured,
+        "key": runtime_key,
+        "runtime_key_configured": True,
+        "gemini_key": gemini_key,
         "shared_gemini_configured": shared_gemini_configured,
         "mimikree_url": os.getenv("MIMIKREE_BASE_URL", "https://www.mimikree.com"),
-        "message": "Server secrets are not exposed through this endpoint.",
     }), 200
 
 
