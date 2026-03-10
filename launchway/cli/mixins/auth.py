@@ -26,13 +26,17 @@ def _app_url() -> str:
 
 
 def _is_profile_empty(profile: dict) -> bool:
-    """Return True when the profile has no meaningful content."""
+    """Return True only when every field in the profile is empty/null."""
     if not profile:
         return True
-    has_name       = bool(profile.get("first name") or profile.get("last_name"))
-    has_resume     = bool(profile.get("resume_url"))
-    has_contact    = bool(profile.get("email") or profile.get("phone"))
-    return not (has_name or has_resume or has_contact)
+    # Fields that are internal/system metadata and should not count as
+    # user-supplied profile content when evaluating completeness.
+    _SKIP_KEYS = {"id", "user_id", "created_at", "updated_at", "resume_keywords"}
+    return not any(
+        bool(v)
+        for k, v in profile.items()
+        if k not in _SKIP_KEYS
+    )
 
 
 class AuthMixin:
