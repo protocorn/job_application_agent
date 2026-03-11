@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from datetime import datetime
 
 from launchway.api_client import LaunchwayAPIError
@@ -13,6 +14,72 @@ logger = logging.getLogger(__name__)
 
 
 class ApplyMixin:
+
+    @staticmethod
+    def _is_unknown_job_value(value: str) -> bool:
+        v = (value or "").strip().lower()
+        return v in {"", "unknown", "unknown company", "unknown position", "n/a", "na"}
+
+    def _extract_job_metadata_with_llm(
+        self,
+        job_url: str,
+        company: str,
+        title: str,
+        description: str = "",
+    ) -> tuple[str, str]:
+        """
+        Best-effort metadata enrichment for application history.
+        Uses Gemini through the existing key-manager pipeline when current values are unknown.
+        """
+        if not (self._is_unknown_job_value(company) or self._is_unknown_job_value(title)):
+            return company, title
+
+        try:
+            from Agents.agent_profile_service import AgentProfileService
+            key_manager = AgentProfileService.get_gemini_key_manager(str(self.current_user['id']))
+            if key_manager is None or not getattr(key_manager, "is_configured", False):
+                return company, title
+
+            snippet = (description or "").strip()
+            if len(snippet) > 4000:
+                snippet = snippet[:4000]
+
+            prompt = f"""Extract the job title and company name from this job context.
+Return STRICT JSON only with keys: "title", "company".
+If unknown, return "Unknown Position" or "Unknown Company".
+
+URL:
+{job_url}
+
+Job description snippet:
+{snippet if snippet else "(not available)"}
+"""
+            resp = key_manager.generate_content("gemini-2.0-flash-lite", prompt)
+            text = getattr(resp, 'text', None) or (
+                resp.candidates[0].content.parts[0].text
+                if hasattr(resp, 'candidates') and resp.candidates else ""
+            )
+            raw = (text or "").strip()
+            if not raw:
+                return company, title
+
+            raw = re.sub(r'^```(?:json)?\s*', '', raw, flags=re.IGNORECASE)
+            raw = re.sub(r'\s*```$', '', raw).strip()
+            data = json.loads(raw)
+
+            inferred_title = str(data.get("title") or "").strip()
+            inferred_company = str(data.get("company") or "").strip()
+
+            final_title = title
+            final_company = company
+            if self._is_unknown_job_value(final_title) and inferred_title:
+                final_title = inferred_title
+            if self._is_unknown_job_value(final_company) and inferred_company:
+                final_company = inferred_company
+            return final_company, final_title
+        except Exception as e:
+            logger.debug(f"Job metadata LLM extraction skipped: {e}")
+            return company, title
 
     async def auto_apply_menu(self):
         self.clear_screen()
@@ -221,7 +288,13 @@ class ApplyMixin:
 
                     if job_result['fields_filled'] > 0 and job_result['submitted']:
                         job_result['success'] = True
-                        self.record_application(job_url)
+                        resolved_company, resolved_title = self._extract_job_metadata_with_llm(
+                            job_url=job_url,
+                            company=job_result.get('company', 'Unknown Company'),
+                            title=job_result.get('job_title', f'Job #{idx}'),
+                            description=pre_fetched_desc or "",
+                        )
+                        self.record_application(job_url, company=resolved_company, title=resolved_title)
                         successful_apps.append({'number': idx, 'url': job_url, 'tailored': tailor})
                         self.print_success(f"Job #{idx} submitted! ({job_result['fields_filled']} fields filled)")
                         # Consume one application credit and show updated balance
@@ -375,7 +448,13 @@ class ApplyMixin:
                     if profile_ctx and profile_ctx.get('tailoring_metrics'):
                         self._display_tailored_resume_download(profile_ctx['tailoring_metrics'], 'Company')
 
-            self.record_application(job_url)
+            resolved_company, resolved_title = self._extract_job_metadata_with_llm(
+                job_url=job_url,
+                company='Unknown Company',
+                title='Unknown Position',
+                description=pre_fetched_desc or "",
+            )
+            self.record_application(job_url, company=resolved_company, title=resolved_title)
             billing_pending = False
             try:
                 cr = self.api.consume_credit("job_applications")
@@ -464,11 +543,18 @@ class ApplyMixin:
             logger.error(f"Open incomplete applications error: {e}", exc_info=True)
 
     def record_application(self, job_url: str, company: str = "Unknown Company",
-                           title: str = "Unknown Position"):
+                           title: str = "Unknown Position", description: str = ""):
         """Record a completed job application via the backend API."""
         try:
+            if self._is_unknown_job_value(company) or self._is_unknown_job_value(title):
+                company, title = self._extract_job_metadata_with_llm(
+                    job_url=job_url,
+                    company=company,
+                    title=title,
+                    description=description,
+                )
             self.api.record_application(job_url, company=company, title=title)
-            logger.info(f"Application recorded: {job_url}")
+            logger.info(f"Application recorded: {job_url} | {company} | {title}")
         except LaunchwayAPIError as e:
             logger.error(f"Failed to record application via API: {e}")
 

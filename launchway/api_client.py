@@ -268,10 +268,14 @@ class LaunchwayClient:
 
     # ── applications ────────────────────────────────────────────────────────
 
-    def get_applications(self, limit: int = 50) -> list:
+    def get_applications(self, limit: int = 200) -> list:
         """Return list of recorded job applications (most recent first)."""
         data = self._get("/api/cli/applications", params={"limit": limit})
         return data.get("applications", [])
+
+    def get_applications_summary(self, limit: int = 200) -> Dict[str, Any]:
+        """Return applications with pagination/total metadata."""
+        return self._get("/api/cli/applications", params={"limit": limit})
 
     def record_application(self, job_url: str, company: str = "Unknown",
                            title: str = "Unknown Position") -> Dict[str, Any]:

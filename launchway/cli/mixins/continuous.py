@@ -274,7 +274,12 @@ class ContinuousApplyMixin:
             if job_result['fields_filled'] > 0 and job_result['submitted']:
                 job_result['success'] = True
                 automation_state['applications_submitted'] += 1
-                self.record_application(job_url, company=company, title=job_title)
+                self.record_application(
+                    job_url,
+                    company=company,
+                    title=job_title,
+                    description=description or "",
+                )
                 self.print_success(f"✓ Application submitted! ({job_result['fields_filled']} fields filled)")
                 # Consume one application credit and show updated balance
                 try:

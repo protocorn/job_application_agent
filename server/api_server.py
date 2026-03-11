@@ -567,10 +567,7 @@ def extract_google_doc_with_oauth(resume_url: str, user_id: int) -> str:
     try:
         # Check if user has Google OAuth connected
         if GoogleOAuthService.is_connected(user_id):
-            # When OAuth is connected, use it exclusively.
-            # Do NOT fall back to public access — the doc is likely private,
-            # and a public-access failure would show a misleading "make it public"
-            # error to a user who has already connected their account.
+            # Prefer OAuth access for connected users (supports private docs).
             try:
                 logging.info(f"User {user_id} has OAuth connected, using authenticated access")
                 credentials = GoogleOAuthService.get_credentials(user_id)
@@ -593,6 +590,29 @@ def extract_google_doc_with_oauth(resume_url: str, user_id: int) -> str:
                 raise  # propagate our own clear messages unchanged
             except Exception as oauth_err:
                 logging.warning(f"OAuth access failed for user {user_id}: {oauth_err}")
+                oauth_err_text = str(oauth_err).lower()
+
+                # Recover from revoked/expired Google tokens. This typically appears as
+                # invalid_grant during refresh. In that case, clear stored OAuth tokens
+                # and try public-link extraction as a graceful fallback.
+                if "invalid_grant" in oauth_err_text:
+                    try:
+                        GoogleOAuthService.disconnect_google_account(user_id)
+                        logging.info(f"Cleared stale Google OAuth tokens for user {user_id}")
+                    except Exception as disconnect_err:
+                        logging.warning(
+                            f"Failed to clear stale Google OAuth tokens for user {user_id}: {disconnect_err}"
+                        )
+
+                    try:
+                        logging.info(f"Falling back to public Google Doc access for user {user_id}")
+                        return extract_resume_text(resume_url)
+                    except Exception as public_err:
+                        raise ValueError(
+                            "Your Google account connection expired. Reconnect Google in the Resume menu, "
+                            f"or make the doc viewable by link. Public fallback failed: {public_err}"
+                        )
+
                 raise ValueError(
                     f"Could not read your Google Doc (temporary error: {oauth_err}). "
                     "Please try again in a moment."
@@ -2436,6 +2456,11 @@ def cli_get_applications():
         urls_only  = request.args.get("urls_only", "false").lower() == "true"
         db         = SessionLocal()
         try:
+            total_count = (
+                db.query(JobApplication)
+                .filter(JobApplication.user_id == user_id)
+                .count()
+            )
             query = (
                 db.query(JobApplication)
                 .filter(JobApplication.user_id == user_id)
@@ -2447,6 +2472,7 @@ def cli_get_applications():
             if urls_only:
                 return jsonify({
                     "success": True,
+                    "total_count": total_count,
                     "urls": [
                         a.job_url for a in apps
                         if a.job_url and a.status in ("completed", "in_progress", "queued")
@@ -2455,6 +2481,9 @@ def cli_get_applications():
 
             return jsonify({
                 "success": True,
+                "total_count": total_count,
+                "returned_count": len(apps),
+                "limit": limit,
                 "applications": [
                     {
                         "id":         str(a.id),

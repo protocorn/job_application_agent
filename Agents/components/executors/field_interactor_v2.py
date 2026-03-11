@@ -266,6 +266,9 @@ class FieldInteractorV2:
             elif 'dropdown' in category or category in ['greenhouse_dropdown', 'workday_dropdown', 'lever_dropdown']:
                 await self._fill_dropdown_fast_fail(element, str(value), field_label, category, field_data, result, profile)
 
+            elif category == 'ashby_yesno':
+                await self._fill_ashby_yesno(element, str(value), field_label, result)
+
             elif category == 'ashby_button_group':
                 await self._fill_button_group(element, str(value), field_label, result)
 
@@ -1589,11 +1592,89 @@ class FieldInteractorV2:
                 reason=str(e)
             )
 
+    async def _fill_ashby_yesno(
+        self,
+        container: Locator,
+        value: str,
+        field_label: str,
+        result: Dict[str, Any]
+    ) -> None:
+        """
+        Fill an Ashby Yes/No button-pair field.
+
+        DOM pattern:
+            <div class="... _yesno_ ...">
+                <button class="... _option_y2cw4_33 ...">Yes</button>
+                <button class="... _option_y2cw4_33 ...">No</button>
+                <input type="checkbox" tabindex="-1" class="_input_y2cw4_79" name="<guid>">
+            </div>
+
+        The hidden checkbox tracks the value internally — we only need to click
+        the correct button. The selected button receives an aria-pressed="true"
+        or a CSS modifier class after being clicked.
+        """
+        try:
+            value_lower = value.lower().strip()
+            is_yes = value_lower in ['yes', 'true', '1', 'on', 'yeah', 'y']
+            target_text = 'Yes' if is_yes else 'No'
+
+            # Strategy 1: find button by exact visible text
+            button = container.locator(f'button:has-text("{target_text}")').first
+
+            # Strategy 2: fallback — find all _option_ buttons and text-match
+            if await button.count() == 0:
+                all_buttons = await container.locator('button[class*="_option_"]').all()
+                for btn in all_buttons:
+                    btn_text = (await btn.text_content() or '').strip()
+                    if btn_text.lower() == target_text.lower():
+                        button = btn
+                        break
+
+            if await button.count() > 0 and await button.is_visible():
+                await button.click()
+                await asyncio.sleep(0.2)
+                logger.info(f'✅ Ashby Yes/No: selected "{target_text}" for "{field_label}"')
+                result.update({
+                    'success': True,
+                    'method': 'ashby_yesno',
+                    'final_value': target_text,
+                })
+            else:
+                logger.warning(f'⚠️  Ashby Yes/No: "{target_text}" button not found for "{field_label}"')
+                result.update({
+                    'success': False,
+                    'error': f'Button "{target_text}" not found in Yes/No field "{field_label}"',
+                })
+
+        except Exception as e:
+            logger.error(f'_fill_ashby_yesno error for "{field_label}": {e}')
+            result.update({'success': False, 'error': str(e)})
+
     async def _is_already_filled(self, element: Locator, category: str) -> bool:
         """Check if field is already filled."""
         try:
             if category in ['checkbox', 'radio']:
                 return await element.is_checked()
+
+            elif category == 'ashby_yesno':
+                # Check if any button in the container carries a "selected" indicator.
+                # Ashby adds an aria-pressed="true" or a _selected_/_active_ class modifier
+                # to the chosen button.
+                try:
+                    selected = await element.evaluate(
+                        '''el => {
+                            const btns = el.querySelectorAll("button");
+                            return Array.from(btns).some(b =>
+                                b.getAttribute("aria-pressed") === "true" ||
+                                b.getAttribute("aria-selected") === "true" ||
+                                b.className.includes("_selected_") ||
+                                b.className.includes("_active_")
+                            );
+                        }'''
+                    )
+                    return bool(selected)
+                except Exception:
+                    return False
             
             elif category == 'greenhouse_dropdown':
                 # Greenhouse dropdowns show selected value in sibling display elements, not input value
@@ -1938,6 +2019,68 @@ class FieldInteractorV2:
                     logger.debug(f"Error extracting field data: {e}")
                     continue
             
+            # ── Ashby Yes/No button groups ────────────────────────────────────
+            # These fields use a hidden <input type="checkbox" tabindex="-1"> paired
+            # with visible <button> "Yes"/"No" siblings inside a container whose CSS
+            # class contains "_yesno_".  The input is CSS-invisible so it never appears
+            # in the standard :visible scan above — we must detect it separately.
+            try:
+                yesno_containers = await self.page.locator('[class*="_yesno_"]').all()
+                for container in yesno_containers:
+                    try:
+                        # Derive question label from nearest ashby-application-form-question-title
+                        label_text = await container.evaluate(
+                            '''el => {
+                                const entry = el.closest(".ashby-application-form-field-entry")
+                                           || el.parentElement;
+                                const lbl = entry
+                                    ? entry.querySelector(
+                                        "label.ashby-application-form-question-title, "
+                                        + "label[class*=\\"_heading_\\"]"
+                                      )
+                                    : null;
+                                return lbl ? lbl.textContent.replace(/\\*/g, "").trim() : "";
+                            }'''
+                        )
+
+                        # Name / stable-id from the hidden checkbox
+                        hidden_cb = container.locator('input[type="checkbox"]').first
+                        name_attr = ''
+                        if await hidden_cb.count() > 0:
+                            name_attr = await hidden_cb.get_attribute('name') or ''
+
+                        if name_attr:
+                            stable_id = f"ashby_yesno:{name_attr}"
+                        elif label_text:
+                            lh = hashlib.md5(label_text.encode()).hexdigest()[:8]
+                            stable_id = f"ashby_yesno_hash:{lh}"
+                        else:
+                            stable_id = f"ashby_yesno_pos:{len(fields)}"
+
+                        # Skip if already registered (same stable_id)
+                        if any(f.get('stable_id') == stable_id for f in fields):
+                            continue
+
+                        fields.append({
+                            'element': container,
+                            'field_category': 'ashby_yesno',
+                            'input_type': 'ashby_yesno',
+                            'label': label_text or 'Yes/No Question',
+                            'name': name_attr,
+                            'id': name_attr,
+                            'placeholder': '',
+                            'aria_label': '',
+                            'stable_id': stable_id,
+                            'available_options': ['Yes', 'No'],
+                            'tag_name': 'div',
+                            'position_index': len(fields),
+                        })
+                        logger.debug(f"  🔍 Detected Ashby Yes/No: '{label_text}'")
+                    except Exception as e:
+                        logger.debug(f"  Ashby Yes/No detection error: {e}")
+            except Exception as e:
+                logger.debug(f"  Ashby Yes/No scan error: {e}")
+
             logger.debug(f"Detected {len(fields)} form fields")
             return fields
             

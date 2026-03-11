@@ -5,7 +5,6 @@ Handles converting Google Docs URLs to downloadable PDFs.
 import os
 import re
 import requests
-from pathlib import Path
 from loguru import logger
 
 
@@ -52,7 +51,60 @@ class GoogleDocsConverter:
         return f"https://docs.google.com/document/d/{doc_id}/export?format=pdf"
 
     @staticmethod
-    def download_as_pdf(url: str, output_path: str) -> bool:
+    def _download_as_pdf_with_oauth(url: str, output_path: str, user_id: str) -> bool:
+        """
+        Download Google Doc as PDF using stored OAuth credentials.
+        This path supports private docs and tailored docs owned by the user.
+        """
+        try:
+            doc_id = GoogleDocsConverter.extract_document_id(url)
+            if not doc_id:
+                logger.error(f"Could not extract document ID from URL: {url}")
+                return False
+
+            # Ensure server modules are importable from local CLI runtime.
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+            server_dir = os.path.join(project_root, 'server')
+            import sys
+            if os.path.isdir(server_dir) and server_dir not in sys.path:
+                sys.path.append(server_dir)
+
+            from google_oauth_service import GoogleOAuthService
+            from googleapiclient.discovery import build
+            from googleapiclient.http import MediaIoBaseDownload
+            import io
+
+            credentials = GoogleOAuthService.get_credentials(str(user_id))
+            if not credentials:
+                logger.warning("No valid Google OAuth credentials found for user")
+                return False
+
+            drive_service = build('drive', 'v3', credentials=credentials)
+            request = drive_service.files().export_media(fileId=doc_id, mimeType='application/pdf')
+            file_stream = io.BytesIO()
+            downloader = MediaIoBaseDownload(file_stream, request)
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
+
+            file_bytes = file_stream.getvalue()
+            if not file_bytes:
+                logger.error("OAuth export returned empty PDF content")
+                return False
+
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            with open(output_path, 'wb') as f:
+                f.write(file_bytes)
+
+            logger.info(f"✅ PDF downloaded via OAuth: {output_path} ({len(file_bytes)} bytes)")
+            return True
+        except Exception as e:
+            logger.error(f"❌ OAuth PDF export failed: {e}")
+            return False
+
+    @staticmethod
+    def download_as_pdf(url: str, output_path: str, user_id: str = None) -> bool:
         """
         Download Google Docs URL as PDF.
 
@@ -74,7 +126,7 @@ class GoogleDocsConverter:
             pdf_url = GoogleDocsConverter.get_pdf_export_url(doc_id)
             logger.info(f"📥 Downloading Google Docs as PDF: {doc_id}")
 
-            # Download the PDF
+            # Download the PDF via public export first (works for public/shared docs)
             response = requests.get(pdf_url, timeout=30)
             response.raise_for_status()
 
@@ -82,7 +134,10 @@ class GoogleDocsConverter:
             content_type = response.headers.get('Content-Type', '')
             if 'application/pdf' not in content_type:
                 logger.error(f"Response is not a PDF. Content-Type: {content_type}")
-                logger.error("Make sure the document is publicly accessible or shared with 'Anyone with the link'")
+                logger.warning("Public export did not return PDF, trying OAuth export fallback...")
+                if user_id and GoogleDocsConverter._download_as_pdf_with_oauth(url, output_path, user_id):
+                    return True
+                logger.error("Make sure the document is publicly accessible or connect Google OAuth in the app")
                 return False
 
             # Save to file
@@ -95,14 +150,17 @@ class GoogleDocsConverter:
             return True
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"❌ Failed to download Google Docs PDF: {e}")
+            logger.warning(f"Public Google Docs PDF download failed: {e}")
+            if user_id and GoogleDocsConverter._download_as_pdf_with_oauth(url, output_path, user_id):
+                return True
+            logger.error("❌ Failed to download Google Docs PDF (public + OAuth fallback)")
             return False
         except Exception as e:
             logger.error(f"❌ Unexpected error downloading PDF: {e}")
             return False
 
     @staticmethod
-    def convert_to_pdf_if_needed(resume_url_or_path: str, resumes_dir: str = None) -> str:
+    def convert_to_pdf_if_needed(resume_url_or_path: str, resumes_dir: str = None, user_id: str = None) -> str:
         """
         Convert resume to PDF if it's a Google Docs URL, otherwise return original path.
 
@@ -142,7 +200,7 @@ class GoogleDocsConverter:
             return output_path
 
         # Download the PDF
-        if GoogleDocsConverter.download_as_pdf(resume_url_or_path, output_path):
+        if GoogleDocsConverter.download_as_pdf(resume_url_or_path, output_path, user_id=user_id):
             return output_path
         else:
             logger.error(f"❌ Failed to convert Google Docs to PDF")

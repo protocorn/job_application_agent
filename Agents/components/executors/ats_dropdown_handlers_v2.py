@@ -43,6 +43,8 @@ class ATSDropdownHandlerV2:
                 return await self._fill_greenhouse(element, value, field_label)
             elif ats_type == 'workday':
                 return await self._fill_workday(element, value, field_label)
+            elif ats_type == 'ashby':
+                return await self._fill_ashby(element, value, field_label)
             elif ats_type == 'lever':
                 return await self._fill_lever(element, value, field_label)
             else:
@@ -195,9 +197,25 @@ class ATSDropdownHandlerV2:
             automation_id = await element.get_attribute('data-automation-id') or ''
             class_attr  = await element.get_attribute('class') or ''
 
-            # Greenhouse: combobox with aria-haspopup (React Select)
+            # Greenhouse: combobox with aria-haspopup="true" (React Select)
             if role == 'combobox' and aria_popup == 'true':
                 return 'greenhouse'
+
+            # Ashby: combobox with aria-haspopup="listbox" (not "true") OR
+            # Ashby-specific class/placeholder pattern
+            if role == 'combobox' and aria_popup == 'listbox':
+                return 'ashby'
+            if '_input_v5ami_' in class_attr or 'ashby' in class_attr.lower():
+                return 'ashby'
+            try:
+                placeholder = await element.get_attribute('placeholder') or ''
+                parent_class = await element.evaluate(
+                    'el => el.closest("[class*=\\"_inputContainer_\\"]")?.className || ""'
+                )
+                if placeholder.lower() == 'start typing...' or '_inputContainer_v5ami_' in parent_class:
+                    return 'ashby'
+            except Exception:
+                pass
 
             # Workday: data-automation-id present, OR Workday CSS-in-JS class pattern
             # Workday elements carry 'data-automation-id' or are inside a Workday frame
@@ -916,10 +934,106 @@ class ATSDropdownHandlerV2:
         # 2. Custom Lever dropdown (click-to-open with role="option" items)
         return await self._fill_generic(element, value, field_label)
 
+    async def _fill_ashby(self, element: Locator, value: str, field_label: str) -> bool:
+        """
+        Ashby dropdown strategy.
+
+        Ashby renders its combobox as:
+            <div class="_inputContainer_v5ami_28">
+                <input class="_input_v5ami_28" role="combobox"
+                       aria-haspopup="listbox" aria-autocomplete="list"
+                       placeholder="Start typing...">
+                <button class="_toggleButton_v5ami_32">▼</button>   ← opens list
+            </div>
+
+        Options appear as [role="option"] items in a listbox portal.
+
+        Strategy:
+        1. Click the input to open (Ashby opens on focus).
+        2. If no options appear → click the sibling toggle button.
+        3. Type a search prefix to filter (Ashby does live search).
+        4. Re-collect options, pick best match (AI ≤ 15, fuzzy otherwise).
+        5. Click the match.
+        """
+        page = element.page
+        try:
+            # ── Step 1: Click the input ──────────────────────────────────────
+            try:
+                await element.scroll_into_view_if_needed(timeout=1500)
+            except Exception:
+                pass
+            await element.click(timeout=2000)
+            await asyncio.sleep(0.3)
+
+            # ── Step 2: If empty, try the toggle button ──────────────────────
+            option_locs = page.locator('[role="option"]:not([aria-disabled="true"])')
+            if await option_locs.count() == 0:
+                try:
+                    toggle = await element.evaluate_handle(
+                        'el => el.closest("[class*=\\"_inputContainer_\\"]")'
+                        '    ?.querySelector("[class*=\\"_toggleButton_\\"]") || null'
+                    )
+                    toggle_loc = page.locator('[class*="_toggleButton_"]').first
+                    if await toggle_loc.count() > 0 and await toggle_loc.is_visible(timeout=500):
+                        await toggle_loc.click(timeout=1500)
+                        await asyncio.sleep(0.3)
+                except Exception:
+                    pass
+
+            # ── Step 3: Type to filter ───────────────────────────────────────
+            await element.fill(value[:20], timeout=2000)
+            await asyncio.sleep(0.4)
+
+            # ── Step 4: Collect options ──────────────────────────────────────
+            count = await option_locs.count()
+            options_list: List[tuple] = []
+            for i in range(min(count, 60)):
+                try:
+                    opt = option_locs.nth(i)
+                    if not await opt.is_visible(timeout=150):
+                        continue
+                    text = (await opt.text_content(timeout=200) or '').strip()
+                    if text:
+                        options_list.append((opt, text))
+                except Exception:
+                    continue
+
+            if not options_list:
+                # Last resort: press Enter on whatever is typed
+                await element.press('Enter')
+                logger.debug(f"  Ashby: no options found for '{field_label}', pressed Enter")
+                return True
+
+            # ── Step 5: Pick best option ─────────────────────────────────────
+            chosen_loc, chosen_text = await self._workday_pick_option(
+                value, options_list, field_label
+            )
+
+            if chosen_loc:
+                try:
+                    await chosen_loc.scroll_into_view_if_needed(timeout=800)
+                except Exception:
+                    pass
+                await chosen_loc.click(timeout=2000)
+                await asyncio.sleep(0.2)
+                logger.info(f"✅ Ashby dropdown: '{chosen_text}' for '{field_label}'")
+                return True
+
+            logger.warning(f"  ⚠ Ashby: no match for '{value}' in '{field_label}'")
+            try:
+                await element.press('Escape')
+            except Exception:
+                pass
+            return False
+
+        except Exception as e:
+            logger.error(f"❌ Ashby dropdown error for '{field_label}': {e}")
+            return False
+
     async def _fill_generic(self, element: Locator, value: str, field_label: str) -> bool:
         """
         Universal fallback for any ATS not covered above
-        (Ashby, Taleo, iCIMS, SmartRecruiters, BambooHR, JazzHR, etc.).
+        (Taleo, iCIMS, SmartRecruiters, BambooHR, JazzHR, etc.).
 
         Strategy:
         1. If <select> → fuzzy select_option.

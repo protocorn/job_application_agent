@@ -3396,7 +3396,11 @@ def _load_profile_data(user_id=None, profile_data=None):
 
         if resume_url_or_path:
             # Google Docs URL or local path — convert to PDF if needed
-            resume_path = GoogleDocsConverter.convert_to_pdf_if_needed(resume_url_or_path, resumes_dir)
+            resume_path = GoogleDocsConverter.convert_to_pdf_if_needed(
+                resume_url_or_path,
+                resumes_dir,
+                user_id=str(user_id) if user_id else None,
+            )
         else:
             # No URL — try to reconstruct the original PDF/DOCX from stored base64 bytes
             resume_file_base64 = profile_data.get('resume_file_base64', '')
