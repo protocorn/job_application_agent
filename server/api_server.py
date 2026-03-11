@@ -24,14 +24,12 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'Agents'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))  # For logging_config
 
 # Original imports
-from resume_tailoring_agent import get_google_services, get_doc_id_from_url, read_google_doc_content, tailor_resume_and_return_url
+from resume_tailoring_agent import get_google_services, get_doc_id_from_url, read_google_doc_content
 from latex_tailoring_agent import parse_latex_zip, get_main_tex_preview_from_base64, compile_latex_zip_to_pdf
 from job_application_agent import run_links_with_refactored_agent
 from logging_config import setup_file_logging
-from components.session.session_manager import SessionManager
 from auth import AuthService, require_auth, require_admin
 from profile_service import ProfileService
-from job_search_service import JobSearchService
 from google_oauth_service import GoogleOAuthService
 
 # Production infrastructure imports
@@ -105,15 +103,8 @@ allowed_origins_str = os.getenv('CORS_ORIGINS', default_origins)
 # Parse allowed origins
 allowed_origins = [origin.strip() for origin in allowed_origins_str.split(',')]
 
-# PRODUCTION SECURITY: Only add Vercel wildcard pattern in development mode
-# In production, all allowed origins must be explicitly listed in CORS_ORIGINS env var
 flask_env = os.getenv('FLASK_ENV', 'development')
-if flask_env == 'development' and any('.vercel.app' in origin for origin in allowed_origins):
-    # flask-cors supports regex patterns for origins (development only)
-    allowed_origins.append(r'https://.*\.vercel\.app')
-    logging.info("⚠️ CORS: Vercel wildcard pattern enabled (development mode)")
-else:
-    logging.info(f"✅ CORS: Production mode - only explicit origins allowed: {len(allowed_origins)} origins")
+logging.info(f"✅ CORS: Explicit origins configured: {len(allowed_origins)} origins")
 
 # Apply CORS with expanded origins list (supports regex for Vercel in dev only)
 CORS(
@@ -139,7 +130,6 @@ def after_request(response):
     return response
 
 JOBS: Dict[str, Dict[str, Any]] = {}
-INTERVENTIONS: Dict[str, Dict[str, Any]] = {}  # Store intervention requests from job agents
 
 # Ephemeral OAuth state storage: state_token -> {"user_id": str, "origin": str, "expires_at": float}
 OAUTH_STATE_STORE: Dict[str, Dict[str, Any]] = {}
@@ -180,8 +170,7 @@ def _consume_oauth_state(state_token: str) -> Dict[str, Any]:
 def _get_default_frontend_origin() -> str:
     # Explicit override takes precedence.
     explicit_origin = (
-        os.getenv("OAUTH_POSTMESSAGE_ORIGIN")
-        or os.getenv("FRONTEND_URL")
+        os.getenv("FRONTEND_URL")
         or ""
     ).strip()
     if explicit_origin.startswith("http"):
@@ -208,11 +197,6 @@ def _get_default_frontend_origin() -> str:
     if http_origins:
         return http_origins[0]
     return "http://localhost:3000"
-
-# Initialize session manager with proper path
-import os
-session_storage_path = os.path.join(os.path.dirname(__file__), "sessions")
-session_manager = SessionManager(session_storage_path)
 
 # Initialize production infrastructure
 def initialize_production_infrastructure():
@@ -562,6 +546,19 @@ def _validate_profile_data(profile_data: Dict[str, Any], schema: Dict[str, Any])
     
     return validated_data
 
+def _normalize_resume_text_for_hash(resume_text: str) -> str:
+    """Normalize resume text to detect meaningful content changes."""
+    if not resume_text:
+        return ""
+    return " ".join(resume_text.split()).strip().lower()
+
+def _compute_resume_text_hash(resume_text: str) -> str:
+    """Compute a stable hash for resume keyword cache invalidation."""
+    normalized = _normalize_resume_text_for_hash(resume_text)
+    if not normalized:
+        return ""
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
 def extract_google_doc_with_oauth(resume_url: str, user_id: int) -> str:
     """
     Extract text from Google Doc using OAuth credentials (works with private docs)
@@ -774,10 +771,21 @@ def get_profile():
         result = ProfileService.get_complete_profile(user_id)
 
         if result['success']:
+            profile = dict(result.get('profile') or {})
+            source_type = profile.get("resume_source_type", "google_doc")
+
+            # Normalize resume fields by source type to avoid leaking stale/sensitive payloads.
+            if source_type in ('pdf', 'docx'):
+                profile["resume_url"] = ""
+            else:
+                profile["resume_text"] = ""
+                profile["resume_filename"] = ""
+                profile["resume_file_base64"] = ""
+
             return jsonify({
-                "resumeData": result['profile'],
-                "resume_url": result['profile'].get("resume_url", ""),
-                "resume_source_type": result['profile'].get("resume_source_type", "google_doc"),
+                "resumeData": profile,
+                "resume_url": profile.get("resume_url", ""),
+                "resume_source_type": source_type,
                 "success": True,
                 "message": "Profile fetched successfully",
                 "error": None
@@ -962,20 +970,24 @@ def extract_profile_keywords():
             }), 403
 
         keywords = None
+        resume_text = ""
+        profile_result = ProfileService.get_complete_profile(user_id)
+        profile = profile_result.get("profile", {}) if profile_result.get("success") else {}
+        existing_keywords = profile.get("resume_keywords") if isinstance(profile, dict) else {}
+        if not isinstance(existing_keywords, dict):
+            existing_keywords = {}
+        existing_hash = str(existing_keywords.get("resume_text_hash") or "")
 
         # Option 1: caller supplies raw resume text
         raw_text = body.get("resume_text", "").strip()
         if raw_text:
-            extractor = ResumeKeywordExtractor(key_manager=key_manager)
-            keywords = extractor.extract_from_text(raw_text)
+            resume_text = raw_text
 
         # Option 2: fetch from the user's saved resume (URL or extracted text)
-        if not keywords:
-            profile_result = ProfileService.get_complete_profile(user_id)
+        if not resume_text:
             if not profile_result.get("success"):
                 return jsonify({"error": "Profile not found"}), 404
 
-            profile = profile_result.get("profile", {})
             resume_url = profile.get("resume_url", "")
             stored_text = profile.get("resume_text", "")
 
@@ -992,14 +1004,31 @@ def extract_profile_keywords():
                     "error": "No resume found in your profile. Please upload a resume first."
                 }), 400
 
-            extractor = ResumeKeywordExtractor(key_manager=key_manager)
-            keywords = extractor.extract_from_text(resume_text)
+        resume_hash = _compute_resume_text_hash(resume_text)
+        has_cached_keywords = any(existing_keywords.get(k) for k in ("skills", "domains", "job_titles", "industries"))
+        if resume_hash and existing_hash == resume_hash and has_cached_keywords:
+            return jsonify({
+                "success": True,
+                "resume_keywords": existing_keywords,
+                "cached": True,
+                "message": "Resume text unchanged; using cached keywords."
+            }), 200
+
+        extractor = ResumeKeywordExtractor(key_manager=key_manager)
+        keywords = extractor.extract_from_text(resume_text)
 
         if not keywords:
             return jsonify({"error": "Keyword extraction failed"}), 500
 
+        if isinstance(keywords, dict):
+            keywords["resume_text_hash"] = resume_hash
+
         ProfileService.create_or_update_profile(user_id, {"resume_keywords": keywords})
-        return jsonify({"success": True, "resume_keywords": keywords}), 200
+        return jsonify({
+            "success": True,
+            "resume_keywords": keywords,
+            "cached": False
+        }), 200
 
     except AiEngineNotConfiguredError as e:
         return jsonify({
@@ -1391,63 +1420,6 @@ def extract_docx_text(file_obj) -> str:
         logging.error(f"Error extracting DOCX text: {e}")
         raise ValueError(f"Failed to extract text from DOCX: {str(e)}")
 
-# ---------------- Action History Endpoints ----------------
-# --- DISABLED: web-app-only feature, not needed for profile management MVP ---
-# @app.route("/api/action-history", methods=["POST"])
-@require_auth
-def save_action_history_api():
-    try:
-        user_id = request.current_user['id']
-        data = request.json or {}
-        job_id = data.get('job_id')
-        action_log = data.get('action_log')
-        if not job_id or action_log is None:
-            return jsonify({ 'success': False, 'error': 'job_id and action_log are required' }), 400
-        result = ProfileService.save_action_history(user_id, job_id, action_log)
-        status = 200 if result.get('success') else 500
-        return jsonify(result), status
-    except Exception as e:
-        logging.error(f"Error saving action history: {e}")
-        return jsonify({ 'success': False, 'error': 'Failed to save action history' }), 500
-
-# --- DISABLED: web-app-only feature, not needed for profile management MVP ---
-# @app.route("/api/action-history", methods=["GET"])
-@require_auth
-def get_action_history_api():
-    try:
-        user_id = request.current_user['id']
-        job_id = request.args.get('job_id')
-        if not job_id:
-            return jsonify({ 'success': False, 'error': 'job_id is required' }), 400
-        result = ProfileService.get_action_history(user_id, job_id)
-        status = 200 if result.get('success') else 500
-        return jsonify(result), status
-    except Exception as e:
-        logging.error(f"Error fetching action history: {e}")
-        return jsonify({ 'success': False, 'error': 'Failed to fetch action history' }), 500
-
-# --- DISABLED: web-app-only feature, not needed for profile management MVP ---
-# @app.route("/api/action-history", methods=["DELETE"])
-@require_auth
-def delete_action_history_api():
-    try:
-        user_id = request.current_user['id']
-        data = request.json or {}
-        job_id = data.get('job_id')
-        if not job_id:
-            return jsonify({ 'success': False, 'error': 'job_id is required' }), 400
-        result = ProfileService.mark_action_history_completed(user_id, job_id)
-        status = 200 if result.get('success') else 500
-        return jsonify(result), status
-    except Exception as e:
-        logging.error(f"Error deleting action history: {e}")
-        return jsonify({ 'success': False, 'error': 'Failed to delete action history' }), 500
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-    except Exception as e:
-        logging.error(f"Error processing resume: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
 @app.route("/api/search-jobs", methods=['POST'])
 @require_auth
 @rate_limit('job_search_per_user_per_day')
@@ -1520,59 +1492,6 @@ def search_jobs():
         }), 200
     except Exception as e:
         logging.error(f"Error searching for jobs: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
-# --- DISABLED: job automation is CLI-only; not part of web profile management MVP ---
-# @app.route("/api/job-listings", methods=['GET'])
-@require_auth
-def get_job_listings():
-    """Get saved job listings from PostgreSQL database"""
-    try:
-        limit = request.args.get('limit', 100, type=int)
-        offset = request.args.get('offset', 0, type=int)
-        
-        result = JobSearchService.get_job_listings(limit=limit, offset=offset)
-        
-        if result['success']:
-            return jsonify({
-                "jobs": result['jobs'],
-                "total_count": result['total_count'],
-                "limit": result['limit'],
-                "offset": result['offset'],
-                "success": True,
-                "message": "Job listings retrieved successfully"
-            }), 200
-        else:
-            return jsonify({"error": result['error']}), 500
-            
-    except Exception as e:
-        logging.error(f"Error getting job listings: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
-# --- DISABLED: job automation is CLI-only; not part of web profile management MVP ---
-# @app.route("/api/recent-job-listings", methods=['GET'])
-@require_auth
-def get_recent_job_listings():
-    """Get recently added job listings from PostgreSQL database"""
-    try:
-        hours = request.args.get('hours', 24, type=int)
-        limit = request.args.get('limit', 50, type=int)
-        
-        result = JobSearchService.get_recent_job_listings(hours=hours, limit=limit)
-        
-        if result['success']:
-            return jsonify({
-                "jobs": result['jobs'],
-                "count": result['count'],
-                "hours": result['hours'],
-                "success": True,
-                "message": "Recent job listings retrieved successfully"
-            }), 200
-        else:
-            return jsonify({"error": result['error']}), 500
-            
-    except Exception as e:
-        logging.error(f"Error getting recent job listings: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/credits/consume", methods=['POST'])
@@ -1823,292 +1742,9 @@ def tailor_resume():
         logging.error(f"Error submitting resume tailoring job: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-# --- DISABLED: resume tailoring via web is not part of profile management MVP ---
-# @app.route("/api/tailor-resume-sync", methods=['POST'])
-@require_auth
-@rate_limit('resume_tailoring_per_user_per_day')
-@validate_input
-def tailor_resume_sync():
-    """Synchronous resume tailoring (for backward compatibility and urgent requests)"""
-    try:
-        user_id = request.current_user['id']
-        data = request.json
-        job_id = data.get('job_id')
-        job_description = data.get('job_description')
-        company_name = data.get('company_name')
-        resume_url = data.get('resume_url')
-
-        if not job_description:
-            return jsonify({"error": "Job description is required"}), 400
-
-        profile_result = ProfileService.get_profile(user_id)
-        profile_data = profile_result.get('profile') if profile_result.get('success') else {}
-        resume_source_type = (profile_data or {}).get('resume_source_type', 'google_doc')
-        if resume_source_type != 'latex_zip' and not resume_url:
-            return jsonify({"error": "Job description and resume URL are required"}), 400
-
-        try:
-            credentials = None
-            if resume_source_type != 'latex_zip':
-                # Get user's Google credentials
-                if not GoogleOAuthService.is_connected(user_id):
-                    return jsonify({
-                        "error": "Please connect your Google account first to tailor Google Docs resumes",
-                        "needs_google_auth": True
-                    }), 403
-
-                credentials = GoogleOAuthService.get_credentials(user_id)
-                if not credentials:
-                    return jsonify({
-                        "error": "Failed to retrieve Google credentials. Please reconnect your account.",
-                        "needs_google_auth": True
-                    }), 403
-
-            # Get user's full name and cover letter template from database
-            from database_config import SessionLocal, User
-            db = SessionLocal()
-            try:
-                user = db.query(User).filter(User.id == user_id).first()
-                user_full_name = f"{user.first_name} {user.last_name}" if user else "Resume"
-
-                # Get cover letter template if exists
-                cover_letter_template = None
-                if user and user.profile:
-                    cover_letter_template = user.profile.cover_letter_template
-            finally:
-                db.close()
-
-            # Get Mimikree credentials from environment
-            mimikree_email = os.getenv('MIMIKREE_EMAIL')
-            mimikree_password = os.getenv('MIMIKREE_PASSWORD')
-
-            if resume_source_type == 'latex_zip':
-                from latex_tailoring_agent import tailor_latex_resume_from_base64
-                from database_config import UserProfile
-                profile_row = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
-                latex_zip_base64 = profile_row.latex_zip_base64 if profile_row else None
-                main_tex_path = profile_row.latex_main_tex_path if profile_row else None
-                tailoring_result = tailor_latex_resume_from_base64(
-                    latex_zip_base64=latex_zip_base64,
-                    main_tex_file=main_tex_path,
-                    job_description=job_description,
-                    job_title=job_id or "Unknown Position",
-                    company=company_name or "Unknown Company",
-                )
-                tailored_url = None
-            else:
-                # Use the resume tailor agent to create tailored Google Doc
-                tailoring_result = tailor_resume_and_return_url(
-                    resume_url,
-                    job_description,
-                    job_id,
-                    company_name,
-                    credentials=credentials,
-                    user_full_name=user_full_name,
-                    mimikree_email=mimikree_email,
-                    mimikree_password=mimikree_password,
-                    user_id=user_id,
-                )
-                # Extract URL (now returns dict with metrics)
-                tailored_url = tailoring_result.get('url') if isinstance(tailoring_result, dict) else tailoring_result
-
-            # Tailor cover letter if template exists
-            tailored_cover_letter_id = None
-            if cover_letter_template and resume_source_type != 'latex_zip':
-                from Agents.cover_letter_tailoring import tailor_cover_letter
-                from googleapiclient.discovery import build
-
-                # Tailor the cover letter text
-                tailored_cl_text = tailor_cover_letter(
-                    cover_letter_template,
-                    job_description,
-                    company_name,
-                    job_id,
-                    user_full_name
-                )
-
-                # Create a Google Doc for the cover letter
-                docs_service = build('docs', 'v1', credentials=credentials)
-                drive_service = build('drive', 'v3', credentials=credentials)
-
-                # Clean company name for filename
-                clean_company = ''.join(c if c.isalnum() else '_' for c in company_name)
-                cover_letter_title = f"{user_full_name}_{clean_company}_CoverLetter"
-
-                # Create empty document
-                doc = docs_service.documents().create(body={'title': cover_letter_title}).execute()
-                cover_letter_doc_id = doc['documentId']
-
-                # Insert the tailored cover letter text
-                requests = [{
-                    'insertText': {
-                        'location': {'index': 1},
-                        'text': tailored_cl_text
-                    }
-                }]
-                docs_service.documents().batchUpdate(
-                    documentId=cover_letter_doc_id,
-                    body={'requests': requests}
-                ).execute()
-
-                tailored_cover_letter_id = cover_letter_doc_id
-                logging.info(f"Created cover letter doc: {cover_letter_doc_id}")
-
-            # Prepare response with metrics
-            response_data = {
-                "tailored_document_id": tailored_url,
-                "tailored_cover_letter_id": tailored_cover_letter_id,
-                "success": True,
-                "message": (
-                    "LaTeX resume tailored successfully (downloadable ZIP generated)."
-                    if resume_source_type == 'latex_zip'
-                    else ("Resume and cover letter tailored successfully" if tailored_cover_letter_id else "Resume tailored successfully")
-                ),
-                "error": None
-            }
-
-            # Add tailoring metrics if available
-            if isinstance(tailoring_result, dict):
-                response_data["metrics"] = tailoring_result
-                
-                # Debug: Log metrics being sent to frontend
-                logging.info(f"📊 Sending metrics to frontend:")
-                if 'keywords' in tailoring_result:
-                    keywords = tailoring_result['keywords']
-                    logging.info(f"   Job Required: {len(keywords.get('job_required', []))}")
-                    logging.info(f"   Already Present: {len(keywords.get('already_present', []))}")
-                    logging.info(f"   Newly Added: {len(keywords.get('newly_added', []))}")
-                    logging.info(f"   Could Not Add: {len(keywords.get('could_not_add', []))}")
-                if 'match_stats' in tailoring_result:
-                    match_stats = tailoring_result['match_stats']
-                    logging.info(f"   Match Percentage: {match_stats.get('match_percentage', 0):.1f}%")
-
-            return jsonify(response_data), 200
-        except ValueError as ve:
-            # Check if it's an authentication error
-            error_msg = str(ve)
-            if 'authentication' in error_msg.lower() or 'reconnect' in error_msg.lower():
-                logging.warning(f"Authentication error for user {user_id}: {error_msg}")
-                return jsonify({
-                    "error": error_msg,
-                    "needs_google_auth": True
-                }), 403
-            logging.error(f"Validation error tailoring resume: {error_msg}")
-            return jsonify({"error": error_msg}), 400
-        except Exception as e:
-            logging.error(f"Error tailoring resume: {str(e)}")
-            # Check if the error message indicates auth issues
-            error_str = str(e).lower()
-            if 'invalid_grant' in error_str or 'credentials' in error_str or '401' in error_str:
-                return jsonify({
-                    "error": "Your Google account connection has expired. Please reconnect your account.",
-                    "needs_google_auth": True
-                }), 403
-            return jsonify({"error": str(e)}), 500
-    except Exception as e:
-        logging.error(f"Error tailoring resume: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
-
 # Auto job apply endpoint removed - feature only available via CLI
 
 # Auto batch job apply endpoint removed - feature only available via CLI
-
-# --- DISABLED: job automation is CLI-only; not part of web profile management MVP ---
-# @app.route("/api/job-logs/<job_or_session_id>", methods=['GET'])
-def get_job_logs(job_or_session_id):
-    """Get job logs for a specific job or session"""
-    try:
-        # First try to find by job_id directly
-        if job_or_session_id in JOBS:
-            return jsonify(JOBS[job_or_session_id].get('logs', [])), 200
-
-        # If not found, try to find job by session_id
-        for job_id, job_data in JOBS.items():
-            if job_data.get('session_id') == job_or_session_id:
-                return jsonify(job_data.get('logs', [])), 200
-
-        # If still not found, return empty logs
-        return jsonify([]), 200
-    except Exception as e:
-        logging.error(f"Error getting job logs for {job_or_session_id}: {e}")
-        return jsonify({"error": f"Failed to get job logs: {str(e)}"}), 500
-
-# --- DISABLED: job automation is CLI-only; not part of web profile management MVP ---
-# @app.route("/api/job-status/<job_or_session_id>", methods=['GET'])
-def get_job_status(job_or_session_id):
-    """Get job status and details for a specific job or session"""
-    try:
-        job_data = None
-        actual_job_id = job_or_session_id
-
-        # First try to find by job_id directly
-        if job_or_session_id in JOBS:
-            job_data = JOBS[job_or_session_id]
-        else:
-            # If not found, try to find job by session_id
-            for job_id, data in JOBS.items():
-                if data.get('session_id') == job_or_session_id:
-                    job_data = data
-                    actual_job_id = job_id
-                    break
-
-        if not job_data:
-            return jsonify({"error": "Job not found"}), 404
-
-        return jsonify({
-            "job_id": actual_job_id,
-            "status": job_data.get('status', 'unknown'),
-            "job_url": job_data.get('job_url', ''),
-            "created_at": job_data.get('created_at', 0),
-            "logs_count": len(job_data.get('logs', [])),
-            "last_updated": job_data.get('last_updated', job_data.get('created_at', 0))
-        }), 200
-    except Exception as e:
-        logging.error(f"Error getting job status for {job_or_session_id}: {e}")
-        return jsonify({"error": f"Failed to get job status: {str(e)}"}), 500
-
-# Batch status endpoint removed - batch apply feature only available via CLI
-
-# --- DISABLED: job automation is CLI-only; not part of web profile management MVP ---
-# @app.route("/api/resume-job/<job_id>", methods=['POST'])
-def resume_job(job_id):
-    """Resume a job that requires human intervention"""
-    try:
-        if job_id not in JOBS:
-            return jsonify({"error": "Job not found"}), 404
-        
-        job_data = JOBS[job_id]
-        
-        # Check if job is actually in intervention state
-        if job_data.get('status') != 'intervention':
-            return jsonify({"error": f"Job is not in intervention state. Current status: {job_data.get('status')}"}), 400
-        
-        # Update job status to running
-        JOBS[job_id]['status'] = 'running'
-        JOBS[job_id]['last_updated'] = time.time()
-        JOBS[job_id]['logs'].append({
-            "timestamp": time.time(),
-            "level": "info",
-            "message": "Human intervention resolved - Resuming job application"
-        })
-        
-        logging.info(f"Job {job_id} resumed from intervention")
-        
-        # Note: The actual resumption of the job agent process would need to be implemented
-        # based on how the intervention mechanism works in the job_application_agent.py
-        # For now, we'll just update the status and let the agent continue
-        
-        return jsonify({
-            "success": True,
-            "message": "Job resumed successfully",
-            "job_id": job_id,
-            "status": "running"
-        }), 200
-        
-    except Exception as e:
-        logging.error(f"Error resuming job {job_id}: {e}")
-        return jsonify({"error": f"Failed to resume job: {str(e)}"}), 500
 
 
 # Authentication API Routes
@@ -2441,7 +2077,6 @@ def get_beta_requests():
         # Check if user is admin (you can add an is_admin field or check specific emails)
         user_email = request.current_user['email']
 
-        # TODO: Update this with your admin email(s)
         admin_emails = os.getenv('ADMIN_EMAILS', '').split(',')
         if user_email not in admin_emails:
             return jsonify({"error": "Unauthorized - Admin access required"}), 403
@@ -2626,244 +2261,6 @@ def reject_beta_access(user_id):
     except Exception as e:
         logging.error(f"Error in reject beta access endpoint: {e}")
         return jsonify({"error": "Failed to reject beta access"}), 500
-
-# ============================================================
-# BETA FEEDBACK ENDPOINTS
-# --- DISABLED: beta feedback program paused for profile management MVP ---
-# ============================================================
-
-# --- DISABLED ---
-# @app.route("/api/beta/feedback/status", methods=['GET'])
-@require_auth
-def get_feedback_status():
-    """Check if user has already submitted beta feedback"""
-    try:
-        from database_config import SessionLocal, User
-
-        user_id = request.current_user['id']
-        db = SessionLocal()
-
-        try:
-            user = db.query(User).filter(User.id == user_id).first()
-            if not user:
-                return jsonify({"error": "User not found"}), 404
-
-            return jsonify({
-                "success": True,
-                "has_submitted_feedback": user.has_submitted_beta_feedback or False
-            }), 200
-
-        finally:
-            db.close()
-
-    except Exception as e:
-        logging.error(f"Error checking feedback status: {e}")
-        return jsonify({"error": "Failed to check feedback status"}), 500
-
-# --- DISABLED ---
-# @app.route("/api/beta/feedback/submit", methods=['POST'])
-@require_auth
-@rate_limit('api_requests_per_user_per_minute')
-@validate_input
-def submit_beta_feedback():
-    """Submit beta feedback and receive credit reward"""
-    try:
-        from database_config import SessionLocal, User, BetaFeedback
-
-        user_id = request.current_user['id']
-        data = request.get_json()
-
-        if not data:
-            return jsonify({"error": "No data provided"}), 400
-
-        db = SessionLocal()
-
-        try:
-            # Check if user has already submitted feedback
-            user = db.query(User).filter(User.id == user_id).first()
-            if not user:
-                return jsonify({"error": "User not found"}), 404
-
-            if user.has_submitted_beta_feedback:
-                return jsonify({"error": "You have already submitted feedback"}), 400
-
-            # Check if feedback already exists (double-check)
-            existing_feedback = db.query(BetaFeedback).filter(
-                BetaFeedback.user_id == user_id
-            ).first()
-
-            if existing_feedback:
-                return jsonify({"error": "Feedback already submitted"}), 400
-
-            # Validate required fields
-            required_fields = ['overall_rating', 'ease_of_use', 'tailoring_quality', 'recommend_score']
-            for field in required_fields:
-                if field not in data:
-                    return jsonify({"error": f"Missing required field: {field}"}), 400
-
-            # Validate rating ranges
-            if not (1 <= data['overall_rating'] <= 5):
-                return jsonify({"error": "overall_rating must be between 1 and 5"}), 400
-            if not (1 <= data['ease_of_use'] <= 5):
-                return jsonify({"error": "ease_of_use must be between 1 and 5"}), 400
-            if not (1 <= data['tailoring_quality'] <= 5):
-                return jsonify({"error": "tailoring_quality must be between 1 and 5"}), 400
-            if not (0 <= data['recommend_score'] <= 10):
-                return jsonify({"error": "recommend_score must be between 0 and 10"}), 400
-
-            # Create feedback record
-            feedback = BetaFeedback(
-                user_id=user_id,
-                user_email=user.email,
-
-                # Ratings
-                overall_rating=data['overall_rating'],
-                ease_of_use=data['ease_of_use'],
-                tailoring_quality=data['tailoring_quality'],
-                recommend_score=data['recommend_score'],
-
-                # Feature feedback
-                most_useful_feature=data.get('most_useful_feature', '').strip() or None,
-                least_useful_feature=data.get('least_useful_feature', '').strip() or None,
-                missing_features=data.get('missing_features', '').strip() or None,
-
-                # Tailoring comments
-                tailoring_comments=data.get('tailoring_comments', '').strip() or None,
-
-                # Future features interest
-                interested_cover_letter=data.get('interested_cover_letter', False),
-                interested_job_tracking=data.get('interested_job_tracking', False),
-                interested_interview_prep=data.get('interested_interview_prep', False),
-                interested_salary_insights=data.get('interested_salary_insights', False),
-                other_feature_requests=data.get('other_feature_requests', '').strip() or None,
-
-                # Open feedback
-                what_worked_well=data.get('what_worked_well', '').strip() or None,
-                what_needs_improvement=data.get('what_needs_improvement', '').strip() or None,
-                additional_comments=data.get('additional_comments', '').strip() or None,
-
-                # Credits
-                credits_awarded=10
-            )
-
-            db.add(feedback)
-
-            # Mark user as having submitted feedback
-            user.has_submitted_beta_feedback = True
-
-            # Award 10 resume tailoring credits by removing old usage entries
-            # The rate limiter uses a sorted set with timestamps
-            try:
-                # Get the correct Redis key format used by the rate limiter
-                key = f"rate_limit:resume_tailoring_per_user_per_day:{user_id}"
-
-                # Remove the oldest 10 entries from the sorted set to free up credits
-                # This effectively gives them 10 more uses
-                removed_count = 0
-                for _ in range(10):
-                    # Remove the oldest entry (smallest score/timestamp)
-                    removed = rate_limiter.redis_client.zpopmin(key, 1)
-                    if removed:
-                        removed_count += 1
-
-                logging.info(f"Awarded {removed_count} resume tailoring credits to user {user_id} by removing old usage entries")
-            except Exception as credit_error:
-                logging.warning(f"Could not award credits in Redis: {credit_error}")
-                # Continue anyway - feedback is more important than credit tracking
-
-            db.commit()
-
-            # Get updated credits info
-            daily_tailoring = rate_limiter.get_usage_stats('resume_tailoring_per_user_per_day', str(user_id))
-
-            logging.info(f"Beta feedback submitted by user {user_id} ({user.email}), awarded 10 credits")
-
-            return jsonify({
-                "success": True,
-                "message": "Thank you for your feedback! You've been awarded 10 resume tailoring credits.",
-                "credits_awarded": 10,
-                "remaining_credits": daily_tailoring.get('remaining', 0)
-            }), 200
-
-        finally:
-            db.close()
-
-    except Exception as e:
-        logging.error(f"Error submitting beta feedback: {e}")
-        return jsonify({"error": f"Failed to submit feedback: {str(e)}"}), 500
-
-# --- DISABLED ---
-# @app.route("/api/admin/feedback/all", methods=['GET'])
-@require_auth
-def get_all_feedback():
-    """Get all beta feedback (admin only)"""
-    try:
-        from database_config import SessionLocal, User, BetaFeedback
-
-        # Check if user is admin
-        user_email = request.current_user['email']
-        admin_emails = os.getenv('ADMIN_EMAILS', '').split(',')
-        if user_email not in admin_emails:
-            return jsonify({"error": "Unauthorized - Admin access required"}), 403
-
-        db = SessionLocal()
-
-        try:
-            # Get all feedback, ordered by most recent first
-            feedbacks = db.query(BetaFeedback).order_by(
-                BetaFeedback.submitted_at.desc()
-            ).all()
-
-            feedback_list = []
-            for feedback in feedbacks:
-                feedback_list.append({
-                    "id": feedback.id,
-                    "user_id": feedback.user_id,
-                    "user_email": feedback.user_email,
-
-                    # Ratings
-                    "overall_rating": feedback.overall_rating,
-                    "ease_of_use": feedback.ease_of_use,
-                    "tailoring_quality": feedback.tailoring_quality,
-                    "recommend_score": feedback.recommend_score,
-
-                    # Feature feedback
-                    "most_useful_feature": feedback.most_useful_feature,
-                    "least_useful_feature": feedback.least_useful_feature,
-                    "missing_features": feedback.missing_features,
-
-                    # Tailoring comments
-                    "tailoring_comments": feedback.tailoring_comments,
-
-                    # Future features
-                    "interested_cover_letter": feedback.interested_cover_letter,
-                    "interested_job_tracking": feedback.interested_job_tracking,
-                    "interested_interview_prep": feedback.interested_interview_prep,
-                    "interested_salary_insights": feedback.interested_salary_insights,
-                    "other_feature_requests": feedback.other_feature_requests,
-
-                    # Open feedback
-                    "what_worked_well": feedback.what_worked_well,
-                    "what_needs_improvement": feedback.what_needs_improvement,
-                    "additional_comments": feedback.additional_comments,
-
-                    # Metadata
-                    "credits_awarded": feedback.credits_awarded,
-                    "submitted_at": feedback.submitted_at.isoformat() if feedback.submitted_at else None
-                })
-
-            return jsonify({
-                "success": True,
-                "count": len(feedback_list),
-                "feedback": feedback_list
-            }), 200
-
-        finally:
-            db.close()
-
-    except Exception as e:
-        logging.error(f"Error fetching feedback: {e}")
-        return jsonify({"error": "Failed to fetch feedback"}), 500
 
 # ============================================================
 # GDPR ACCOUNT MANAGEMENT ENDPOINTS
@@ -3650,304 +3047,6 @@ def system_status():
             "message": "System status unavailable"
         }), 500
 
-# Session Management API Routes
-# --- DISABLED: browser session management is CLI-only; not part of web profile management MVP ---
-
-# --- DISABLED ---
-# @app.route("/api/sessions/dashboard", methods=['GET'])
-def get_dashboard_data():
-    """Get dashboard data with session statistics"""
-    try:
-        dashboard_data = session_manager.get_dashboard_data()
-        
-        # Debug: Check for coroutine objects before JSON serialization
-        import json
-        json.dumps(dashboard_data)  # This will throw the exact error if there's a coroutine
-        
-        return jsonify(dashboard_data), 200
-    except Exception as e:
-        logging.error(f"Error getting dashboard data: {e}")
-        logging.error(f"Dashboard data type: {type(dashboard_data)}")
-        
-        # Try to identify the problematic object
-        if isinstance(dashboard_data, dict) and 'sessions' in dashboard_data:
-            for i, session in enumerate(dashboard_data['sessions']):
-                try:
-                    json.dumps(session)
-                except Exception as session_error:
-                    logging.error(f"Session {i} serialization error: {session_error}")
-                    logging.error(f"Problematic session keys: {list(session.keys())}")
-                    for key, value in session.items():
-                        try:
-                            json.dumps({key: value})
-                        except Exception as key_error:
-                            logging.error(f"Problematic key '{key}': {type(value)} - {key_error}")
-        
-        return jsonify({"error": f"Failed to get dashboard data: {str(e)}"}), 500
-
-# --- DISABLED ---
-# @app.route("/api/sessions", methods=['GET'])
-def get_all_sessions():
-    """Get all sessions"""
-    try:
-        sessions = session_manager.get_all_sessions()
-        return jsonify([session.to_dict() for session in sessions]), 200
-    except Exception as e:
-        logging.error(f"Error getting sessions: {e}")
-        return jsonify({"error": f"Failed to get sessions: {str(e)}"}), 500
-
-# --- DISABLED ---
-# @app.route("/api/sessions/<session_id>", methods=['GET'])
-def get_session(session_id):
-    """Get specific session by ID"""
-    try:
-        session = session_manager.get_session(session_id)
-        if not session:
-            return jsonify({"error": "Session not found"}), 404
-        return jsonify(session.to_dict()), 200
-    except Exception as e:
-        logging.error(f"Error getting session {session_id}: {e}")
-        return jsonify({"error": f"Failed to get session: {str(e)}"}), 500
-
-# --- DISABLED ---
-# @app.route("/api/sessions/<session_id>/resume", methods=['POST'])
-def resume_session_api(session_id):
-    """Resume a frozen session by opening browser"""
-    try:
-        session = session_manager.get_session(session_id)
-        if not session:
-            return jsonify({"error": "Session not found"}), 404
-        
-        # Create a new job for resuming this session
-        job_id = str(uuid.uuid4())
-        
-        # Store the job with resume information
-        JOBS[job_id] = {
-            "session_id": session_id,
-            "job_url": session.job_url,
-            "resumeUrl": "",
-            "status": "queued",
-            "links": [session.job_url],
-            "logs": [],
-            "created_at": time.time(),
-            "resume_mode": True  # Flag to indicate this is a resume operation
-        }
-        
-        logging.info(f"Created resume job {job_id} for session {session_id}")
-        
-        # Define the resume job function
-        async def run_resume_job():
-            try:
-                if job_id not in JOBS:
-                    logging.error(f"Resume job {job_id} not found when starting execution")
-                    return
-
-                # Update status to running
-                JOBS[job_id]["status"] = "running"
-                JOBS[job_id]["logs"].append({
-                    "timestamp": time.time(),
-                    "level": "info",
-                    "message": f"Resuming session for: {session.job_url}"
-                })
-
-                logging.info(f"Resume job {job_id} starting execution")
-
-                # Create a simple agent just for resuming
-                from playwright.async_api import async_playwright
-
-                JOBS[job_id]["logs"].append({
-                    "timestamp": time.time(),
-                    "level": "info",
-                    "message": "🔄 Preparing to resume session... Please wait while we restore your progress."
-                })
-
-                p = await async_playwright().start()
-                try:
-                    # Open visible browser and replay actions directly (user can see progress)
-                    JOBS[job_id]["logs"].append({
-                        "timestamp": time.time(),
-                        "level": "info",
-                        "message": "🎬 Opening browser and replaying your form progress..."
-                    })
-
-                    # Create visible browser for action replay
-                    visible_browser = await p.chromium.launch(headless=False, slow_mo=100)
-                    visible_context = await visible_browser.new_context()
-                    visible_page = await visible_context.new_page()
-
-                    # Resume the session using action replay in VISIBLE browser
-                    try:
-                        success = await asyncio.wait_for(
-                            session_manager.resume_session_with_actions(session_id, visible_page),
-                            timeout=120  # 2 minutes timeout for action replay
-                        )
-                    except asyncio.TimeoutError:
-                        JOBS[job_id]["logs"].append({
-                            "timestamp": time.time(),
-                            "level": "error",
-                            "message": "⏰ Action replay timed out. The session may have too many actions or encountered an issue."
-                        })
-                        success = False
-
-                    if not success:
-                        await visible_browser.close()
-                        JOBS[job_id]["status"] = "failed"
-                        JOBS[job_id]["logs"].append({
-                            "timestamp": time.time(),
-                            "level": "error",
-                            "message": "❌ Failed to replay actions. Please try again or start a new application."
-                        })
-                        return
-
-                    JOBS[job_id]["logs"].append({
-                        "timestamp": time.time(),
-                        "level": "success",
-                        "message": "✅ Form restored! You can now review and submit your application."
-                    })
-
-                    # Use the visible page for user interaction
-                    page = visible_page
-                    browser = visible_browser
-                    
-                    if success:
-                        # Check if we landed on an authentication page
-                        current_url = page.url.lower()
-                        is_auth_page = any(auth_keyword in current_url for auth_keyword in ['login', 'auth', 'sign-in', 'signin'])
-                        
-                        if is_auth_page:
-                            JOBS[job_id]["status"] = "requires_auth"
-                            JOBS[job_id]["logs"].append({
-                                "timestamp": time.time(),
-                                "level": "warning", 
-                                "message": f"⚠️ Authentication required! Please log in at: {page.url}"
-                            })
-                            logging.warning(f"Session {session_id} resumed but requires authentication at: {page.url}")
-                            session_manager.update_session(session_id, status="requires_authentication")
-                        else:
-                            JOBS[job_id]["status"] = "resumed"
-                            JOBS[job_id]["logs"].append({
-                                "timestamp": time.time(),
-                                "level": "success",
-                                "message": "✅ Session resumed! Form should be pre-filled. Browser is open for you to continue."
-                            })
-                            logging.info(f"Session {session_id} resumed successfully with form restoration")
-                        
-                        # Keep browser open for manual completion
-                        logging.info(f"Session {session_id} - keeping browser open for manual completion")
-
-                        JOBS[job_id]["logs"].append({
-                            "timestamp": time.time(),
-                            "level": "success",
-                            "message": "🎉 Browser is now ready! All your previous progress has been restored. You can continue your application."
-                        })
-
-                        # Keep browser open until user closes it
-                        try:
-                            while not page.is_closed():
-                                await asyncio.sleep(5)
-                        except Exception:
-                            pass
-                    else:
-                        JOBS[job_id]["status"] = "failed"
-                        JOBS[job_id]["logs"].append({
-                            "timestamp": time.time(),
-                            "level": "error",
-                            "message": "Failed to resume session"
-                        })
-                        
-                finally:
-                    await p.stop()
-                    
-            except Exception as e:
-                if job_id in JOBS:
-                    JOBS[job_id]["status"] = "failed"
-                    JOBS[job_id]["logs"].append({
-                        "timestamp": time.time(),
-                        "level": "error",
-                        "message": f"Resume failed: {str(e)}"
-                    })
-                logging.error(f"Resume job {job_id} failed: {e}")
-
-        # Start the resume job in background
-        import asyncio
-        from concurrent.futures import ThreadPoolExecutor
-        
-        def start_resume_task():
-            asyncio.run(run_resume_job())
-        
-        executor = ThreadPoolExecutor()
-        executor.submit(start_resume_task)
-        
-        return jsonify({
-            "success": True,
-            "message": f"Session {session_id} is being resumed. Browser will open shortly.",
-            "job_id": job_id,
-            "session": session.to_dict()
-        }), 200
-        
-    except Exception as e:
-        logging.error(f"Error resuming session {session_id}: {e}")
-        return jsonify({"error": f"Failed to resume session: {str(e)}"}), 500
-
-# --- DISABLED ---
-# @app.route("/api/sessions/<session_id>", methods=['DELETE'])
-def delete_session(session_id):
-    """Delete a session"""
-    try:
-        success = session_manager.delete_session(session_id)
-        if not success:
-            return jsonify({"error": "Session not found or failed to delete"}), 404
-        
-        return jsonify({"success": True, "message": f"Session {session_id} deleted"}), 200
-    except Exception as e:
-        logging.error(f"Error deleting session {session_id}: {e}")
-        return jsonify({"error": f"Failed to delete session: {str(e)}"}), 500
-
-# --- DISABLED ---
-# @app.route("/api/sessions/<session_id>/mark-complete", methods=['POST'])
-def mark_session_complete(session_id):
-    """Mark a session as manually completed"""
-    try:
-        session = session_manager.get_session(session_id)
-        if not session:
-            return jsonify({"error": "Session not found"}), 404
-        
-        # Update session status to manually_completed
-        session_manager.update_session(session_id, status="manually_completed")
-        
-        return jsonify({
-            "success": True, 
-            "message": f"Session {session_id} marked as manually completed",
-            "session": session.to_dict()
-        }), 200
-        
-    except Exception as e:
-        logging.error(f"Error marking session {session_id} as complete: {e}")
-        return jsonify({"error": f"Failed to mark session as complete: {str(e)}"}), 500
-
-# --- DISABLED ---
-# @app.route("/api/sessions/<session_id>/screenshot", methods=['GET'])
-def get_session_screenshot(session_id):
-    """Get session screenshot"""
-    try:
-        session = session_manager.get_session(session_id)
-        if not session or not session.screenshot_path:
-            return jsonify({"error": "Screenshot not found"}), 404
-        
-        if not os.path.exists(session.screenshot_path):
-            return jsonify({"error": "Screenshot file not found"}), 404
-        
-        # Return the screenshot as base64
-        with open(session.screenshot_path, 'rb') as f:
-            screenshot_data = base64.b64encode(f.read()).decode('utf-8')
-        
-        return jsonify({
-            "screenshot": f"data:image/png;base64,{screenshot_data}"
-        }), 200
-    except Exception as e:
-        logging.error(f"Error getting screenshot for session {session_id}: {e}")
-        return jsonify({"error": f"Failed to get screenshot: {str(e)}"}), 500
-
 # ============================================================
 # PROJECT MANAGEMENT API ROUTES
 # ============================================================
@@ -4133,178 +3232,6 @@ def delete_project(project_id):
 
     except Exception as e:
         logging.error(f"Error deleting project: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
-# --- DISABLED: tailoring analysis is used by CLI directly, not needed as web endpoint for MVP ---
-# @app.route("/api/tailoring/analyze-projects", methods=['POST'])
-@require_auth
-def analyze_projects():
-    """Analyze projects for relevance to a job"""
-    try:
-        from database_config import SessionLocal
-        from migrate_add_projects import Project
-        from project_selection.relevance_engine import ProjectRelevanceEngine
-        from project_selection.mimikree_project_discovery import MimikreeProjectDiscovery
-        from mimikree_integration import MimikreeClient
-        import re
-
-        user_id = request.current_user['id']
-        data = request.json
-
-        job_description = data.get('job_description', '')
-        job_keywords = data.get('job_keywords', [])
-        discover_new = data.get('discover_new_projects', False)
-
-        if not job_description:
-            return jsonify({"error": "Job description is required"}), 400
-
-        # Initialize services
-        gemini_api_key = os.getenv('GOOGLE_API_KEY')
-        relevance_engine = ProjectRelevanceEngine(gemini_api_key)
-
-        db = SessionLocal()
-
-        try:
-            # Get all user projects
-            projects = db.query(Project).filter(Project.user_id == user_id).all()
-
-            projects_data = []
-            current_projects = []
-            alternative_projects = []
-
-            for project in projects:
-                proj_dict = {
-                    'id': project.id,
-                    'name': project.name,
-                    'description': project.description,
-                    'technologies': project.technologies or [],
-                    'features': project.features or [],
-                    'detailed_bullets': project.detailed_bullets or [],
-                    'end_date': project.end_date
-                }
-
-                projects_data.append(proj_dict)
-
-                if project.is_on_resume:
-                    current_projects.append(proj_dict)
-                else:
-                    alternative_projects.append(proj_dict)
-
-            # Score all projects
-            ranked_projects = relevance_engine.rank_projects(
-                projects_data,
-                job_keywords,
-                data.get('required_technologies', []),
-                data.get('job_domain')
-            )
-
-            # Categorize results
-            current_scored = []
-            alternative_scored = []
-
-            for project, scores in ranked_projects:
-                proj_result = {
-                    'project': project,
-                    'scores': scores
-                }
-
-                if project['id'] in [p['id'] for p in current_projects]:
-                    current_scored.append(proj_result)
-                else:
-                    alternative_scored.append(proj_result)
-
-            # Get swap recommendations
-            swap_recommendations = relevance_engine.recommend_project_swaps(
-                current_projects,
-                projects_data,
-                job_keywords,
-                data.get('required_technologies', []),
-                data.get('job_domain'),
-                min_improvement_threshold=15.0
-            )
-
-            # Discover new projects if requested
-            discovered_projects = []
-            if discover_new:
-                try:
-                    mimikree_email = os.getenv('MIMIKREE_EMAIL')
-                    mimikree_password = os.getenv('MIMIKREE_PASSWORD')
-
-                    if mimikree_email and mimikree_password:
-                        mimikree_client = MimikreeClient()
-                        mimikree_client.authenticate(mimikree_email, mimikree_password)
-
-                        discovery = MimikreeProjectDiscovery(gemini_api_key)
-                        new_projects, _ = discovery.discover_projects(
-                            mimikree_client,
-                            job_keywords,
-                            job_description,
-                            current_projects,
-                            max_questions=8
-                        )
-
-                        discovered_projects = discovery.enrich_discovered_projects(
-                            new_projects,
-                            job_keywords
-                        )
-
-                except Exception as e:
-                    logging.error(f"Failed to discover new projects: {e}")
-
-            return jsonify({
-                "success": True,
-                "current_projects": current_scored,
-                "alternative_projects": alternative_scored,
-                "swap_recommendations": swap_recommendations,
-                "discovered_projects": discovered_projects
-            }), 200
-
-        finally:
-            db.close()
-
-    except Exception as e:
-        logging.error(f"Error analyzing projects: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
-# --- DISABLED: bullet generation is used by CLI directly, not needed as web endpoint for MVP ---
-# @app.route("/api/tailoring/generate-project-bullets", methods=['POST'])
-@require_auth
-def generate_project_bullets():
-    """Generate tailored bullets for a project"""
-    try:
-        from bullet_generation.project_bullet_generator import ProjectBulletGenerator
-
-        data = request.json
-
-        project = data.get('project')
-        job_keywords = data.get('job_keywords', [])
-        job_description = data.get('job_description', '')
-        target_bullet_count = data.get('target_bullet_count', 3)
-        mimikree_context = data.get('mimikree_context')
-
-        if not project:
-            return jsonify({"error": "Project data is required"}), 400
-
-        gemini_api_key = os.getenv('GOOGLE_API_KEY')
-        generator = ProjectBulletGenerator(gemini_api_key)
-
-        bullets = generator.generate_bullets(
-            project,
-            job_keywords,
-            job_description,
-            target_bullet_count,
-            mimikree_context=mimikree_context
-        )
-
-        return jsonify({
-            "success": True,
-            "bullets": bullets
-        }), 200
-
-    except Exception as e:
-        logging.error(f"Error generating bullets: {e}")
         return jsonify({"error": str(e)}), 500
 
 

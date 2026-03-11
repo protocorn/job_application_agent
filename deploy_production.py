@@ -96,9 +96,11 @@ class ProductionDeployer:
         logger.info("📦 Installing production dependencies...")
         
         try:
-            # Install production requirements
+            # Install split production requirements (shared CLI + server extras)
             subprocess.run([
-                sys.executable, '-m', 'pip', 'install', '-r', 'requirements_production.txt'
+                sys.executable, '-m', 'pip', 'install',
+                '-r', 'requirements-cli.txt',
+                '-r', 'requirements-server.txt'
             ], check=True, cwd=self.project_root)
             
             logger.info("✅ Dependencies installed successfully")

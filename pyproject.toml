@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name        = "launchway"
-version     = "0.2.31"
+version     = "0.2.33"
 description = "AI-powered job application automation — tailor resumes, find jobs, apply autonomously."
 readme      = "README.md"
 requires-python = ">=3.11"
@@ -140,6 +140,7 @@ exclude = ["server*", "Website*", "tests*", "Testing*", "Agents*"]
     "*.yaml",
     "*.txt",
     "encrypted_agents/**/*.enc",    # encrypted agent blobs — decrypted at runtime
+    "encrypted_agents/*.txt",       # non-secret metadata (e.g. key fingerprint)
     "encrypted_support/*.enc",      # encrypted support files (credentials.json, etc.)
 ]
 

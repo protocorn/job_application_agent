@@ -21,6 +21,7 @@ after authentication.
 
 import shutil
 import sys
+import hashlib
 from pathlib import Path
 
 # ── Dependency check ────────────────────────────────────────────────────────
@@ -68,6 +69,7 @@ print()
 # ── Encrypt ──────────────────────────────────────────────────────────────────
 
 f = Fernet(key)
+key_fingerprint = hashlib.sha256(key).hexdigest()
 
 # Wipe and recreate output directory
 if OUT_DIR.exists():
@@ -95,8 +97,12 @@ for py_file in py_files:
     count += 1
     print(f"  [OK] {rel}")
 
+fingerprint_file = OUT_DIR / "key_fingerprint.txt"
+fingerprint_file.write_text(key_fingerprint + "\n", encoding="utf-8")
+
 print()
 print(f"[DONE] Encrypted {count} agent files -> {OUT_DIR.relative_to(REPO_ROOT)}/")
+print(f"[DONE] Wrote key fingerprint -> {fingerprint_file.relative_to(REPO_ROOT)}")
 
 # ── Encrypt support files (credentials.json, etc.) ──────────────────────────
 

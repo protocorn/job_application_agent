@@ -17,6 +17,7 @@ automatically when the process exits.
 """
 
 import atexit
+import hashlib
 import importlib.abc
 import importlib.util
 import logging
@@ -77,6 +78,7 @@ _KEY_CACHE_PATH     = Path.home() / ".launchway" / ".rkey"
 _GEMINI_KEY_CACHE   = Path.home() / ".launchway" / ".gemini_key"
 _KEY_MAX_AGE_SEC    = 24 * 3600   # refresh key every 24 hours
 _ENC_ROOT           = Path(__file__).parent / "encrypted_agents"
+_KEY_FINGERPRINT_FILE = _ENC_ROOT / "key_fingerprint.txt"
 
 # Module-level state (set once per process)
 _bootstrap_done: bool = False
@@ -245,6 +247,46 @@ def _save_gemini_key(key: str) -> None:
         pass
 
 
+def _key_fingerprint(key_bytes: bytes) -> str:
+    return hashlib.sha256(key_bytes).hexdigest()
+
+
+def _validate_bundle_key(fernet_obj, key_bytes: bytes):
+    """
+    Validate that the runtime key matches this package's encrypted bundle.
+    Returns (ok: bool, reason: str)
+    """
+    expected = ""
+    if _KEY_FINGERPRINT_FILE.exists():
+        expected = _KEY_FINGERPRINT_FILE.read_text(encoding="utf-8").strip()
+        if expected:
+            actual = _key_fingerprint(key_bytes)
+            if actual != expected:
+                return False, (
+                    "Bundle key mismatch: runtime key does not match this release's "
+                    "encrypted agent bundle."
+                )
+
+    # Backward compatibility: older bundles may not have fingerprint file.
+    # In that case, attempt to decrypt one encrypted module now to fail early.
+    probe = next(_ENC_ROOT.rglob("*.enc"), None)
+    if not probe:
+        return False, f"No encrypted module files found under {_ENC_ROOT}"
+    try:
+        fernet_obj.decrypt(probe.read_bytes())
+    except Exception:
+        if expected:
+            return False, (
+                "Bundle key mismatch: runtime key fingerprint matched, but decrypt "
+                "probe still failed."
+            )
+        return False, (
+            "Runtime key does not match encrypted bundle (legacy bundle without "
+            "fingerprint metadata)."
+        )
+    return True, ""
+
+
 # ── Main bootstrap function ──────────────────────────────────────────────────
 
 def bootstrap_agents(api_client) -> bool:
@@ -327,6 +369,11 @@ def bootstrap_agents(api_client) -> bool:
             f"Invalid runtime key format from server: {e}. "
             "Expected Fernet base64 key."
         )
+        return False
+
+    key_ok, key_reason = _validate_bundle_key(f, key_bytes)
+    if not key_ok:
+        logger.error(key_reason)
         return False
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="lw_agents_"))
