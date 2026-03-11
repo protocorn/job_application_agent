@@ -7,6 +7,7 @@ Enhanced Generic Form Filler V2 with:
 - Final Gemini review before submission
 """
 import asyncio
+import os
 import re
 from typing import Any, Dict, List, Optional, Set
 from playwright.async_api import Page, Frame
@@ -192,12 +193,15 @@ class GenericFormFillerV2Enhanced:
             if iteration == 0:
                 resume_path = profile.get('resume_path')
                 if resume_path:
+                    print(f"  Uploading resume: {os.path.basename(resume_path)}...")
                     logger.info(f"📄 Attempting resume upload: {resume_path}")
                     upload_success = await self.interactor.upload_resume_if_present(resume_path)
                     if upload_success:
+                        print("  ✓ Resume uploaded successfully")
                         logger.info("✅ Resume uploaded successfully")
                     else:
-                        logger.debug("⏭️ No resume upload field found or upload skipped")
+                        print("  [WARN] Resume upload: no file-upload control found on this page (will retry if a Resume field is detected)")
+                        logger.warning("⚠️ Resume upload attempt returned False — no matching upload control found on this page")
 
             # Step 1: Detect fields (NO option extraction - fill immediately!)
             all_fields = await self.interactor.get_all_form_fields(extract_options=False)
@@ -357,34 +361,42 @@ class GenericFormFillerV2Enhanced:
                 seen_option_texts = set()
                 
                 for radio_field in group_fields:
-                    # IMPORTANT: Use option_label ONLY, not label (label has been overwritten with the question)
-                    option_label = radio_field.get('option_label', '')
                     radio_id = radio_field.get('id', '')
                     radio_value = radio_field.get('name', '')
-                    
-                    # Debug: Check if option_label is missing
+
+                    # Priority order for option label:
+                    # 1. explicit option_label key (set by some detectors)
+                    # 2. label key — for Ashby/standard radios this IS the option text
+                    #    (e.g. "Male", "Female") now that Method 1 label lookup is fixed
+                    # 3. available_options list (legacy path)
+                    option_label = radio_field.get('option_label', '').strip()
+
                     if not option_label:
-                        logger.warning(f"⚠️  Radio button missing option_label! ID={radio_id}, name={radio_value}")
-                        # Try to extract from options list as fallback
-                        radio_options = radio_field.get('options', [])
-                        if radio_options:
-                            # Find the option for this specific radio button
-                            for opt in radio_options:
-                                if isinstance(opt, dict) and opt.get('id') == radio_id:
-                                    option_label = opt.get('text', '')
-                                    break
-                    
+                        # Fallback: use the field's 'label' if it looks like an option text
+                        # (i.e. it is NOT just a raw GUID/name attribute value)
+                        raw_label = radio_field.get('label', '').strip()
+                        if raw_label and raw_label != radio_value:
+                            option_label = raw_label
+
+                    if not option_label:
+                        # Last resort: scan available_options by radio id
+                        for opt in radio_field.get('available_options', []):
+                            if isinstance(opt, dict) and opt.get('id') == radio_id:
+                                option_label = opt.get('text', '')
+                                break
+
+                    if not option_label:
+                        logger.warning(f"⚠️  Could not determine option label for radio button ID={radio_id}")
+
                     # Avoid duplicates
                     if option_label and option_label not in seen_option_texts:
                         all_options.append({
                             'text': option_label,
                             'value': radio_value,
                             'id': radio_id,
-                            'element': radio_field.get('element')  # Keep reference to actual element
+                            'element': radio_field.get('element')
                         })
                         seen_option_texts.add(option_label)
-                    elif not option_label:
-                        logger.warning(f"⚠️  Could not determine option label for radio button ID={radio_id}")
                 
                 # If we didn't get options from option_label, use the options list
                 if not all_options:
@@ -1575,7 +1587,22 @@ If everything looks correct, set approved=true with empty issues list.
             stable_id = field.get('stable_id', '')
 
             # ── Phase 1: parse stable_id prefix ──────────────────────────────
-            if stable_id.startswith('name:'):
+            if stable_id.startswith('ashby_yesno:'):
+                # Ashby Yes/No: the element is the _yesno_ container div, NOT the
+                # hidden checkbox.  _get_fresh_element must return the container so
+                # _fill_ashby_yesno can find the Yes/No buttons inside it.
+                name_val = stable_id[12:]
+                el = await _try_locator(
+                    f'[class*="_yesno_"]:has(input[type="checkbox"][name="{name_val}"])'
+                )
+                if el:
+                    return el
+                # Fallback: any _yesno_ container on the page
+                el = await _try_locator('[class*="_yesno_"]')
+                if el:
+                    return el
+
+            elif stable_id.startswith('name:'):
                 name_val = stable_id[5:]
                 el = await _try_locator(f'[name="{name_val}"]')
                 if el:

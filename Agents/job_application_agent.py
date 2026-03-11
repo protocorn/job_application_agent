@@ -3418,9 +3418,52 @@ def _load_profile_data(user_id=None, profile_data=None):
                     logger.warning(f"⚠️ Could not reconstruct resume from stored bytes: {decode_err}")
 
         if resume_path and os.path.exists(resume_path):
+            print(f"  Resume PDF ready: {os.path.basename(resume_path)}")
             logger.info(f"📄 Resume ready: {resume_path}")
         else:
-            logger.warning(f"⚠️ Resume not found or conversion failed: {resume_url_or_path or '(no resume URL or file)'}")
+            # Use print() for all failure messages — loguru only writes to file, not console.
+            if resume_url_or_path and GoogleDocsConverter.is_google_docs_url(resume_url_or_path):
+                # Give a targeted error depending on whether Google account is connected
+                try:
+                    import sys as _sys
+                    _server_dir = os.path.join(project_root, 'server')
+                    if os.path.isdir(_server_dir) and _server_dir not in _sys.path:
+                        _sys.path.append(_server_dir)
+                    from google_oauth_service import GoogleOAuthService
+                    _connected = user_id and GoogleOAuthService.is_connected(str(user_id))
+                except Exception:
+                    _connected = None  # can't determine
+
+                if _connected is False:
+                    msg = (
+                        "[ERROR] Resume PDF conversion failed — Google Doc is private and Google account is NOT connected.\n"
+                        "  → Open the app → Profile → Resume → click 'Connect Google Account'\n"
+                        "  → Or set document sharing to 'Anyone with the link can view' in Google Docs\n"
+                        f"  Doc: {resume_url_or_path}"
+                    )
+                    print(msg)
+                    logger.error(msg)
+                elif _connected is True:
+                    msg = (
+                        "[ERROR] Resume PDF conversion failed — Google account IS connected but PDF export still failed.\n"
+                        "  → Check that the connected Google account has access to this document\n"
+                        "  → Try disconnecting and reconnecting your Google account in the app\n"
+                        f"  Doc: {resume_url_or_path}"
+                    )
+                    print(msg)
+                    logger.error(msg)
+                else:
+                    msg = (
+                        f"[WARN] Could not convert Google Doc to PDF: {resume_url_or_path}\n"
+                        "  → Make sure your Google account is connected in the app\n"
+                        "  → Or set document sharing to 'Anyone with the link can view'"
+                    )
+                    print(msg)
+                    logger.warning(msg)
+            else:
+                msg = f"[WARN] Resume not found or conversion failed: {resume_url_or_path or '(no resume URL or file)'}"
+                print(msg)
+                logger.warning(msg)
 
         # Map the profile data to our expected format
         mapped_profile = {

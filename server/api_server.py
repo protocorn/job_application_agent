@@ -1360,6 +1360,94 @@ def get_latex_resume_preview():
         return jsonify({"error": f"Failed to get LaTeX preview: {str(e)}"}), 500
 
 
+@app.route("/api/resume/pdf", methods=['GET'])
+@require_auth
+def download_resume_pdf():
+    """
+    Download the authenticated user's Google Doc resume as a PDF.
+
+    Uses the stored Google OAuth credentials so private docs work without
+    requiring the document to be publicly shared.  Accepts an optional
+    ?url= query param to override the resume URL stored in the profile.
+
+    Returns the raw PDF bytes (application/pdf).
+    """
+    try:
+        user_id = request.current_user['id']
+
+        resume_url = request.args.get('url', '').strip()
+        if not resume_url:
+            result = ProfileService.get_profile(user_id)
+            resume_url = (result or {}).get('resume_url', '').strip()
+
+        if not resume_url:
+            return jsonify({"error": "No resume URL found in profile and none supplied via ?url="}), 400
+
+        if 'docs.google.com' not in resume_url and 'drive.google.com' not in resume_url:
+            return jsonify({"error": "URL is not a Google Docs / Drive URL"}), 400
+
+        # Extract document ID
+        import re as _re
+        doc_match = _re.search(r'/(?:document|file)/d/([a-zA-Z0-9-_]+)', resume_url)
+        if not doc_match:
+            return jsonify({"error": "Could not parse document ID from URL"}), 400
+        doc_id = doc_match.group(1)
+
+        # Try OAuth export first (private doc support)
+        credentials = GoogleOAuthService.get_credentials(user_id)
+        if credentials:
+            try:
+                from googleapiclient.discovery import build as _build
+                from googleapiclient.http import MediaIoBaseDownload as _DL
+                import io as _io
+
+                drive_svc = _build('drive', 'v3', credentials=credentials)
+                req = drive_svc.files().export_media(fileId=doc_id, mimeType='application/pdf')
+                buf = _io.BytesIO()
+                dl = _DL(buf, req)
+                done = False
+                while not done:
+                    _, done = dl.next_chunk()
+
+                pdf_bytes = buf.getvalue()
+                if pdf_bytes:
+                    logging.info(f"Served resume PDF via OAuth for user {user_id} ({len(pdf_bytes)} bytes)")
+                    return send_file(
+                        _io.BytesIO(pdf_bytes),
+                        mimetype='application/pdf',
+                        as_attachment=True,
+                        download_name='resume.pdf'
+                    )
+                logging.warning(f"OAuth export returned empty PDF for user {user_id}")
+            except Exception as oauth_err:
+                logging.warning(f"OAuth PDF export failed for user {user_id}: {oauth_err}")
+
+        # Fallback: public export (works if doc is shared as 'Anyone with the link')
+        export_url = f"https://docs.google.com/document/d/{doc_id}/export?format=pdf"
+        resp = requests.get(export_url, timeout=30)
+        if resp.status_code == 200 and 'application/pdf' in resp.headers.get('Content-Type', ''):
+            import io as _io
+            logging.info(f"Served resume PDF via public export for user {user_id}")
+            return send_file(
+                _io.BytesIO(resp.content),
+                mimetype='application/pdf',
+                as_attachment=True,
+                download_name='resume.pdf'
+            )
+
+        if not credentials:
+            return jsonify({
+                "error": "Google account not connected. Connect your Google account in the app to allow private Doc access.",
+                "google_not_connected": True,
+            }), 403
+
+        return jsonify({"error": "Could not export Google Doc as PDF. Check that the connected account has access."}), 500
+
+    except Exception as e:
+        logging.error(f"Error in download_resume_pdf: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/latex-resume/pdf", methods=['GET'])
 @require_auth
 def download_latex_resume_pdf():

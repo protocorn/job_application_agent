@@ -1224,7 +1224,8 @@ class FieldInteractorV2:
                         except Exception as e2:
                             logger.debug(f"React event dispatch also failed: {e2}")
 
-                # ── Verification: native is_checked() + Workday aria-checked fallback ──
+                # ── Verification: native is_checked() + Workday aria-checked fallback
+                #                + Ashby _checked_ CSS class fallback ──────────────
                 try:
                     is_checked = await asyncio.wait_for(element.is_checked(), timeout=2)
 
@@ -1235,6 +1236,27 @@ class FieldInteractorV2:
                         is_checked = aria_checked == 'true'
                         if is_checked:
                             logger.debug("✅ Verified via aria-checked='true' (Workday pattern)")
+
+                    # Ashby tracks selection via a _checked_ CSS class on the parent
+                    # <span> wrapper (_checked_ruukg_87) and on the label (_checked_1v5e2_58).
+                    # If neither native nor aria-checked confirmed, walk up the DOM.
+                    if not is_checked:
+                        try:
+                            is_checked = await element.evaluate(
+                                '''el => {
+                                    const span = el.closest("[class*=\\"_container_ruukg_\\"]");
+                                    if (span && span.className.includes("_checked_")) return true;
+                                    if (!el.id) return false;
+                                    const lbl = document.querySelector(
+                                        "label[for=\\"" + el.id + "\\"]"
+                                    );
+                                    return lbl ? lbl.className.includes("_checked_") : false;
+                                }'''
+                            )
+                            if is_checked:
+                                logger.debug("✅ Verified via _checked_ CSS class (Ashby pattern)")
+                        except Exception:
+                            pass
 
                     if is_checked:
                         result.update({
@@ -1618,6 +1640,16 @@ class FieldInteractorV2:
             is_yes = value_lower in ['yes', 'true', '1', 'on', 'yeah', 'y']
             target_text = 'Yes' if is_yes else 'No'
 
+            # Safety: if _get_fresh_element accidentally returned the hidden checkbox
+            # instead of the _yesno_ container, walk up to the container now.
+            tag = await container.evaluate('el => el.tagName.toLowerCase()')
+            if tag == 'input':
+                parent = await container.evaluate_handle(
+                    'el => el.closest("[class*=\'_yesno_\']") || el.parentElement'
+                )
+                container = self.page.locator('[class*="_yesno_"]').first
+                logger.debug('_fill_ashby_yesno: corrected element from hidden checkbox to container')
+
             # Strategy 1: find button by exact visible text
             button = container.locator(f'button:has-text("{target_text}")').first
 
@@ -1632,8 +1664,15 @@ class FieldInteractorV2:
 
             if await button.count() > 0 and await button.is_visible():
                 await button.click()
-                await asyncio.sleep(0.2)
-                logger.info(f'✅ Ashby Yes/No: selected "{target_text}" for "{field_label}"')
+                await asyncio.sleep(0.25)
+
+                # Verify: Ashby marks the active button with _active_ CSS modifier
+                btn_class = await button.get_attribute('class') or ''
+                if '_active_' in btn_class:
+                    logger.info(f'✅ Ashby Yes/No: selected "{target_text}" (verified via _active_ class) for "{field_label}"')
+                else:
+                    logger.info(f'✅ Ashby Yes/No: clicked "{target_text}" for "{field_label}" (class not yet updated)')
+
                 result.update({
                     'success': True,
                     'method': 'ashby_yesno',
@@ -1854,12 +1893,15 @@ class FieldInteractorV2:
                     label_text = ''
                     
                     # Method 1: Check for label[for="id"]
+                    # NOTE: page.locator() is SYNCHRONOUS in Playwright — do NOT await it.
+                    # Awaiting a Locator object raises TypeError (silently caught), breaking
+                    # label detection for all fields that rely on this path (e.g. radio buttons).
                     if id_attr:
                         try:
-                            label_element = await self.page.locator(f'label[for="{id_attr}"]').first
+                            label_element = self.page.locator(f'label[for="{id_attr}"]').first
                             if await label_element.count() > 0:
                                 label_text = await label_element.inner_text()
-                                label_text = label_text.strip().replace('*', '').strip()  # Remove asterisks
+                                label_text = label_text.strip().replace('*', '').strip()
                         except:
                             pass
                     
@@ -2162,8 +2204,12 @@ class FieldInteractorV2:
                     logger.debug(f"Workday upload strategy failed for {selector}: {e}")
                     continue
 
-            # Strategy 2: Direct visible file input (generic)
+            # Strategy 2: Direct file input — visible first, then hidden.
+            # Hidden inputs are the norm on modern forms; set_input_files works on them too.
             file_inputs = await self.page.locator('input[type="file"]').all()
+            logger.debug(f"Found {len(file_inputs)} file input(s) on page")
+
+            # Pass 1: visible inputs
             for fi in file_inputs:
                 try:
                     if await fi.is_visible():
@@ -2179,32 +2225,56 @@ class FieldInteractorV2:
                 except Exception:
                     continue
 
-            # Strategy 3: Buttons/links with trigger text
+            # Pass 2: hidden inputs (most modern forms hide the native <input type="file">
+            # behind a styled button/label; set_input_files still works directly on the element)
+            for fi in file_inputs:
+                try:
+                    if not await fi.is_visible():
+                        await fi.set_input_files(clean_resume_path)
+                        logger.info("✅ Resume uploaded via hidden file input (direct set)")
+                        if self.action_recorder:
+                            self.action_recorder.record_file_upload(
+                                'input[type="file"][hidden]', clean_resume_path, success=True,
+                                upload_method="direct_input_hidden",
+                                field_label="Resume Upload (Hidden Input)"
+                            )
+                        return True
+                except Exception:
+                    continue
+
+            # Strategy 3: Buttons/labels with trigger text (covers styled file-upload buttons
+            # and <label for="file-input"> patterns used by AshbyHQ and similar forms)
             trigger_text_patterns = [
                 'select file', 'upload', 'attach', 'resume', 'cv', 'choose file', 'browse'
             ]
             trigger_pattern = '|'.join(trigger_text_patterns)
-            trigger_locator = self.page.get_by_role("button").filter(
-                has_text=re.compile(trigger_pattern, re.IGNORECASE)
-            ).first
+            trigger_candidates = [
+                self.page.get_by_role("button").filter(
+                    has_text=re.compile(trigger_pattern, re.IGNORECASE)
+                ).first,
+                self.page.locator("label").filter(
+                    has_text=re.compile(trigger_pattern, re.IGNORECASE)
+                ).first,
+            ]
 
-            try:
-                if await trigger_locator.is_visible(timeout=2000):
-                    page_context = self._get_page_context()
-                    async with page_context.expect_file_chooser() as fc_info:
-                        await trigger_locator.click()
-                    file_chooser = await fc_info.value
-                    await file_chooser.set_files(clean_resume_path)
-                    logger.info("✅ Resume uploaded via button trigger")
-                    if self.action_recorder:
-                        self.action_recorder.record_file_upload(
-                            'button[trigger]', clean_resume_path, success=True,
-                            upload_method="click_trigger",
-                            field_label="Resume Upload (Button Trigger)"
-                        )
-                    return True
-            except Exception:
-                pass
+            for trigger_locator in trigger_candidates:
+                try:
+                    if await trigger_locator.is_visible(timeout=2000):
+                        page_context = self._get_page_context()
+                        async with page_context.expect_file_chooser() as fc_info:
+                            await trigger_locator.click()
+                        file_chooser = await fc_info.value
+                        await file_chooser.set_files(clean_resume_path)
+                        logger.info("✅ Resume uploaded via button/label trigger")
+                        if self.action_recorder:
+                            self.action_recorder.record_file_upload(
+                                'button/label[trigger]', clean_resume_path, success=True,
+                                upload_method="click_trigger",
+                                field_label="Resume Upload (Button/Label Trigger)"
+                            )
+                        return True
+                except Exception:
+                    continue
 
             # Strategy 4: Generic clickable elements mentioning resume
             generic_trigger = self.page.locator("text=/upload|attach|resume|cv|choose file|browse|select file/i").first

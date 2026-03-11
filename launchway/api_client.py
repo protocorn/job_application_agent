@@ -336,6 +336,68 @@ class LaunchwayClient:
         data = self._post("/api/profile/keywords/extract", body)
         return data.get("resume_keywords", {})
 
+    def download_resume_pdf(self, output_path: str, resume_url: str = None) -> bool:
+        """
+        Ask the server to export the user's Google Doc resume as a PDF and save
+        the bytes to *output_path*.
+
+        The server uses the user's stored OAuth credentials, so private Google
+        Docs work without the document needing to be publicly shared.
+
+        Args:
+            output_path: Local file path where the PDF should be written.
+            resume_url:  Override the resume URL stored in the user's profile.
+
+        Returns:
+            True on success, False on any failure.
+        """
+        try:
+            params = {}
+            if resume_url:
+                params["url"] = resume_url
+
+            resp = self._session.get(
+                self._url("/api/resume/pdf"),
+                headers=self._auth_headers(),
+                params=params,
+                timeout=60,  # PDF export can take a moment
+            )
+
+            if resp.status_code == 403:
+                # Server told us Google account is not connected
+                try:
+                    err = resp.json().get("error", "")
+                except Exception:
+                    err = ""
+                print(
+                    "[ERROR] Resume PDF download failed — Google account is not connected on the server.\n"
+                    "  → Open the app → Profile → Resume → click 'Connect Google Account'"
+                )
+                return False
+
+            if not resp.ok:
+                try:
+                    err = resp.json().get("error", f"HTTP {resp.status_code}")
+                except Exception:
+                    err = f"HTTP {resp.status_code}"
+                print(f"[ERROR] Resume PDF download failed: {err}")
+                return False
+
+            content_type = resp.headers.get("Content-Type", "")
+            if "application/pdf" not in content_type:
+                print(f"[ERROR] Server returned unexpected content type for resume PDF: {content_type}")
+                return False
+
+            import os as _os
+            _os.makedirs(_os.path.dirname(output_path), exist_ok=True)
+            with open(output_path, "wb") as fh:
+                fh.write(resp.content)
+            return True
+
+        except Exception as e:
+            print(f"[ERROR] Could not download resume PDF from server: {e}")
+            return False
+
     def get_ai_key_settings(self) -> Dict[str, Any]:
         """Fetch the user's AI Engine configuration (masked key, modes)."""
         return self._get("/api/settings/ai-keys")
