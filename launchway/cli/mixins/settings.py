@@ -6,6 +6,7 @@ from launchway.api_client import LaunchwayAPIError
 from launchway.cli.utils import Colors
 
 logger = logging.getLogger(__name__)
+_DEFAULT_APP_URL = "https://www.launchway.app"
 
 
 class SettingsMixin:
@@ -32,18 +33,38 @@ class SettingsMixin:
             print(f"  2. Change Password")
             print(f"  3. Update Email")
             print(f"  4. AI Engine  [{ai_status}]")
-            print(f"  5. Back to Main Menu\n")
+            print(f"  5. Report Bug + Beta Feedback")
+            print(f"  6. Back to Main Menu\n")
 
-            choice = self.get_input("Select option (1-5): ").strip()
+            choice = self.get_input("Select option (1-6): ").strip()
 
             if   choice == '1': self.view_account_info()
             elif choice == '2': self.change_password()
             elif choice == '3': self.update_email()
             elif choice == '4': self.ai_provider_settings()
-            elif choice == '5': break
+            elif choice == '5': self.show_bug_report_help()
+            elif choice == '6': break
             else:
                 self.print_error("Invalid option")
                 self.pause()
+
+    def show_bug_report_help(self):
+        app_url = os.getenv("LAUNCHWAY_APP_URL", _DEFAULT_APP_URL).rstrip("/")
+        report_url = f"{app_url}/report-bug"
+        self.clear_screen()
+        self.print_header("REPORT BUG + BETA FEEDBACK")
+        print("  Use the web form to submit bug reports for beta bounty review.\n")
+        print("  URL:")
+        print(f"    {report_url}\n")
+        print("  Include these details for faster approval:")
+        print("    1. Clear title and impact summary")
+        print("    2. Exact steps to reproduce")
+        print("    3. Expected vs actual behavior")
+        print("    4. Environment details (OS/browser/CLI version)")
+        print("    5. Optional logs from:")
+        print("       ~/.launchway/logs/launchway.log\n")
+        print("  Approved reports get permanent limit boosts based on severity.")
+        self.pause()
 
     def view_account_info(self):
         self.clear_screen()

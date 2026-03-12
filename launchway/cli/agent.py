@@ -111,7 +111,7 @@ class CLIJobAgent(
                     "Failed to load automation engine.\n"
                     "  • Make sure you are connected to the internet.\n"
                     "  • Try logging out and back in (re-fetches the key).\n"
-                    "  • Contact support if the problem persists."
+                    "  • If this persists, report it at: https://www.launchway.app/report-bug"
                 )
                 return False
         except Exception as e:

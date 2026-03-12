@@ -84,6 +84,8 @@ class User(Base):
 
     # Beta feedback
     has_submitted_beta_feedback = Column(Boolean, default=False)
+    bonus_resume_tailoring_max = Column(Integer, default=0, nullable=False)
+    bonus_job_applications_max = Column(Integer, default=0, nullable=False)
 
     # Relationships (use lazy='select' to prevent N+1 queries, explicitly load when needed)
     job_applications = relationship("JobApplication", back_populates="user", lazy='select')
@@ -264,6 +266,48 @@ class BetaFeedback(Base):
     # Relationship
     user = relationship("User")
 
+
+class BugReport(Base):
+    __tablename__ = "bug_reports"
+    __table_args__ = {'schema': 'public'}
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("public.users.id"), nullable=False, index=True)
+    user_email = Column(String, nullable=False)
+
+    # Structured report fields for reproducibility
+    title = Column(String, nullable=False)
+    summary = Column(Text, nullable=False)
+    steps_to_reproduce = Column(Text, nullable=False)
+    expected_behavior = Column(Text, nullable=False)
+    actual_behavior = Column(Text, nullable=False)
+    environment = Column(Text, nullable=False)
+    attachments_or_logs = Column(Text)
+    suggested_fix = Column(Text)
+
+    # Moderation and triage
+    severity = Column(String, nullable=False, default="medium")  # low|medium|high|critical
+    status = Column(String, nullable=False, default="pending")   # pending|approved|rejected
+    admin_notes = Column(Text)
+    rejection_reason = Column(Text)
+
+    # Reward audit
+    reward_resume_bonus = Column(Integer, default=0, nullable=False)
+    reward_job_apply_bonus = Column(Integer, default=0, nullable=False)
+    cash_reward_amount = Column(Integer)  # Optional future manual payout amount
+    cash_reward_note = Column(Text)
+    reward_applied_at = Column(DateTime)
+    processed_by_admin_id = Column(UUID(as_uuid=True), ForeignKey("public.users.id"), index=True)
+
+    # Anti-abuse helpers
+    dedupe_key = Column(String, index=True)
+    duplicate_of_report_id = Column(Integer, ForeignKey("public.bug_reports.id"))
+
+    submitted_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    processed_at = Column(DateTime)
+
+    user = relationship("User", foreign_keys=[user_id])
+
 class VNCSession(Base):
     __tablename__ = "vnc_sessions"
     __table_args__ = {'schema': 'public'}
@@ -380,6 +424,42 @@ def _apply_incremental_migrations():
         "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS api_primary_mode VARCHAR(20)",
         "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS api_secondary_mode VARCHAR(20)",
         "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS custom_gemini_api_key TEXT",
+        # bug bounty reward extension columns (added Mar 2026)
+        "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS bonus_resume_tailoring_max INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS bonus_job_applications_max INTEGER NOT NULL DEFAULT 0",
+        # bug report moderation pipeline (added Mar 2026)
+        """
+        CREATE TABLE IF NOT EXISTS public.bug_reports (
+            id SERIAL PRIMARY KEY,
+            user_id UUID NOT NULL REFERENCES public.users(id),
+            user_email VARCHAR NOT NULL,
+            title VARCHAR NOT NULL,
+            summary TEXT NOT NULL,
+            steps_to_reproduce TEXT NOT NULL,
+            expected_behavior TEXT NOT NULL,
+            actual_behavior TEXT NOT NULL,
+            environment TEXT NOT NULL,
+            attachments_or_logs TEXT,
+            suggested_fix TEXT,
+            severity VARCHAR NOT NULL DEFAULT 'medium',
+            status VARCHAR NOT NULL DEFAULT 'pending',
+            admin_notes TEXT,
+            rejection_reason TEXT,
+            reward_resume_bonus INTEGER NOT NULL DEFAULT 0,
+            reward_job_apply_bonus INTEGER NOT NULL DEFAULT 0,
+            cash_reward_amount INTEGER,
+            cash_reward_note TEXT,
+            reward_applied_at TIMESTAMP,
+            processed_by_admin_id UUID REFERENCES public.users(id),
+            dedupe_key VARCHAR,
+            duplicate_of_report_id INTEGER REFERENCES public.bug_reports(id),
+            submitted_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            processed_at TIMESTAMP
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_bug_reports_user_id ON public.bug_reports(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_bug_reports_status_submitted ON public.bug_reports(status, submitted_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_bug_reports_dedupe_key ON public.bug_reports(dedupe_key)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

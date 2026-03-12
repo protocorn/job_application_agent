@@ -145,12 +145,18 @@ class ProductionRateLimiter:
         """Generate Redis key for sliding window"""
         return f"rate_limit_window:{limit_type}:{identifier}:{window_start}"
 
-    def _check_limit_local_fallback(self, limit_type: str, identifier: str) -> Tuple[bool, Dict[str, Any]]:
+    def _check_limit_local_fallback(
+        self,
+        limit_type: str,
+        identifier: str,
+        custom_limit: Optional[int] = None
+    ) -> Tuple[bool, Dict[str, Any]]:
         """
         Local in-memory sliding-window limiter used when Redis is unavailable.
         Security posture: fail closed based on local counters, not fail open.
         """
         limit = self.LIMITS[limit_type]
+        limit_requests = int(custom_limit) if custom_limit is not None else int(limit.requests)
         now = int(time.time())
         cutoff = now - limit.window
         key = self._get_key(limit_type, identifier)
@@ -161,10 +167,10 @@ class ProductionRateLimiter:
                 bucket.popleft()
 
             current_count = len(bucket)
-            if current_count >= limit.requests:
+            if current_count >= limit_requests:
                 return False, {
                     "allowed": False,
-                    "limit": limit.requests,
+                    "limit": limit_requests,
                     "remaining": 0,
                     "reset_time": now + limit.window,
                     "retry_after": limit.window,
@@ -173,17 +179,22 @@ class ProductionRateLimiter:
                 }
 
             bucket.append(now)
-            remaining = limit.requests - len(bucket)
+            remaining = limit_requests - len(bucket)
             return True, {
                 "allowed": True,
-                "limit": limit.requests,
+                "limit": limit_requests,
                 "remaining": remaining,
                 "reset_time": now + limit.window,
                 "graceful_degradation": True,
                 "fallback": "local",
             }
     
-    def check_limit(self, limit_type: str, identifier: str) -> Tuple[bool, Dict[str, Any]]:
+    def check_limit(
+        self,
+        limit_type: str,
+        identifier: str,
+        custom_limit: Optional[int] = None
+    ) -> Tuple[bool, Dict[str, Any]]:
         """
         Check if request is within rate limit
 
@@ -212,7 +223,7 @@ class ProductionRateLimiter:
                         "graceful_degradation": True,
                         "error": "billing_limiter_temporarily_unavailable",
                     }
-                return self._check_limit_local_fallback(limit_type, identifier)
+                return self._check_limit_local_fallback(limit_type, identifier, custom_limit=custom_limit)
             else:
                 # Try to reconnect
                 ProductionRateLimiter.redis_available = True
@@ -241,6 +252,7 @@ class ProductionRateLimiter:
             pass
 
         limit = self.LIMITS[limit_type]
+        limit_requests = int(custom_limit) if custom_limit is not None else int(limit.requests)
         key = self._get_key(limit_type, identifier)
 
         try:
@@ -288,7 +300,7 @@ class ProductionRateLimiter:
                 key,
                 now,
                 window_start,
-                limit.requests,
+                limit_requests,
                 limit.window * 2,
                 request_member
             )
@@ -296,17 +308,17 @@ class ProductionRateLimiter:
             if int(allowed_int) == 0:
                 return False, {
                     "allowed": False,
-                    "limit": limit.requests,
+                    "limit": limit_requests,
                     "remaining": 0,
                     "reset_time": reset_time,
                     "retry_after": reset_time - now
                 }
 
-            remaining = max(0, limit.requests - int(resulting_count))
+            remaining = max(0, limit_requests - int(resulting_count))
 
             return True, {
                 "allowed": True,
-                "limit": limit.requests,
+                "limit": limit_requests,
                 "remaining": remaining,
                 "reset_time": reset_time
             }
@@ -333,7 +345,7 @@ class ProductionRateLimiter:
                 self.logger.error(f"Redis error in rate limiter: {e}")
             
             # Redis unavailable: use local fallback limiter instead of fail-open.
-            return self._check_limit_local_fallback(limit_type, identifier)
+            return self._check_limit_local_fallback(limit_type, identifier, custom_limit=custom_limit)
     
     def increment_usage(self, limit_type: str, identifier: str, amount: int = 1):
         """Increment usage counter"""
@@ -410,12 +422,18 @@ class ProductionRateLimiter:
         except redis.RedisError as e:
             self.logger.error(f"Redis error releasing concurrency slot: {e}")
     
-    def get_usage_stats(self, limit_type: str, identifier: str) -> Dict[str, Any]:
+    def get_usage_stats(
+        self,
+        limit_type: str,
+        identifier: str,
+        custom_limit: Optional[int] = None
+    ) -> Dict[str, Any]:
         """Get current usage statistics"""
         if limit_type not in self.LIMITS:
             return {"error": "Unknown limit type"}
 
         limit = self.LIMITS[limit_type]
+        limit_requests = int(custom_limit) if custom_limit is not None else int(limit.requests)
 
         # Calculate next UTC midnight for daily limits (86400 seconds = 24 hours)
         from datetime import datetime, timezone, timedelta
@@ -433,9 +451,9 @@ class ProductionRateLimiter:
         # Return default stats if Redis quota exceeded
         if not ProductionRateLimiter.redis_available:
             return {
-                "limit": limit.requests,
+                "limit": limit_requests,
                 "used": 0,
-                "remaining": limit.requests,
+                "remaining": limit_requests,
                 "window_seconds": limit.window,
                 "reset_time": reset_time,
                 "error": "Redis quota exceeded - showing default values"
@@ -461,9 +479,9 @@ class ProductionRateLimiter:
             current_count = redis_client.zcard(key)
 
             return {
-                "limit": limit.requests,
+                "limit": limit_requests,
                 "used": current_count,
-                "remaining": max(0, limit.requests - current_count),
+                "remaining": max(0, limit_requests - current_count),
                 "window_seconds": limit.window,
                 "reset_time": reset_time
             }

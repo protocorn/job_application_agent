@@ -620,5 +620,160 @@ The Launchway Team
             logger.error(f"Failed to send beta rejection email to {to_email}: {e}")
             return False
 
+    def send_bug_report_approved_email(
+        self,
+        to_email: str,
+        first_name: str,
+        report_title: str,
+        severity: str,
+        reward_resume_bonus: int,
+        reward_job_apply_bonus: int
+    ) -> bool:
+        """Notify user that their bug report was approved and rewards granted."""
+        if not self.is_configured:
+            logger.error("Cannot send email: RESEND_API_KEY not configured")
+            return False
+
+        try:
+            safe_title = (report_title or "your report").strip()
+            severity_label = (severity or "medium").strip().capitalize()
+            html_body = f"""
+            <html>
+                <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                    <div style="max-width: 640px; margin: 0 auto; padding: 20px; background: #f9f9f9;">
+                        <div style="background: #2e7d32; color: #fff; padding: 20px; border-radius: 8px 8px 0 0;">
+                            <h2 style="margin: 0;">Thank you for your bug report!</h2>
+                        </div>
+                        <div style="background: #fff; padding: 24px; border-radius: 0 0 8px 8px;">
+                            <p>Hi {first_name},</p>
+                            <p>We reviewed your bug report and approved it for rewards.</p>
+                            <p><strong>Report:</strong> {safe_title}<br />
+                            <strong>Severity:</strong> {severity_label}</p>
+                            <div style="background: #f1f8e9; border-left: 4px solid #2e7d32; padding: 12px; margin: 16px 0;">
+                                <strong>Reward added to your account:</strong><br />
+                                +{reward_resume_bonus} max Resume Tailoring credits<br />
+                                +{reward_job_apply_bonus} max Auto Apply credits
+                            </div>
+                            <p>Your increased limits are now active permanently.</p>
+                            <p>Thanks again for helping us improve Launchway beta.</p>
+                            <p>The Launchway Team</p>
+                        </div>
+                    </div>
+                </body>
+            </html>
+            """
+            text_body = f"""Hi {first_name},
+
+Your bug report was approved.
+
+Report: {safe_title}
+Severity: {severity_label}
+
+Reward added to your account:
++{reward_resume_bonus} max Resume Tailoring credits
++{reward_job_apply_bonus} max Auto Apply credits
+
+Your increased limits are now active permanently.
+
+Thank you for helping us improve Launchway beta.
+The Launchway Team
+"""
+
+            response = requests.post(
+                self.resend_api_url,
+                json={
+                    "from": self.from_email,
+                    "to": [to_email],
+                    "subject": "Your bug bounty reward has been granted - Launchway",
+                    "html": html_body,
+                    "text": text_body,
+                },
+                headers={
+                    "Authorization": f"Bearer {self.resend_api_key}",
+                    "Content-Type": "application/json",
+                },
+                timeout=10,
+            )
+            if response.status_code == 200:
+                logger.info(f"Bug report approval email sent to {to_email}")
+                return True
+            logger.error(f"Resend API error: {response.status_code} - {response.text}")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to send bug report approval email to {to_email}: {e}")
+            return False
+
+    def send_bug_report_rejected_email(
+        self,
+        to_email: str,
+        first_name: str,
+        report_title: str,
+        rejection_reason: str
+    ) -> bool:
+        """Notify user that their bug report was rejected."""
+        if not self.is_configured:
+            logger.error("Cannot send email: RESEND_API_KEY not configured")
+            return False
+
+        try:
+            safe_title = (report_title or "your report").strip()
+            safe_reason = (rejection_reason or "Insufficient reproduction details.").strip()
+            html_body = f"""
+            <html>
+                <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                    <div style="max-width: 640px; margin: 0 auto; padding: 20px; background: #f9f9f9;">
+                        <div style="background: #616161; color: #fff; padding: 20px; border-radius: 8px 8px 0 0;">
+                            <h2 style="margin: 0;">Bug report review update</h2>
+                        </div>
+                        <div style="background: #fff; padding: 24px; border-radius: 0 0 8px 8px;">
+                            <p>Hi {first_name},</p>
+                            <p>Thanks for submitting a bug report. We reviewed it but could not approve it for rewards at this time.</p>
+                            <p><strong>Report:</strong> {safe_title}</p>
+                            <div style="background: #f5f5f5; border-left: 4px solid #616161; padding: 12px; margin: 16px 0;">
+                                <strong>Reason:</strong><br />{safe_reason}
+                            </div>
+                            <p>You can submit a revised report with clearer reproduction steps and environment details.</p>
+                            <p>The Launchway Team</p>
+                        </div>
+                    </div>
+                </body>
+            </html>
+            """
+            text_body = f"""Hi {first_name},
+
+Thanks for submitting a bug report. We reviewed it but could not approve it for rewards at this time.
+
+Report: {safe_title}
+Reason: {safe_reason}
+
+You can submit a revised report with clearer reproduction steps and environment details.
+
+The Launchway Team
+"""
+
+            response = requests.post(
+                self.resend_api_url,
+                json={
+                    "from": self.from_email,
+                    "to": [to_email],
+                    "subject": "Bug report review update - Launchway",
+                    "html": html_body,
+                    "text": text_body,
+                },
+                headers={
+                    "Authorization": f"Bearer {self.resend_api_key}",
+                    "Content-Type": "application/json",
+                },
+                timeout=10,
+            )
+            if response.status_code == 200:
+                logger.info(f"Bug report rejection email sent to {to_email}")
+                return True
+            logger.error(f"Resend API error: {response.status_code} - {response.text}")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to send bug report rejection email to {to_email}: {e}")
+            return False
+
 # Global instance
 email_service = EmailService()

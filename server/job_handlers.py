@@ -27,6 +27,28 @@ from multi_source_job_discovery_agent import MultiSourceJobDiscoveryAgent
 
 logger = logging.getLogger(__name__)
 
+
+def _get_effective_daily_limit(user_id: str, limit_type: str) -> int:
+    """Return base daily limit plus any approved bug bounty bonus."""
+    from database_config import SessionLocal, User
+    from bug_bounty import get_user_bonus_for_limit, effective_limit
+    from uuid import UUID
+
+    base_limit = int(rate_limiter.LIMITS[limit_type].requests)
+    db = SessionLocal()
+    try:
+        user_uuid = UUID(str(user_id))
+        user = db.query(User).filter(User.id == user_uuid).first()
+        if not user:
+            return base_limit
+        bonus_limit = get_user_bonus_for_limit(user, limit_type)
+        return effective_limit(base_limit, bonus_limit)
+    except Exception:
+        return base_limit
+    finally:
+        db.close()
+
+
 @job_handler("resume_tailoring")
 def handle_resume_tailoring(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -67,7 +89,12 @@ def handle_resume_tailoring(payload: Dict[str, Any]) -> Dict[str, Any]:
             raise ValueError("original_resume_url is required for Google Docs tailoring")
         
         # Check user rate limits
-        allowed, info = rate_limiter.check_limit('resume_tailoring_per_user_per_day', str(user_id))
+        resume_limit = _get_effective_daily_limit(str(user_id), 'resume_tailoring_per_user_per_day')
+        allowed, info = rate_limiter.check_limit(
+            'resume_tailoring_per_user_per_day',
+            str(user_id),
+            custom_limit=resume_limit
+        )
         if not allowed:
             raise Exception(f"Daily resume tailoring limit exceeded. Try again in {info.get('retry_after', 3600)} seconds.")
         
@@ -206,7 +233,12 @@ def handle_job_application(payload: Dict[str, Any]) -> Dict[str, Any]:
             raise ValueError("job_url and resume_url are required")
         
         # Check user rate limits
-        allowed, info = rate_limiter.check_limit('job_applications_per_user_per_day', str(user_id))
+        application_limit = _get_effective_daily_limit(str(user_id), 'job_applications_per_user_per_day')
+        allowed, info = rate_limiter.check_limit(
+            'job_applications_per_user_per_day',
+            str(user_id),
+            custom_limit=application_limit
+        )
         if not allowed:
             raise Exception(f"Daily job application limit exceeded. Try again in {info.get('retry_after', 3600)} seconds.")
         
