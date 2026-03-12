@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, redirect
 import os
 import sys
 import requests
@@ -17,6 +17,7 @@ import hashlib
 import asyncio
 import redis
 from datetime import datetime
+from urllib.parse import urlencode
 
 
 sys.path.append(os.path.dirname(__file__))
@@ -206,6 +207,15 @@ def _get_default_frontend_origin() -> str:
     if http_origins:
         return http_origins[0]
     return "http://localhost:3000"
+
+
+def _build_frontend_redirect(path: str, params: Dict[str, Any]) -> str:
+    """Build a frontend URL with query params for browser-based auth flows."""
+    base_origin = (_get_default_frontend_origin() or "http://localhost:3000").rstrip("/")
+    query = urlencode({k: v for k, v in (params or {}).items() if v is not None})
+    if query:
+        return f"{base_origin}{path}?{query}"
+    return f"{base_origin}{path}"
 
 # Initialize production infrastructure
 def initialize_production_infrastructure():
@@ -2083,12 +2093,29 @@ def logout():
 def verify_email():
     """Verify user email with verification token"""
     try:
+        should_redirect = (request.args.get('redirect', '') or '').strip().lower() in ('1', 'true', 'yes')
         token = request.args.get('token')
         if not token:
+            if should_redirect:
+                return redirect(_build_frontend_redirect('/login', {
+                    'verified': '0',
+                    'message': 'Verification token is required'
+                }))
             return jsonify({"error": "Verification token is required"}), 400
 
         # Verify email
         result = AuthService.verify_email(token)
+
+        if should_redirect:
+            if result.get('success'):
+                return redirect(_build_frontend_redirect('/login', {
+                    'verified': '1',
+                    'message': result.get('message', 'Email verified successfully')
+                }))
+            return redirect(_build_frontend_redirect('/login', {
+                'verified': '0',
+                'message': result.get('error', 'Email verification failed')
+            }))
 
         if result['success']:
             return jsonify(result), 200
@@ -2825,11 +2852,28 @@ def request_email_change():
 def verify_email_change():
     """Confirm an email change using the token sent to the new address."""
     try:
+        should_redirect = (request.args.get('redirect', '') or '').strip().lower() in ('1', 'true', 'yes')
         token = request.args.get('token')
         if not token:
+            if should_redirect:
+                return redirect(_build_frontend_redirect('/login', {
+                    'email_change_verified': '0',
+                    'message': 'Verification token is required'
+                }))
             return jsonify({'error': 'Verification token is required'}), 400
 
         result = AuthService.verify_email_change(token)
+        if should_redirect:
+            if result.get('success'):
+                return redirect(_build_frontend_redirect('/login', {
+                    'email_change_verified': '1',
+                    'message': result.get('message', 'Email updated successfully')
+                }))
+            return redirect(_build_frontend_redirect('/login', {
+                'email_change_verified': '0',
+                'message': result.get('error', 'Email change verification failed')
+            }))
+
         if result['success']:
             return jsonify(result), 200
         return jsonify(result), 400

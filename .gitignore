@@ -456,3 +456,5 @@ releases/
 # - Source code (*.py, *.js, *.css, *.html)
 # - Configuration examples (*example*, *template*)
 # ============================================================
+.vercel
+.env*.local

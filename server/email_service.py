@@ -5,6 +5,7 @@ Uses Resend API for reliable email delivery
 import os
 import logging
 import requests
+from flask import has_request_context, request
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,6 +19,15 @@ class EmailService:
         self.resend_api_key = os.getenv('RESEND_API_KEY')
         self.from_email = os.getenv('FROM_EMAIL', 'onboarding@resend.dev')
         self.frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+        self.backend_url = (os.getenv('BACKEND_URL') or '').strip().rstrip('/')
+        if not self.backend_url:
+            # Railway commonly exposes one of these variables in production.
+            railway_domain = (os.getenv('RAILWAY_PUBLIC_DOMAIN') or os.getenv('RAILWAY_STATIC_URL') or '').strip()
+            if railway_domain:
+                if railway_domain.startswith('http'):
+                    self.backend_url = railway_domain.rstrip('/')
+                else:
+                    self.backend_url = f"https://{railway_domain}".rstrip('/')
         self.resend_api_url = 'https://api.resend.com/emails'
 
         # Check if email is configured
@@ -27,6 +37,36 @@ class EmailService:
             logger.warning("⚠️  Email service not configured. Set RESEND_API_KEY in .env")
         else:
             logger.info("✅ Email service configured with Resend API")
+
+    def _verification_link(self, token: str) -> str:
+        """
+        Prefer backend verification links so email verification is device-agnostic.
+        Fallback to frontend route for local/dev setups without a public backend URL.
+        """
+        backend_base_url = self._resolve_backend_base_url()
+        if backend_base_url:
+            return f"{backend_base_url}/api/auth/verify-email?token={token}&redirect=1"
+        return f"{self.frontend_url}/verify-email?token={token}"
+
+    def _email_change_verification_link(self, token: str) -> str:
+        """Build the email-change verification URL with the same backend-first strategy."""
+        backend_base_url = self._resolve_backend_base_url()
+        if backend_base_url:
+            return f"{backend_base_url}/api/auth/verify-email-change?token={token}&redirect=1"
+        return f"{self.frontend_url}/verify-email-change?token={token}"
+
+    def _resolve_backend_base_url(self) -> str:
+        """
+        Resolve the backend origin used in email links.
+        Priority:
+          1) BACKEND_URL / Railway env vars
+          2) current request host (when called during a request)
+        """
+        if self.backend_url:
+            return self.backend_url
+        if has_request_context():
+            return (request.host_url or '').rstrip('/')
+        return ''
 
     def send_verification_email(self, to_email: str, verification_token: str, first_name: str) -> bool:
         """
@@ -47,7 +87,7 @@ class EmailService:
 
         try:
             # Create verification link
-            verification_link = f"{self.frontend_url}/verify-email?token={verification_token}"
+            verification_link = self._verification_link(verification_token)
 
             # Email HTML body
             html_body = f"""
@@ -200,7 +240,7 @@ The Launchway Team
             return False
 
         try:
-            verification_link = f"{self.frontend_url}/verify-email-change?token={token}"
+            verification_link = self._email_change_verification_link(token)
 
             html_body = f"""
             <html>
