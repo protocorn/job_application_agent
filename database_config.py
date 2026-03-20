@@ -342,7 +342,31 @@ class CompanyCredentials(Base):
     
     user = relationship("User")
 
-# Database utility functions
+# ── Page reactions & visitor tracking ──────────────────────────────────────
+
+class PageReaction(Base):
+    """One reaction per unique IP (hashed). Public, no auth required."""
+    __tablename__ = "page_reactions"
+    __table_args__ = {'schema': 'public'}
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    ip_hash    = Column(String(64), unique=True, nullable=False, index=True)
+    emoji      = Column(String(10), nullable=False)
+    label      = Column(String(80), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class PageVisit(Base):
+    """Unique visitor counter — one row per unique IP (hashed)."""
+    __tablename__ = "page_visits"
+    __table_args__ = {'schema': 'public'}
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    ip_hash    = Column(String(64), unique=True, nullable=False, index=True)
+    visited_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+# ── Database utility functions ───────────────────────────────────────────────
 def get_db():
     db = SessionLocal()
     try:
@@ -460,6 +484,26 @@ def _apply_incremental_migrations():
         "CREATE INDEX IF NOT EXISTS idx_bug_reports_user_id ON public.bug_reports(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_bug_reports_status_submitted ON public.bug_reports(status, submitted_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_bug_reports_dedupe_key ON public.bug_reports(dedupe_key)",
+        # ── Page reactions & visitor tracking ──
+        """
+        CREATE TABLE IF NOT EXISTS public.page_reactions (
+            id         SERIAL PRIMARY KEY,
+            ip_hash    VARCHAR(64) UNIQUE NOT NULL,
+            emoji      VARCHAR(10) NOT NULL,
+            label      VARCHAR(80) NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_page_reactions_ip ON public.page_reactions(ip_hash)",
+        "CREATE INDEX IF NOT EXISTS idx_page_reactions_created ON public.page_reactions(created_at DESC)",
+        """
+        CREATE TABLE IF NOT EXISTS public.page_visits (
+            id         SERIAL PRIMARY KEY,
+            ip_hash    VARCHAR(64) UNIQUE NOT NULL,
+            visited_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_page_visits_ip ON public.page_visits(ip_hash)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

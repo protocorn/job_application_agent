@@ -3966,6 +3966,138 @@ def run_security_audit_api():
         logging.error(f"Error running security audit: {e}")
         return jsonify({"error": "Failed to run security audit"}), 500
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  Page reactions & visitor tracking  (public — no auth required)
+# ══════════════════════════════════════════════════════════════════════════════
+
+ALLOWED_REACTIONS = {
+    "🔥": "I need this right now",
+    "👀": "I'm keeping an eye on it",
+    "🤔": "I still have questions",
+    "😬": "Not for me",
+}
+
+def _get_ip_hash() -> str:
+    """Return SHA-256 of the requester's IP — we never store raw IPs."""
+    ip = (
+        request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        or request.headers.get("X-Real-IP", "")
+        or request.remote_addr
+        or "unknown"
+    )
+    return hashlib.sha256(ip.encode()).hexdigest()
+
+
+@app.route("/api/page-reactions", methods=["GET", "OPTIONS"])
+def get_page_reactions():
+    """Return all reactions and unique visitor count. Public endpoint."""
+    try:
+        from database_config import SessionLocal, PageReaction, PageVisit
+        db = SessionLocal()
+        try:
+            total_reactions = db.query(PageReaction).count()
+            reactions = (
+                db.query(PageReaction)
+                .order_by(PageReaction.created_at.desc())
+                .limit(50)
+                .all()
+            )
+            visitor_count = db.query(PageVisit).count()
+            return jsonify({
+                "reactions": [
+                    {"emoji": r.emoji, "label": r.label, "id": r.id}
+                    for r in reactions
+                ],
+                "total_reactions": total_reactions,
+                "visitor_count": visitor_count,
+            }), 200
+        finally:
+            db.close()
+    except Exception as e:
+        logging.error(f"Error fetching page reactions: {e}")
+        return jsonify({"error": "Failed to fetch reactions"}), 500
+
+
+@app.route("/api/page-reactions", methods=["POST"])
+def post_page_reaction():
+    """Submit a reaction. One per IP — duplicate IPs get a 409."""
+    try:
+        data = request.get_json(silent=True) or {}
+        emoji = data.get("emoji", "").strip()
+        label = ALLOWED_REACTIONS.get(emoji)
+
+        if not label:
+            return jsonify({"error": "Invalid reaction"}), 400
+
+        ip_hash = _get_ip_hash()
+        is_dev = os.getenv("FLASK_ENV", "production") == "development"
+
+        from database_config import SessionLocal, PageReaction
+        db = SessionLocal()
+        try:
+            existing = db.query(PageReaction).filter_by(ip_hash=ip_hash).first()
+            if existing and not is_dev:
+                return jsonify({"error": "already_reacted", "reaction": {"emoji": existing.emoji, "label": existing.label}}), 409
+            if existing and is_dev:
+                db.delete(existing)
+                db.flush()
+
+            reaction = PageReaction(ip_hash=ip_hash, emoji=emoji, label=label)
+            db.add(reaction)
+            db.commit()
+            reaction_number = db.query(PageReaction).count()
+            return jsonify({
+                "success": True,
+                "reaction": {"emoji": emoji, "label": label},
+                "reaction_number": reaction_number,
+            }), 201
+        finally:
+            db.close()
+    except Exception as e:
+        logging.error(f"Error saving page reaction: {e}")
+        return jsonify({"error": "Failed to save reaction"}), 500
+
+
+
+@app.route("/api/page-reactions/mine", methods=["DELETE"])
+def delete_my_reaction():
+    """Dev helper — deletes the reaction for the current IP so you can re-react."""
+    try:
+        ip_hash = _get_ip_hash()
+        from database_config import SessionLocal, PageReaction
+        db = SessionLocal()
+        try:
+            deleted = db.query(PageReaction).filter_by(ip_hash=ip_hash).delete()
+            db.commit()
+            return jsonify({"success": True, "deleted": deleted}), 200
+        finally:
+            db.close()
+    except Exception as e:
+        logging.error(f"Error deleting reaction: {e}")
+        return jsonify({"error": "Failed to delete reaction"}), 500
+
+
+@app.route("/api/page-visits", methods=["POST"])
+def record_page_visit():
+    """Record a unique visitor. Silently deduplicates by IP hash."""
+    try:
+        ip_hash = _get_ip_hash()
+        from database_config import SessionLocal, PageVisit
+        db = SessionLocal()
+        try:
+            existing = db.query(PageVisit).filter_by(ip_hash=ip_hash).first()
+            if not existing:
+                db.add(PageVisit(ip_hash=ip_hash))
+                db.commit()
+            count = db.query(PageVisit).count()
+            return jsonify({"visitor_count": count}), 200
+        finally:
+            db.close()
+    except Exception as e:
+        logging.error(f"Error recording page visit: {e}")
+        return jsonify({"error": "Failed to record visit"}), 500
+
+
 if __name__ == "__main__":
     # Set up file logging for API server with DEBUG level to capture everything
     log_file = setup_file_logging(log_level=logging.DEBUG, console_logging=True)
