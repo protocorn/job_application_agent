@@ -2056,18 +2056,26 @@ def login():
         # Authenticate user
         result = AuthService.authenticate_user(email, password)
 
+        # beta_not_approved means the credentials ARE correct — count it as a
+        # credential success so the account is never locked out for this reason.
+        credentials_ok = result['success'] or result.get('beta_not_approved', False)
+
         # Record login attempt with IP address
         security_manager.record_login_attempt(
             identifier=email,
-            success=result['success'],
-            user_id=result.get('user', {}).get('id') if result['success'] else None,
+            success=credentials_ok,
+            user_id=result.get('user', {}).get('id') if credentials_ok else None,
             ip_address=client_ip
         )
 
         if result['success']:
             return jsonify(result), 200
+        elif result.get('beta_not_approved'):
+            # Credentials are valid but beta not yet approved — return 200 so the
+            # frontend can reliably detect the flag and redirect to /beta-pending.
+            return jsonify(result), 200
         else:
-            # Add remaining attempts info to error response
+            # Genuine auth failure — include remaining-attempts hint
             return jsonify({
                 **result,
                 "remaining_attempts": account_remaining - 1,
