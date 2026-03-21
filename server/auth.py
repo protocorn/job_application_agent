@@ -65,8 +65,20 @@ class AuthService:
             return None
 
     @staticmethod
-    def register_user(email: str, password: str, first_name: str, last_name: str) -> Dict[str, Any]:
-        """Register a new user and send verification email"""
+    def register_user(
+        email: str,
+        password: str,
+        first_name: str,
+        last_name: str,
+        beta_request_reason: str = None,
+        survey_consent: bool = False,
+    ) -> Dict[str, Any]:
+        """Register a new user and send verification email.
+
+        If beta_request_reason is provided the account is immediately flagged as
+        having submitted a beta access request (beta_access_requested=True) so
+        the admin can approve it without a separate step.
+        """
         db = SessionLocal()
         try:
             # Check if user already exists
@@ -85,6 +97,13 @@ class AuthService:
             verification_token = secrets.token_urlsafe(32)
             verification_expires = datetime.utcnow() + timedelta(hours=24)
 
+            # Prepare beta request fields
+            has_beta_reason = bool(beta_request_reason and beta_request_reason.strip())
+            stored_reason = None
+            if has_beta_reason:
+                consent_note = "[Weekly Survey Consent: YES]" if survey_consent else "[Weekly Survey Consent: NO]"
+                stored_reason = f"{beta_request_reason.strip()}\n\n{consent_note}"
+
             # Create new user
             new_user = User(
                 email=email,
@@ -93,7 +112,10 @@ class AuthService:
                 last_name=last_name,
                 email_verified=False,
                 verification_token=verification_token,
-                verification_token_expires=verification_expires
+                verification_token_expires=verification_expires,
+                beta_access_requested=has_beta_reason,
+                beta_request_date=datetime.utcnow() if has_beta_reason else None,
+                beta_request_reason=stored_reason,
             )
 
             db.add(new_user)

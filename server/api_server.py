@@ -1977,6 +1977,17 @@ def signup():
             field_errors['first_name'] = "First name is required."
         if not last_name:
             field_errors['last_name'] = "Last name is required."
+
+        # Beta request fields (included in the signup form)
+        beta_request_reason = (data.get('beta_request_reason') or '').strip()
+        survey_consent = bool(data.get('survey_consent'))
+        if not beta_request_reason:
+            field_errors['beta_request_reason'] = "Please tell us why you want beta access."
+        elif len(beta_request_reason) < 20:
+            field_errors['beta_request_reason'] = "Please provide at least 20 characters."
+        if not survey_consent:
+            field_errors['survey_consent'] = "Please agree to the weekly survey."
+
         if field_errors:
             return jsonify({
                 "success": False,
@@ -1985,8 +1996,12 @@ def signup():
                 "error_code": "validation_failed"
             }), 400
 
-        # Register user
-        result = AuthService.register_user(email, password, first_name, last_name)
+        # Register user (beta request is baked in)
+        result = AuthService.register_user(
+            email, password, first_name, last_name,
+            beta_request_reason=beta_request_reason,
+            survey_consent=survey_consent,
+        )
 
         if result['success']:
             return jsonify(result), 201
@@ -2161,86 +2176,6 @@ def resend_verification():
         return jsonify({"error": "Failed to resend verification email"}), 500
 
 # Beta Access Routes
-@app.route("/api/beta/request", methods=['POST', 'OPTIONS'])
-def request_beta_access():
-    """Request beta access using email/password (no prior login required)."""
-    if request.method == 'OPTIONS':
-        return '', 204
-
-    try:
-        from database_config import SessionLocal, User
-        from datetime import datetime
-
-        data = request.json
-        if not data:
-            return jsonify({"error": "Request body is required"}), 400
-
-        email = (data.get('email') or '').strip().lower()
-        password = data.get('password') or ''
-        reason = (data.get('reason') or '').strip()
-        survey_consent = bool(data.get('survey_consent'))
-
-        if not email or '@' not in email:
-            return jsonify({"error": "Please provide a valid email address"}), 400
-        if not password:
-            return jsonify({"error": "Password is required"}), 400
-
-        if not reason:
-            return jsonify({"error": "Please provide a reason for requesting beta access"}), 400
-        if len(reason) < 20:
-            return jsonify({"error": "Please provide at least 20 characters in your reason"}), 400
-        if not survey_consent:
-            return jsonify({"error": "Please confirm the weekly survey agreement"}), 400
-
-        db = SessionLocal()
-        try:
-            user = db.query(User).filter(User.email == email).first()
-
-            # Keep login-like messaging generic for invalid credentials.
-            if not user or not AuthService.verify_password(password, user.password_hash):
-                return jsonify({"error": "Invalid email or password"}), 401
-
-            if not user.email_verified:
-                return jsonify({
-                    "error": "Please verify your email before requesting beta access.",
-                    "email_not_verified": True
-                }), 403
-
-            if not user.is_active:
-                return jsonify({"error": "User account is deactivated"}), 403
-
-            if user.beta_access_approved:
-                return jsonify({
-                    "success": False,
-                    "error": "You already have beta access"
-                }), 400
-
-            if user.beta_access_requested:
-                return jsonify({
-                    "success": False,
-                    "error": "You have already submitted a beta access request. Please wait for approval."
-                }), 400
-
-            # Update user with beta request
-            user.beta_access_requested = True
-            user.beta_request_date = datetime.utcnow()
-            user.beta_request_reason = f"{reason}\n\n[Weekly Survey Consent: YES]"
-
-            db.commit()
-
-            logging.info(f"Beta access requested by user {user.id}: {user.email}")
-
-            return jsonify({
-                "success": True,
-                "message": "Beta access request submitted successfully. We'll review your request and get back to you soon!"
-            }), 200
-
-        finally:
-            db.close()
-
-    except Exception as e:
-        logging.error(f"Error in request beta access endpoint: {e}")
-        return jsonify({"error": "Failed to submit beta access request"}), 500
 
 @app.route("/api/beta/status", methods=['GET'])
 @require_auth
