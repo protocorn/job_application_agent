@@ -52,7 +52,7 @@ class GoogleOAuthService:
         the ephemeral Flow object which is discarded before the callback, so
         the token exchange in handle_oauth_callback would fail with
         "Missing code verifier".  Building the URL ourselves keeps PKCE out
-        of the picture entirely — safe here because this is a confidential
+        of the picture entirely - safe here because this is a confidential
         server-side client that authenticates with client_secret.
         """
         from urllib.parse import urlencode

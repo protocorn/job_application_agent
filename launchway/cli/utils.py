@@ -46,7 +46,7 @@ class Colors:
 
 
 class PrintMixin:
-    """Shared terminal UI helpers — mixed into CLIJobAgent."""
+    """Shared terminal UI helpers - mixed into CLIJobAgent."""
 
     def clear_screen(self):
         os.system('cls' if os.name == 'nt' else 'clear')
@@ -80,7 +80,7 @@ class PrintMixin:
     def get_input_yn(self, prompt: str, default: str = None) -> bool:
         """
         Prompt for y/n; re-prompt until input is 'y', 'n', or empty (empty uses default).
-        default: 'y', 'n', or None (no default — empty not allowed).
+        default: 'y', 'n', or None (no default - empty not allowed).
         Returns True for yes, False for no.
         """
         while True:

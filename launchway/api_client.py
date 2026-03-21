@@ -2,7 +2,7 @@
 HTTP client for the Launchway Railway backend.
 
 All user data (auth, profile, application history, credits) goes through
-this client — no direct database access in the CLI.
+this client - no direct database access in the CLI.
 
 Default backend: https://jobapplicationagent-production.up.railway.app
 Override via env var: LAUNCHWAY_BACKEND_URL
@@ -370,7 +370,7 @@ class LaunchwayClient:
                 except Exception:
                     err = ""
                 print(
-                    "[ERROR] Resume PDF download failed — Google account is not connected on the server.\n"
+                    "[ERROR] Resume PDF download failed - Google account is not connected on the server.\n"
                     "  → Open the app → Profile → Resume → click 'Connect Google Account'"
                 )
                 return False

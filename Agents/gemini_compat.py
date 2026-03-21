@@ -134,9 +134,9 @@ class _CompatNamespace:
     Singleton namespace that mimics the google.generativeai module.
 
     Supported API surface:
-      genai.configure(api_key=...)     — set the global API key
-      genai.GenerativeModel(name)      — create a model (old-style)
-      genai.Client(api_key=...)        — new-SDK client (passed through)
+      genai.configure(api_key=...)     - set the global API key
+      genai.GenerativeModel(name)      - create a model (old-style)
+      genai.Client(api_key=...)        - new-SDK client (passed through)
     """
 
     # Expose classes as attributes so isinstance checks work

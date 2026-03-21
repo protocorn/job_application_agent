@@ -5,7 +5,7 @@ After a successful login the JWT token and basic user info are saved to
 ~/.launchway/session.json so that subsequent `launchway` invocations can
 restore the session automatically without asking for credentials again.
 
-The token is verified against the backend on every startup — if it has
+The token is verified against the backend on every startup - if it has
 expired or been revoked the saved session is discarded and the user is
 asked to log in again.
 """

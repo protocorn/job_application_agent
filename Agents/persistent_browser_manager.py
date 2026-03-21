@@ -29,10 +29,10 @@ def _clear_stale_contexts_if_new_loop() -> None:
         import asyncio
         current = id(asyncio.get_running_loop())
     except RuntimeError:
-        return  # not in an async context — nothing to do
+        return  # not in an async context - nothing to do
     if current != _active_contexts_loop_id:
         if _active_contexts:
-            logger.info(f"🔄 New event loop — discarding {len(_active_contexts)} stale browser context(s)")
+            logger.info(f"🔄 New event loop - discarding {len(_active_contexts)} stale browser context(s)")
         _active_contexts = {}
         _active_contexts_loop_id = current
 
@@ -80,7 +80,7 @@ class PersistentBrowserManager:
             BrowserContext that persists across sessions
         """
         # Discard all contexts from a previous asyncio.run() event loop before
-        # checking the cache — they are tied to the old (closed) loop.
+        # checking the cache - they are tied to the old (closed) loop.
         _clear_stale_contexts_if_new_loop()
 
         # Check if browser is already open for this user

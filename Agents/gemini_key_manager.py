@@ -1,5 +1,5 @@
 """
-GeminiKeyManager — primary/secondary API key fallback with retry + cooldown.
+GeminiKeyManager - primary/secondary API key fallback with retry + cooldown.
 
 Fallback algorithm:
   1. Try primary key.
@@ -137,16 +137,16 @@ class GeminiKeyManager:
                 "No API key available. If you chose 'custom', make sure you've saved a valid Gemini key."
             )
 
-        # Step 1 — primary
+        # Step 1 - primary
         try:
             logger.debug(f"[GeminiKeyManager] Trying primary ({self.primary_mode})")
             return self._attempt(primary_key, model, contents, **kwargs)
         except Exception as e1:
             if not _is_quota_error(e1):
-                raise  # not a quota issue — propagate immediately
+                raise  # not a quota issue - propagate immediately
             logger.warning(f"[GeminiKeyManager] Primary quota hit: {e1}")
 
-        # Step 2 — secondary (if configured)
+        # Step 2 - secondary (if configured)
         if secondary_key:
             try:
                 logger.debug(f"[GeminiKeyManager] Trying secondary ({self.secondary_mode})")
@@ -156,7 +156,7 @@ class GeminiKeyManager:
                     raise
                 logger.warning(f"[GeminiKeyManager] Secondary quota hit: {e2}")
 
-        # Step 3 — retry primary once immediately
+        # Step 3 - retry primary once immediately
         try:
             logger.debug("[GeminiKeyManager] Retrying primary immediately")
             return self._attempt(primary_key, model, contents, **kwargs)
@@ -165,7 +165,7 @@ class GeminiKeyManager:
                 raise
             logger.warning(f"[GeminiKeyManager] Primary retry failed: {e3}")
 
-        # Step 4 — cooldown then final attempt
+        # Step 4 - cooldown then final attempt
         logger.warning(
             f"[GeminiKeyManager] All keys exhausted. Cooling down for {self.cooldown_seconds}s …"
         )
@@ -185,7 +185,7 @@ class GeminiKeyManager:
     # ── public async interface ────────────────────────────────────────────────
 
     async def generate_content_async(self, model: str, contents: Any, **kwargs) -> Any:
-        """Async variant — runs the synchronous logic in a thread executor."""
+        """Async variant - runs the synchronous logic in a thread executor."""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None, lambda: self.generate_content(model, contents, **kwargs)

@@ -1087,7 +1087,7 @@ class JobAPIFactory:
 
     @staticmethod
     def get_all_adapters(proxy_manager=None) -> List[JobAPIAdapter]:
-        """Get all available adapters — JobSpy only."""
+        """Get all available adapters - JobSpy only."""
         try:
             from jobspy_adapter import JobSpyAdapter
         except ImportError as e:

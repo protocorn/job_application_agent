@@ -141,40 +141,44 @@ def after_request(response):
 
 JOBS: Dict[str, Dict[str, Any]] = {}
 
-# Ephemeral OAuth state storage: state_token -> {"user_id": str, "origin": str, "expires_at": float}
-OAUTH_STATE_STORE: Dict[str, Dict[str, Any]] = {}
+# OAuth state uses cryptographically signed tokens (survives server restarts)
+from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 OAUTH_STATE_TTL_SECONDS = int(os.getenv("OAUTH_STATE_TTL_SECONDS", "600"))
+_oauth_serializer = URLSafeTimedSerializer(
+    os.getenv("JWT_SECRET_KEY", "dev-fallback-key-change-in-production")
+)
 
-
-def _cleanup_oauth_state() -> None:
-    now = time.time()
-    expired_tokens = [
-        state for state, payload in OAUTH_STATE_STORE.items()
-        if payload.get("expires_at", 0) <= now
-    ]
-    for token in expired_tokens:
-        OAUTH_STATE_STORE.pop(token, None)
+# Keep a consumed-set so each token can only be used once (within a single server run)
+_CONSUMED_OAUTH_NONCES: Dict[str, float] = {}
 
 
 def _create_oauth_state(user_id: str, origin: str) -> str:
-    _cleanup_oauth_state()
-    state_token = secrets.token_urlsafe(32)
-    OAUTH_STATE_STORE[state_token] = {
+    nonce = secrets.token_urlsafe(8)
+    return _oauth_serializer.dumps({
         "user_id": str(user_id),
         "origin": origin,
-        "expires_at": time.time() + OAUTH_STATE_TTL_SECONDS,
-    }
-    return state_token
+        "nonce": nonce,
+    })
 
 
 def _consume_oauth_state(state_token: str) -> Dict[str, Any]:
-    _cleanup_oauth_state()
-    payload = OAUTH_STATE_STORE.pop(state_token, None)
-    if not payload:
+    try:
+        data = _oauth_serializer.loads(state_token, max_age=OAUTH_STATE_TTL_SECONDS)
+    except (SignatureExpired, BadSignature):
         return {}
-    if payload.get("expires_at", 0) <= time.time():
+
+    nonce = data.get("nonce", "")
+    if nonce in _CONSUMED_OAUTH_NONCES:
         return {}
-    return payload
+    _CONSUMED_OAUTH_NONCES[nonce] = time.time()
+
+    # Prune old nonces to prevent unbounded growth
+    cutoff = time.time() - OAUTH_STATE_TTL_SECONDS * 2
+    stale = [k for k, v in _CONSUMED_OAUTH_NONCES.items() if v < cutoff]
+    for k in stale:
+        _CONSUMED_OAUTH_NONCES.pop(k, None)
+
+    return data
 
 
 def _get_default_frontend_origin() -> str:
@@ -599,10 +603,10 @@ def extract_google_doc_with_oauth(resume_url: str, user_id: int) -> str:
                     logging.info(f"Successfully read private Google Doc via OAuth for user {user_id}")
                     return resume_text
 
-                # OAuth returned empty text after retries — transient Google API issue.
+                # OAuth returned empty text after retries - transient Google API issue.
                 logging.warning(f"OAuth read returned empty text for user {user_id}")
                 raise ValueError(
-                    "Google's API returned an empty response. This is usually temporary — "
+                    "Google's API returned an empty response. This is usually temporary - "
                     "please wait a moment and try again."
                 )
             except ValueError:
@@ -637,7 +641,7 @@ def extract_google_doc_with_oauth(resume_url: str, user_id: int) -> str:
                     "Please try again in a moment."
                 )
 
-        # No OAuth — try public access (doc must be shared as 'Anyone with the link')
+        # No OAuth - try public access (doc must be shared as 'Anyone with the link')
         return extract_resume_text(resume_url)
 
     except Exception as e:
@@ -873,7 +877,7 @@ def save_profile():
 def get_ai_key_settings():
     """
     Return the user's current AI Engine configuration.
-    The custom key is masked — only its last 4 chars are returned to the client.
+    The custom key is masked - only its last 4 chars are returned to the client.
     """
     try:
         user_id = request.current_user['id']
@@ -947,7 +951,7 @@ def save_ai_key_settings():
         # Encrypt the key if provided
         encrypted_key = None
         if custom_api_key_plain:
-            # Basic sanity check — Gemini keys start with "AIza"
+            # Basic sanity check - Gemini keys start with "AIza"
             if not custom_api_key_plain.startswith("AIza"):
                 return jsonify({"error": "That doesn't look like a valid Gemini API key (should start with 'AIza')"}), 400
             encrypted_key = security_manager.encrypt_sensitive_data(custom_api_key_plain)
@@ -986,7 +990,7 @@ def extract_profile_keywords():
     the user's chosen primary/secondary key method is always honoured.
 
     Optional JSON body:
-        { "resume_text": "..." }   — supply raw text instead of fetching from URL
+        { "resume_text": "..." }   - supply raw text instead of fetching from URL
     """
     try:
         from resume_keyword_extractor import ResumeKeywordExtractor
@@ -1141,7 +1145,7 @@ def upload_resume():
     - Extracts text directly (no Google account required).
     - Processes profile data with Gemini.
     - Stores extracted text + source type in the profile.
-    - Resume tailoring is NOT available for PDF/DOCX — only Google Doc URLs support tailoring.
+    - Resume tailoring is NOT available for PDF/DOCX - only Google Doc URLs support tailoring.
     """
     try:
         user_id = request.current_user['id']
@@ -3348,17 +3352,50 @@ def oauth_callback():
 @app.route("/api/oauth/status", methods=['GET'])
 @require_auth
 def oauth_status():
-    """Check if user has connected Google account"""
+    """
+    Check if user has a valid, working Google connection.
+
+    We go beyond a simple DB field check: we call get_credentials() which
+    attempts a token refresh when the access token is expired.  If the refresh
+    token itself is dead (invalid_grant / revoked), get_credentials() clears
+    the stored tokens and returns None - we surface that as token_expired=True
+    so the frontend can prompt a reconnect instead of silently showing stale
+    "Connected" state.
+    """
     try:
         user_id = request.current_user['id']
-        is_connected = GoogleOAuthService.is_connected(user_id)
-        google_email = GoogleOAuthService.get_google_email(user_id) if is_connected else None
+
+        # Fast path: no token in DB at all
+        if not GoogleOAuthService.is_connected(user_id):
+            return jsonify({
+                "success": True,
+                "is_connected": False,
+                "token_expired": False,
+                "google_email": None
+            }), 200
+
+        # Attempt to get (and if needed, refresh) valid credentials
+        google_email = GoogleOAuthService.get_google_email(user_id)
+        credentials = GoogleOAuthService.get_credentials(user_id)
+
+        if credentials is None:
+            # Refresh token was revoked / expired (invalid_grant).
+            # get_credentials() already cleared the DB tokens.
+            logging.info(f"Google token validation failed for user {user_id} - marking as expired")
+            return jsonify({
+                "success": True,
+                "is_connected": False,
+                "token_expired": True,
+                "google_email": google_email  # keep email so UI can say "…for account X"
+            }), 200
 
         return jsonify({
             "success": True,
-            "is_connected": is_connected,
+            "is_connected": True,
+            "token_expired": False,
             "google_email": google_email
         }), 200
+
     except Exception as e:
         logging.error(f"Error checking OAuth status: {e}")
         return jsonify({"error": "Failed to check OAuth status"}), 500
@@ -3967,7 +4004,7 @@ def run_security_audit_api():
         return jsonify({"error": "Failed to run security audit"}), 500
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  Page reactions & visitor tracking  (public — no auth required)
+#  Page reactions & visitor tracking  (public - no auth required)
 # ══════════════════════════════════════════════════════════════════════════════
 
 ALLOWED_REACTIONS = {
@@ -3978,7 +4015,7 @@ ALLOWED_REACTIONS = {
 }
 
 def _get_ip_hash() -> str:
-    """Return SHA-256 of the requester's IP — we never store raw IPs."""
+    """Return SHA-256 of the requester's IP - we never store raw IPs."""
     ip = (
         request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
         or request.headers.get("X-Real-IP", "")
@@ -4020,7 +4057,7 @@ def get_page_reactions():
 
 @app.route("/api/page-reactions", methods=["POST"])
 def post_page_reaction():
-    """Submit a reaction. One per IP — duplicate IPs get a 409."""
+    """Submit a reaction. One per IP - duplicate IPs get a 409."""
     try:
         data = request.get_json(silent=True) or {}
         emoji = data.get("emoji", "").strip()
@@ -4061,7 +4098,7 @@ def post_page_reaction():
 
 @app.route("/api/page-reactions/mine", methods=["DELETE"])
 def delete_my_reaction():
-    """Dev helper — deletes the reaction for the current IP so you can re-react."""
+    """Dev helper - deletes the reaction for the current IP so you can re-react."""
     try:
         ip_hash = _get_ip_hash()
         from database_config import SessionLocal, PageReaction

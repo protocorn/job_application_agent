@@ -567,8 +567,8 @@ class RefactoredJobAgent:
                 # The user may want to check the application, complete a step the agent
                 # missed, or simply confirm the submission. Tabs are only closed manually.
                 elif self.use_persistent_profile and self.page and not self.page.is_closed():
-                    self._log_to_jobs("info", "📋 Tab left open for review — close it manually when done")
-                    logger.info("✓ Application tab left open (persistent profile mode — user closes manually)")
+                    self._log_to_jobs("info", "📋 Tab left open for review - close it manually when done")
+                    logger.info("✓ Application tab left open (persistent profile mode - user closes manually)")
                     
                 # STANDARD MODE: Close entire browser
                 elif self.page and not self.page.is_closed():
@@ -3332,7 +3332,7 @@ def _load_profile_data(user_id=None, profile_data=None):
     Load user profile data for form filling.
 
     Priority:
-      1. `profile_data` dict passed directly (e.g. pre-fetched via Launchway API) — no DB call.
+      1. `profile_data` dict passed directly (e.g. pre-fetched via Launchway API) - no DB call.
       2. JSON file (development mode, RUN_MODE=Development + DEV_SETTINGS=Dont_use_database).
       3. PostgreSQL via AgentProfileService (legacy / direct-DB mode).
     """
@@ -3341,7 +3341,7 @@ def _load_profile_data(user_id=None, profile_data=None):
 
     # --- Fast path: caller provided profile dict directly (API mode) ----------
     if profile_data is not None:
-        logger.info("✅ Using pre-loaded profile data (API mode — no DB lookup)")
+        logger.info("✅ Using pre-loaded profile data (API mode - no DB lookup)")
         # Fall through to the shared transformation block below.
 
     else:
@@ -3395,14 +3395,14 @@ def _load_profile_data(user_id=None, profile_data=None):
         resume_path = None
 
         if resume_url_or_path:
-            # Google Docs URL or local path — convert to PDF if needed
+            # Google Docs URL or local path - convert to PDF if needed
             resume_path = GoogleDocsConverter.convert_to_pdf_if_needed(
                 resume_url_or_path,
                 resumes_dir,
                 user_id=str(user_id) if user_id else None,
             )
         else:
-            # No URL — try to reconstruct the original PDF/DOCX from stored base64 bytes
+            # No URL - try to reconstruct the original PDF/DOCX from stored base64 bytes
             resume_file_base64 = profile_data.get('resume_file_base64', '')
             if resume_file_base64:
                 import base64
@@ -3421,7 +3421,7 @@ def _load_profile_data(user_id=None, profile_data=None):
             print(f"  Resume PDF ready: {os.path.basename(resume_path)}")
             logger.info(f"📄 Resume ready: {resume_path}")
         else:
-            # Use print() for all failure messages — loguru only writes to file, not console.
+            # Use print() for all failure messages - loguru only writes to file, not console.
             if resume_url_or_path and GoogleDocsConverter.is_google_docs_url(resume_url_or_path):
                 # Give a targeted error depending on whether Google account is connected
                 try:
@@ -3436,7 +3436,7 @@ def _load_profile_data(user_id=None, profile_data=None):
 
                 if _connected is False:
                     msg = (
-                        "[ERROR] Resume PDF conversion failed — Google Doc is private and Google account is NOT connected.\n"
+                        "[ERROR] Resume PDF conversion failed - Google Doc is private and Google account is NOT connected.\n"
                         "  → Open the app → Profile → Resume → click 'Connect Google Account'\n"
                         "  → Or set document sharing to 'Anyone with the link can view' in Google Docs\n"
                         f"  Doc: {resume_url_or_path}"
@@ -3445,7 +3445,7 @@ def _load_profile_data(user_id=None, profile_data=None):
                     logger.error(msg)
                 elif _connected is True:
                     msg = (
-                        "[ERROR] Resume PDF conversion failed — Google account IS connected but PDF export still failed.\n"
+                        "[ERROR] Resume PDF conversion failed - Google account IS connected but PDF export still failed.\n"
                         "  → Check that the connected Google account has access to this document\n"
                         "  → Try disconnecting and reconnecting your Google account in the app\n"
                         f"  Doc: {resume_url_or_path}"
@@ -3583,12 +3583,12 @@ async def _get_or_create_playwright():
     current_loop_id = id(asyncio.get_running_loop())
 
     # If the event loop changed since the last run, the old playwright and its
-    # lock are bound to the dead loop — reset everything.
+    # lock are bound to the dead loop - reset everything.
     if current_loop_id != _global_playwright_loop_id:
         _global_playwright_instance = None
         _global_playwright_lock = None
         _global_playwright_loop_id = current_loop_id
-        logger.info("🔄 New event loop detected — resetting Playwright instance")
+        logger.info("🔄 New event loop detected - resetting Playwright instance")
 
     if _global_playwright_lock is None:
         _global_playwright_lock = asyncio.Lock()
@@ -3597,7 +3597,7 @@ async def _get_or_create_playwright():
         # Also guard against a stale instance that somehow survived a loop
         # switch (e.g. same loop id but transport was closed externally).
         if _global_playwright_instance is not None and not _playwright_is_alive(_global_playwright_instance):
-            logger.warning("⚠️  Stale Playwright instance detected — creating a fresh one")
+            logger.warning("⚠️  Stale Playwright instance detected - creating a fresh one")
             try:
                 await _global_playwright_instance.stop()
             except Exception:

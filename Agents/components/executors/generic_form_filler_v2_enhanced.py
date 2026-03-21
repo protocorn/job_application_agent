@@ -111,7 +111,7 @@ class GenericFormFillerV2Enhanced:
     # ── AI-fill label lock helpers ─────────────────────────────────────────
 
     def _page_key(self) -> str:
-        """Stable page identifier — strip query params so Workday-style URLs are consistent."""
+        """Stable page identifier - strip query params so Workday-style URLs are consistent."""
         url = self.page.url
         return url.split("?")[0] if "?" in url else url
 
@@ -127,7 +127,7 @@ class GenericFormFillerV2Enhanced:
             self._ai_filled_labels[key] = set()
         fingerprint = f"{field_label.lower().strip()}|{field_category.lower().strip()}"
         self._ai_filled_labels[key].add(fingerprint)
-        logger.info(f"🔒 AI-fill lock set: '{field_label}' [{field_category}] — will not be re-filled on this page")
+        logger.info(f"🔒 AI-fill lock set: '{field_label}' [{field_category}] - will not be re-filled on this page")
 
     def _is_locked_by_ai(self, field_label: str, field_category: str = "") -> bool:
         """Return True if AI has already filled this field on the current page."""
@@ -149,7 +149,7 @@ class GenericFormFillerV2Enhanced:
         if count >= self._MAX_FIELD_FAILURES:
             logger.warning(
                 f"🚫 Field '{field_label}' [{field_category}] exhausted after "
-                f"{count} failures — will not retry"
+                f"{count} failures - will not retry"
             )
         return count
 
@@ -201,7 +201,7 @@ class GenericFormFillerV2Enhanced:
                         logger.info("✅ Resume uploaded successfully")
                     else:
                         print("  [WARN] Resume upload: no file-upload control found on this page (will retry if a Resume field is detected)")
-                        logger.warning("⚠️ Resume upload attempt returned False — no matching upload control found on this page")
+                        logger.warning("⚠️ Resume upload attempt returned False - no matching upload control found on this page")
 
             # Step 1: Detect fields (NO option extraction - fill immediately!)
             all_fields = await self.interactor.get_all_form_fields(extract_options=False)
@@ -366,7 +366,7 @@ class GenericFormFillerV2Enhanced:
 
                     # Priority order for option label:
                     # 1. explicit option_label key (set by some detectors)
-                    # 2. label key — for Ashby/standard radios this IS the option text
+                    # 2. label key - for Ashby/standard radios this IS the option text
                     #    (e.g. "Male", "Female") now that Method 1 label lookup is fixed
                     # 3. available_options list (legacy path)
                     option_label = radio_field.get('option_label', '').strip()
@@ -1463,7 +1463,7 @@ You are reviewing a completed job application form. Your job is to verify two th
 
 RULE SET:
 
-1. VALUE-FIELD TYPE MISMATCH (most important — flag these):
+1. VALUE-FIELD TYPE MISMATCH (most important - flag these):
    These are cases where a valid profile value ended up in the WRONG field:
    - Any field whose label contains "LinkedIn", "LinkedIn Profile", "LinkedIn URL" → must contain a LinkedIn URL (e.g. linkedin.com/in/...). If it contains a city, name, state, or any non-URL text → FLAG IT.
    - Any field whose label contains "GitHub", "Github", "Portfolio", "Website", "URL", "Link" → must contain a URL or empty. If it contains a city, state, or plain text → FLAG IT.
@@ -1477,7 +1477,7 @@ RULE SET:
 
 3. DO NOT FLAG (these are fine):
    - Formatting differences (phone without dashes, URL with/without https, etc.)
-   - Missing fields — only check what IS filled.
+   - Missing fields - only check what IS filled.
    - Values that seem unusual but are directly in the profile (Indian nationality + US phone, visa + work auth both Yes, etc.).
 
 {comprehensive_profile_context}
@@ -1488,7 +1488,7 @@ Filled Fields (label → value):
 Respond in JSON format:
 {{
   "approved": true/false,
-  "issues": ["field_label: 'filled_value' — reason (expected: what it should be)"],
+  "issues": ["field_label: 'filled_value' - reason (expected: what it should be)"],
   "confidence": 0.0-1.0
 }}
 
@@ -1566,8 +1566,8 @@ If everything looks correct, set approved=true with empty issues list.
         Uses a waterfall of strategies ordered from most to least stable:
           1. stable_id prefix  (name: / aria_label: / placeholder: / id:)
           2. raw field attributes as fallback (name, aria_label, placeholder, id)
-          3. position_index — nth visible form field captured at scan time
-          4. original stale element reference — absolute last resort
+          3. position_index - nth visible form field captured at scan time
+          4. original stale element reference - absolute last resort
         """
         _input_sel = (
             'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):visible,'
@@ -1996,7 +1996,7 @@ If GREEN SIGNAL (nothing can be done), set:
 
         Handles two patterns:
 
-        Pattern 1 — Oracle HCM / Taleo KnockoutJS custom checkbox:
+        Pattern 1 - Oracle HCM / Taleo KnockoutJS custom checkbox:
             <span class="apply-flow-input-checkbox__button"
                   data-bind="click: toggleAccepted,
                              css: {'apply-flow-input-checkbox__button--checked': legalDisclaimer.isAccepted}">
@@ -2004,7 +2004,7 @@ If GREEN SIGNAL (nothing can be done), set:
             The button is a plain <span>; checked state is tracked by the
             ``--checked`` CSS modifier class, not by a native checked attribute.
 
-        Pattern 2 — Generic native checkbox near legal/agreement text:
+        Pattern 2 - Generic native checkbox near legal/agreement text:
             Any <input type="checkbox"> whose associated label or surrounding
             text contains terms like "terms", "agree", "legal", "privacy policy",
             "disclaimer", "acknowledge", or "consent".
@@ -2050,7 +2050,7 @@ If GREEN SIGNAL (nothing can be done), set:
                     logger.debug(f'apply-flow legal disclaimer click error: {e}')
 
             if handled:
-                return handled  # Pattern 1 succeeded — no need for generic fallback
+                return handled  # Pattern 1 succeeded - no need for generic fallback
 
             # ── Pattern 2: Generic native checkbox near legal keywords ──
             LEGAL_KEYWORDS = [
@@ -2062,7 +2062,7 @@ If GREEN SIGNAL (nothing can be done), set:
             for cb in checkboxes:
                 try:
                     if await cb.is_checked():
-                        # Already accepted — count it so caller knows it's handled
+                        # Already accepted - count it so caller knows it's handled
                         label_text = await self._get_checkbox_context_text(cb)
                         if any(kw in label_text for kw in LEGAL_KEYWORDS):
                             handled += 1

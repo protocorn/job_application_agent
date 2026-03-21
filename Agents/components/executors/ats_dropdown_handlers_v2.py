@@ -480,7 +480,7 @@ class ATSDropdownHandlerV2:
             initial_options = await _scan_options()
             if initial_options and 0 < len(initial_options) <= 15:
                 logger.info(
-                    f"📋 Short dropdown ({len(initial_options)} options) for '{field_label}' — "
+                    f"📋 Short dropdown ({len(initial_options)} options) for '{field_label}' - "
                     f"asking AI directly"
                 )
                 chosen = await _ask_ai_from_options(value, initial_options)
@@ -508,7 +508,7 @@ class ATSDropdownHandlerV2:
                     # Short list after partial typing → AI picks directly
                     if len(options_found) <= 15:
                         logger.info(
-                            f"  Short list ({len(options_found)} options) after '{cumulative}' — "
+                            f"  Short list ({len(options_found)} options) after '{cumulative}' - "
                             f"asking AI"
                         )
                         chosen = await _ask_ai_from_options(value, options_found)
@@ -888,7 +888,7 @@ class ATSDropdownHandlerV2:
         Lever / native <select> strategy with fuzzy fallback.
         Also handles Lever custom dropdowns (divs with role="option").
         """
-        # 1. Native <select> — try exact label, then fuzzy across all <option> texts
+        # 1. Native <select> - try exact label, then fuzzy across all <option> texts
         try:
             tag = await element.evaluate('el => el.tagName.toLowerCase()')
             if tag == 'select':
@@ -1182,7 +1182,7 @@ class ATSDropdownHandlerV2:
                 logger.info(f"✅ Generic fuzzy selected: '{best_text}' (score {best_score:.2f})")
                 return True
 
-            # Nothing matched — press Enter on the element as last resort
+            # Nothing matched - press Enter on the element as last resort
             await element.press('Enter')
             await asyncio.sleep(0.2)
             return False

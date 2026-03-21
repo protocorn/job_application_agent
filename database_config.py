@@ -137,7 +137,7 @@ class UserProfile(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("public.users.id"), unique=True, nullable=False)
 
-    # AI Engine — primary/secondary Gemini key configuration
+    # AI Engine - primary/secondary Gemini key configuration
     api_primary_mode = Column(String)                         # 'launchway' | 'custom' | NULL = not yet configured
     api_secondary_mode = Column(String)                       # 'launchway' | 'custom' | NULL (optional)
     custom_gemini_api_key = Column(Text)                      # Fernet-encrypted; shared across primary/secondary slots
@@ -357,7 +357,7 @@ class PageReaction(Base):
 
 
 class PageVisit(Base):
-    """Unique visitor counter — one row per unique IP (hashed)."""
+    """Unique visitor counter - one row per unique IP (hashed)."""
     __tablename__ = "page_visits"
     __table_args__ = {'schema': 'public'}
 

@@ -220,7 +220,7 @@ class GeminiFieldMapper:
         if full_auto_mode:
             full_auto_section = """
 ==============================================================
-FULL AUTO MODE — SPECIAL OVERRIDE RULES (highest priority)
+FULL AUTO MODE - SPECIAL OVERRIDE RULES (highest priority)
 ==============================================================
 The agent is running in 100% automated apply mode with NO human available.
 Your answers MUST be profile-truthful but you must answer as many fields as possible.
@@ -267,7 +267,7 @@ Each form field has a unique ID and a Label. You MUST assign the value that BELO
 - A field whose Label is "Github" / "Portfolio" / "Website" must get the profile's github/portfolio URL. NEVER put city or state there.
 - A field whose Label is "City" must get the profile's city (e.g. Brooklyn). NEVER put a URL or state there.
 - A field whose Label is "State" must get the profile's state (e.g. NY). NEVER put a URL or city there.
-- Essay/long-answer fields (e.g. "Tell us about yourself", "Ideal start dates") must get MANUAL or a short description — never paste a URL or single word like a city.
+- Essay/long-answer fields (e.g. "Tell us about yourself", "Ideal start dates") must get MANUAL or a short description - never paste a URL or single word like a city.
 Double-check: the value you assign to each ID must make sense for THAT field's Label.
 
 USER PROFILE:

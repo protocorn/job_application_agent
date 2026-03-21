@@ -3,10 +3,10 @@ include README.md
 include LICENSE
 include pyproject.toml
 
-# Include encrypted agent blobs (the Agents/ source is NOT included — only the .enc files)
+# Include encrypted agent blobs (the Agents/ source is NOT included - only the .enc files)
 recursive-include launchway/encrypted_agents *.enc
 
-# Include encrypted support files (credentials.json etc. — encrypted with the same key)
+# Include encrypted support files (credentials.json etc. - encrypted with the same key)
 recursive-include launchway/encrypted_support *.enc
 
 # Exclude all runtime-generated directories from source distributions
@@ -31,7 +31,7 @@ prune tests
 prune migrations
 prune browser_profiles
 
-# Exclude credentials and secrets — NEVER ship these
+# Exclude credentials and secrets - NEVER ship these
 exclude Agents/token.json
 global-exclude token.json
 global-exclude credentials.json

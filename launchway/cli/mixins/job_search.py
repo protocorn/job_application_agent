@@ -1,4 +1,4 @@
-"""Job search mixin — runs locally after agent bootstrap."""
+"""Job search mixin - runs locally after agent bootstrap."""
 
 import asyncio
 import json

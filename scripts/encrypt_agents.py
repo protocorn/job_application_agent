@@ -8,7 +8,7 @@ Run this ONCE before building the PyPI package:
 What it does:
   1. Generates (or reuses) a Fernet AES-128 symmetric key
   2. Encrypts every .py file under Agents/ into launchway/encrypted_agents/**/*.enc
-  3. Saves the key to .agent_build_key (gitignored — dev machine only)
+  3. Saves the key to .agent_build_key (gitignored - dev machine only)
 
 After running:
   - Copy the printed AGENT_RUNTIME_KEY value to Railway → Settings → Variables

@@ -133,7 +133,7 @@ class FieldInteractorV2:
 
         # Phase 1: Parse the new stable_id prefix format and build a direct locator.
         # Format: <prefix>:<value>  e.g. aria_label:First Name, name:email, id:q123
-        # Value may have uniquifying suffix (_0, _1) — strip it for locator (real attr has no suffix).
+        # Value may have uniquifying suffix (_0, _1) - strip it for locator (real attr has no suffix).
         def _strip_uniquify_suffix(s: str) -> str:
             return re.sub(r'_\d+$', '', s) if s else s
         if stable_id:
@@ -195,7 +195,7 @@ class FieldInteractorV2:
                     logger.debug(f"🔍 Live id attr → locator: [{live_id}]")
                 else:
                     element = orig
-                    logger.warning(f"⚠️ '{field_label}': no stable attr found — using original ref")
+                    logger.warning(f"⚠️ '{field_label}': no stable attr found - using original ref")
             except Exception as e:
                 logger.debug(f"Phase-3 live attr read failed: {e}")
                 element = field_data.get('element')
@@ -217,7 +217,7 @@ class FieldInteractorV2:
                     logger.debug(f"Phase-4 position fallback failed: {e}")
             if not element:
                 element = field_data.get('element')
-                logger.warning(f"⚠️ '{field_label}': exhausted all locator strategies — stale ref")
+                logger.warning(f"⚠️ '{field_label}': exhausted all locator strategies - stale ref")
 
         logger.debug(f"🔧 Filling '{field_label}' (Category: {category})")
 
@@ -1019,7 +1019,7 @@ class FieldInteractorV2:
             for option_to_check in options_to_check:
                 option_lower = option_to_check.lower().strip()
 
-                # Find matching checkbox — exact first, then fuzzy
+                # Find matching checkbox - exact first, then fuzzy
                 matched_checkbox = None
                 best_cb_score = 0.0
                 for cb_field in individual_checkboxes:
@@ -1043,7 +1043,7 @@ class FieldInteractorV2:
                 if matched_checkbox and best_cb_score < 0.4:
                     logger.warning(
                         f"   ⚠️  Low confidence checkbox match for '{option_to_check}' "
-                        f"(score={best_cb_score:.2f}) — skipping"
+                        f"(score={best_cb_score:.2f}) - skipping"
                     )
                     matched_checkbox = None
 
@@ -1268,7 +1268,7 @@ class FieldInteractorV2:
                         return
                     else:
                         logger.warning(f"Radio button clicked but not showing as checked")
-                        # Still mark as success — verification can be unreliable on React ATSs
+                        # Still mark as success - verification can be unreliable on React ATSs
                         result.update({
                             "success": True,
                             "method": "radio_click_unverified",
@@ -1494,7 +1494,7 @@ class FieldInteractorV2:
         2. Type a short prefix to filter the option list.
         3. Wait for [role="option"] items to appear.
         4. Fuzzy-pick the best match and click it.
-        5. The input auto-clears after selection (Workday default) — repeat.
+        5. The input auto-clears after selection (Workday default) - repeat.
         6. Press Escape when all values are selected to close.
         """
         if isinstance(values, str):
@@ -1513,7 +1513,7 @@ class FieldInteractorV2:
                     # Use the first 20 chars as the search term (Workday filters live)
                     search_prefix = value[:20]
                     await element.fill('', timeout=2000)   # clear any leftover text
-                    await element.type(search_prefix, delay=50)  # type slowly — Workday is React
+                    await element.type(search_prefix, delay=50)  # type slowly - Workday is React
                     await asyncio.sleep(0.6)   # wait for network-backed option list
 
                     # ── Step 3: Collect visible [role="option"] items ────────────
@@ -1631,7 +1631,7 @@ class FieldInteractorV2:
                 <input type="checkbox" tabindex="-1" class="_input_y2cw4_79" name="<guid>">
             </div>
 
-        The hidden checkbox tracks the value internally — we only need to click
+        The hidden checkbox tracks the value internally - we only need to click
         the correct button. The selected button receives an aria-pressed="true"
         or a CSS modifier class after being clicked.
         """
@@ -1653,7 +1653,7 @@ class FieldInteractorV2:
             # Strategy 1: find button by exact visible text
             button = container.locator(f'button:has-text("{target_text}")').first
 
-            # Strategy 2: fallback — find all _option_ buttons and text-match
+            # Strategy 2: fallback - find all _option_ buttons and text-match
             if await button.count() == 0:
                 all_buttons = await container.locator('button[class*="_option_"]').all()
                 for btn in all_buttons:
@@ -1835,7 +1835,7 @@ class FieldInteractorV2:
         """
         fields = []
 
-        # Try to read Ashby's embedded form schema — gives us exact field titles and types
+        # Try to read Ashby's embedded form schema - gives us exact field titles and types
         # keyed by the field path used as the DOM input's name attribute.
         ashby_schema = await self._extract_ashby_field_schema()
         
@@ -1893,7 +1893,7 @@ class FieldInteractorV2:
                     label_text = ''
                     
                     # Method 1: Check for label[for="id"]
-                    # NOTE: page.locator() is SYNCHRONOUS in Playwright — do NOT await it.
+                    # NOTE: page.locator() is SYNCHRONOUS in Playwright - do NOT await it.
                     # Awaiting a Locator object raises TypeError (silently caught), breaking
                     # label detection for all fields that rely on this path (e.g. radio buttons).
                     if id_attr:
@@ -1942,7 +1942,7 @@ class FieldInteractorV2:
                         except:
                             pass
 
-                    # Method 4: Workday multiselect — label lives on the container div
+                    # Method 4: Workday multiselect - label lives on the container div
                     # The input carries data-uxi-multiselect-id pointing to the container,
                     # and the container has aria-labelledby pointing to the visible label.
                     if not label_text and category == 'workday_multiselect':
@@ -1984,11 +1984,11 @@ class FieldInteractorV2:
                     # Build a stable_id that SURVIVES DOM re-renders.
                     #
                     # Priority (most → least stable):
-                    #   name        — set by form author, never changes
-                    #   aria_label  — semantic text attribute, never changes
-                    #   placeholder — visible hint text, never changes
-                    #   label hash  — derived from visible label, never changes
-                    #   id_attr     — LAST: React/Workday regenerate ids on every render
+                    #   name        - set by form author, never changes
+                    #   aria_label  - semantic text attribute, never changes
+                    #   placeholder - visible hint text, never changes
+                    #   label hash  - derived from visible label, never changes
+                    #   id_attr     - LAST: React/Workday regenerate ids on every render
                     #
                     # Each variant uses an explicit prefix so _get_fresh_element can
                     # reconstruct the right CSS selector without guessing.
@@ -2018,7 +2018,7 @@ class FieldInteractorV2:
                             suffix += 1
                     # Ashby enrichment: if the field's `name` matches a path from
                     # window.__appData, override the label (and options) with the
-                    # authoritative values from the schema — prevents any mislabeling
+                    # authoritative values from the schema - prevents any mislabeling
                     # that can arise from DOM label-scraping on React SPAs.
                     ashby_info = ashby_schema.get(name) or ashby_schema.get(id_attr) or {}
                     if ashby_info:
@@ -2050,7 +2050,7 @@ class FieldInteractorV2:
                         'stable_id': stable_id,
                         'available_options': available_options,
                         'tag_name': tag_name,
-                        # Scan-order index — used as last-resort position-based locator
+                        # Scan-order index - used as last-resort position-based locator
                         # when all attribute-based lookups fail after a DOM re-render.
                         'position_index': len(fields),
                     }
@@ -2065,7 +2065,7 @@ class FieldInteractorV2:
             # These fields use a hidden <input type="checkbox" tabindex="-1"> paired
             # with visible <button> "Yes"/"No" siblings inside a container whose CSS
             # class contains "_yesno_".  The input is CSS-invisible so it never appears
-            # in the standard :visible scan above — we must detect it separately.
+            # in the standard :visible scan above - we must detect it separately.
             try:
                 yesno_containers = await self.page.locator('[class*="_yesno_"]').all()
                 for container in yesno_containers:
@@ -2204,7 +2204,7 @@ class FieldInteractorV2:
                     logger.debug(f"Workday upload strategy failed for {selector}: {e}")
                     continue
 
-            # Strategy 2: Direct file input — visible first, then hidden.
+            # Strategy 2: Direct file input - visible first, then hidden.
             # Hidden inputs are the norm on modern forms; set_input_files works on them too.
             file_inputs = await self.page.locator('input[type="file"]').all()
             logger.debug(f"Found {len(file_inputs)} file input(s) on page")

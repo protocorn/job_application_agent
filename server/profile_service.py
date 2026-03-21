@@ -182,7 +182,7 @@ class ProfileService:
         return {
             'api_primary_mode': profile.api_primary_mode or None,   # None = not yet configured → triggers setup modal
             'api_secondary_mode': profile.api_secondary_mode or None,
-            # custom_gemini_api_key is intentionally NOT included here —
+            # custom_gemini_api_key is intentionally NOT included here -
             # the encrypted blob is only returned via the dedicated /api/settings/ai-keys endpoint.
             'resume_url': profile.resume_url or '',
             'resume_source_type': profile.resume_source_type or '',

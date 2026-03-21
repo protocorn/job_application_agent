@@ -1,1 +1,1 @@
-"""Launchway agent modules — browser automation, AI, resume tailoring."""
+"""Launchway agent modules - browser automation, AI, resume tailoring."""

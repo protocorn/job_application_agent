@@ -98,7 +98,7 @@ def run_first_time_setup():
         return
 
     print("\n" + "=" * 60)
-    print("  LAUNCHWAY — FIRST-TIME SETUP")
+    print("  LAUNCHWAY - FIRST-TIME SETUP")
     print("=" * 60)
     print("""
 Welcome to Launchway!
@@ -106,14 +106,14 @@ Welcome to Launchway!
 Launchway uses AI to match jobs to your profile and fill
 application forms. Choose how you want to power AI features:
 
-  1. Use Launchway AI  (recommended — no API key needed)
+  1. Use Launchway AI  (recommended - no API key needed)
      Works out of the box. Best choice for most users.
 
   2. Use my own Gemini API key
      Get a free key at aistudio.google.com
      Good for power users or very heavy usage.
 
-  3. Skip for now — decide later
+  3. Skip for now - decide later
      You can always change this from the Settings menu.
 """)
 
@@ -134,12 +134,12 @@ application forms. Choose how you want to power AI features:
             print("\n  [OK] Custom Gemini key saved.")
             print(f"  Config file: {_USER_ENV_FILE}")
         else:
-            # User pressed Enter — treat as "use Launchway AI"
+            # User pressed Enter - treat as "use Launchway AI"
             _append_to_user_env({"AI_PROVIDER": "launchway", "AI_SETUP_DONE": "1"})
-            print("\n  No key entered — Launchway AI will be used.")
+            print("\n  No key entered - Launchway AI will be used.")
 
     elif choice == "3":
-        # ── Skip entirely — do not write anything ────────────────────────────
+        # ── Skip entirely - do not write anything ────────────────────────────
         print()
         print("  [OK] Setup skipped.")
         print("  You can configure your AI Engine anytime from:")
@@ -152,7 +152,7 @@ application forms. Choose how you want to power AI features:
         # ── Default: Launchway AI ────────────────────────────────────────────
         _append_to_user_env({"AI_PROVIDER": "launchway", "AI_SETUP_DONE": "1"})
         print()
-        print("  [OK] Launchway AI selected — no API key needed.")
+        print("  [OK] Launchway AI selected - no API key needed.")
 
     print("\nSetup complete! Starting Launchway...\n")
 

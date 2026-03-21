@@ -1,5 +1,5 @@
 """
-Agent bootstrap — fetches the AES runtime key from the server, decrypts the
+Agent bootstrap - fetches the AES runtime key from the server, decrypts the
 encrypted Agents/ blobs to a temporary directory, and injects that directory
 into sys.path so that  `from Agents.xxx import yyy`  works normally.
 
@@ -63,7 +63,7 @@ def _apply_env_defaults():
         if not os.getenv(key):
             os.environ[key] = default_value
 
-    # Gemini key — user's own key takes priority; fall back to the server-provided
+    # Gemini key - user's own key takes priority; fall back to the server-provided
     # key that was cached the last time a full bundle fetch was performed.
     if not os.getenv("GOOGLE_API_KEY") and not os.getenv("GEMINI_API_KEY"):
         cached = _load_cached_gemini_key()
@@ -292,7 +292,7 @@ def _validate_bundle_key(fernet_obj, key_bytes: bytes):
 def bootstrap_agents(api_client) -> bool:
     """
     Decrypt the encrypted Agents/ package into a temp dir and inject it
-    into sys.path.  Safe to call multiple times — only runs once per process.
+    into sys.path.  Safe to call multiple times - only runs once per process.
 
     Returns True on success, False on failure.
     """
@@ -317,7 +317,7 @@ def bootstrap_agents(api_client) -> bool:
     _apply_env_defaults()
 
     if not key_bytes:
-        logger.debug("Key cache miss — fetching from server")
+        logger.debug("Key cache miss - fetching from server")
         try:
             bundle    = api_client.get_agent_key()   # returns dict with key + extras
             key_b64   = bundle if isinstance(bundle, str) else bundle.get("key", "")
@@ -329,7 +329,7 @@ def bootstrap_agents(api_client) -> bool:
             # Only set each var if the user hasn't already configured their own.
 
             if isinstance(bundle, dict):
-                # Gemini API key — needed by systematic_tailoring_complete.py
+                # Gemini API key - needed by systematic_tailoring_complete.py
                 gemini_key = bundle.get("gemini_key", "")
                 _bootstrap_diag["bundle_gemini_key"] = gemini_key
                 if gemini_key:
@@ -337,7 +337,7 @@ def bootstrap_agents(api_client) -> bool:
                     _set_gemini_env(gemini_key)
                     logger.debug("Set Gemini API key env vars from server bundle (Launchway AI)")
 
-                # Mimikree production URL — overrides localhost default in agent code
+                # Mimikree production URL - overrides localhost default in agent code
                 mimikree_url = bundle.get("mimikree_url", "")
                 if mimikree_url and not os.getenv("MIMIKREE_BASE_URL"):
                     os.environ["MIMIKREE_BASE_URL"] = mimikree_url

@@ -1,5 +1,5 @@
 """
-CLIJobAgent — main class combining all feature mixins.
+CLIJobAgent - main class combining all feature mixins.
 Entry point: `launchway.cli.agent:main`
 
 All user data operations (auth, profile, applications, credits) are routed
@@ -49,7 +49,7 @@ class CLIJobAgent(
     """Terminal-based Job Application Agent."""
 
     def __init__(self):
-        # HTTP client for the Railway backend — single source of truth for all data
+        # HTTP client for the Railway backend - single source of truth for all data
         self.api: LaunchwayClient = LaunchwayClient()
 
         # current_user is a plain dict returned by the login API:
@@ -80,7 +80,7 @@ class CLIJobAgent(
         it into sys.path.  Must be called (and return True) before any mixin
         method that does `from Agents.xxx import yyy`.
 
-        Safe to call multiple times — the heavy work only runs once per process.
+        Safe to call multiple times - the heavy work only runs once per process.
         Returns True when agents are ready, False on any failure.
         """
         if self._agents_bootstrapped:
@@ -126,7 +126,7 @@ class CLIJobAgent(
     def show_main_menu(self):
         while self.running and self.current_user:
             self.clear_screen()
-            self.print_header("LAUNCHWAY — JOB APPLICATION AGENT")
+            self.print_header("LAUNCHWAY - JOB APPLICATION AGENT")
 
             u = self.current_user
             print(f"  Logged in as: {Colors.OKGREEN}{u['first_name']} {u['last_name']}{Colors.ENDC}")
@@ -137,7 +137,7 @@ class CLIJobAgent(
             print(f"  {Colors.BOLD}3.{Colors.ENDC}  Search Jobs")
             print(f"  {Colors.BOLD}4.{Colors.ENDC}  Assisted Auto-Apply (Batch, up to 10)")
             print(f"  {Colors.BOLD}5.{Colors.ENDC}  View Application History")
-            print(f"  {Colors.BOLD}6.{Colors.ENDC}  Fully Autonomous Auto-Apply — Continuous")
+            print(f"  {Colors.BOLD}6.{Colors.ENDC}  Fully Autonomous Auto-Apply - Continuous")
             print(f"  {Colors.BOLD}7.{Colors.ENDC}  Browser Profile Setup (One-Time Setup)")
             print(f"  {Colors.BOLD}8.{Colors.ENDC}  Settings")
             print(f"  {Colors.BOLD}9.{Colors.ENDC}  Logout")
@@ -202,7 +202,7 @@ class _AgentProgressHandler(logging.Handler):
 
     # (substring_to_match, friendly_message)
     # friendly_message=None → use the cleaned original log text
-    # Order matters — first match wins
+    # Order matters - first match wins
     _RULES = [
         # ── State machine transitions ─────────────────────────────────────
         (">>> State: AI_GUIDED_NAVIGATION",     "  Navigating through pages..."),
@@ -214,7 +214,7 @@ class _AgentProgressHandler(logging.Handler):
         # ── Form filling ───────────────────────────────────────────────────
         ("Starting enhanced form filling",     "  Filling application form..."),
         ("Attempting resume upload",           "  Uploading resume..."),
-        ("resume upload field found on",       None),      # skip — too noisy
+        ("resume upload field found on",       None),      # skip - too noisy
         ("No resumme upload field",            None),      # skip (typo in agent)
         ("Form filling completed",             None),      # show cleaned original
         ("Form filled successfully",           None),      # show cleaned original
@@ -227,14 +227,14 @@ class _AgentProgressHandler(logging.Handler):
         ("Clicking next",                      "  Clicking Next button..."),
         ("Clicking submit",                    "  Clicking Submit button..."),
         # ── State machine outcomes ─────────────────────────────────────────
-        ("Stagnation detected",                "  Page appears stuck — attempting recovery..."),
-        ("Loop detected",                      "  Loop detected — stopping this application"),
+        ("Stagnation detected",                "  Page appears stuck - attempting recovery..."),
+        ("Loop detected",                      "  Loop detected - stopping this application"),
         ("human_intervention",                 "  Browser kept open for your review"),
         ("State machine finished",             None),      # show cleaned original
         # ── Job search ─────────────────────────────────────────────────────
         ("Searching JobSpy",                   "  Searching jobs across job boards..."),
         ("Searching JSearch",                  "  Searching JSearch..."),
-        ("Found",                              None),      # e.g. "Found 7 jobs" — show as-is
+        ("Found",                              None),      # e.g. "Found 7 jobs" - show as-is
         ("Ranked",                             None),      # e.g. "Ranked 7 jobs with min_score=..."
     ]
 
@@ -327,7 +327,7 @@ def _configure_logging():
 
 
 def main():
-    """Package entry point — invoked by `launchway` command."""
+    """Package entry point - invoked by `launchway` command."""
     # Handle --version / -V before any heavyweight setup
     if len(sys.argv) > 1 and sys.argv[1] in ('--version', '-V'):
         try:
@@ -338,7 +338,7 @@ def main():
         print(f"Launchway v{ver}")
         sys.exit(0)
 
-    # 1. Configure logging — all agent noise goes to file, terminal stays clean
+    # 1. Configure logging - all agent noise goes to file, terminal stays clean
     _configure_logging()
 
     # 2. Load .env (from ~/.launchway/.env or cwd/.env)

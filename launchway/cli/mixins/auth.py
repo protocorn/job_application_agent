@@ -4,7 +4,7 @@ Authentication mixin: register, login, logout, and session restoration.
 Key behaviours
 --------------
 * After a successful login the JWT token is saved to ~/.launchway/session.json.
-  On the next run the CLI restores the session automatically — no password prompt.
+  On the next run the CLI restores the session automatically - no password prompt.
 * On logout the saved session is wiped.
 * After a first-time login (empty profile) the user is shown a "complete your
   profile" prompt that links to the website or offers to fill via CLI.
@@ -126,7 +126,7 @@ class AuthMixin:
         token = result.get("token", "")
 
         if not user or not token:
-            self.print_error("Login failed — unexpected response from server.")
+            self.print_error("Login failed - unexpected response from server.")
             self.pause()
             return False
 
@@ -256,7 +256,7 @@ class AuthMixin:
 
     def _check_and_prompt_profile_setup(self):
         """
-        If the user's profile is empty, guide them to complete it — either
+        If the user's profile is empty, guide them to complete it - either
         through the website (recommended) or via the CLI menu.
         """
         if not _is_profile_empty(self.current_profile):
@@ -309,7 +309,7 @@ class AuthMixin:
                 # Sync into local profile cache so the fast path works next time
                 if self.current_profile is not None:
                     self.current_profile["api_primary_mode"] = data["api_primary_mode"]
-                return   # already configured — nothing to do
+                return   # already configured - nothing to do
         except Exception:
             return   # can't check → don't block startup
 
@@ -343,7 +343,7 @@ class AuthMixin:
         try:
             data = self.api.get_ai_key_settings()
             if data.get("api_primary_mode"):
-                return True   # configured — all good
+                return True   # configured - all good
         except Exception:
             return True   # can't verify → let it through; the server will guard
 
@@ -393,7 +393,7 @@ class AuthMixin:
 
         # ── Try silent session restore ──────────────────────────────────
         self.clear_screen()
-        self.print_header("LAUNCHWAY — JOB APPLICATION AGENT")
+        self.print_header("LAUNCHWAY - JOB APPLICATION AGENT")
         print(f"  v{__version__}\n")
         print("  Checking saved session...")
 
@@ -418,7 +418,7 @@ class AuthMixin:
         # ── Interactive auth loop ───────────────────────────────────────
         while self.running:
             self.clear_screen()
-            self.print_header("LAUNCHWAY — JOB APPLICATION AGENT")
+            self.print_header("LAUNCHWAY - JOB APPLICATION AGENT")
             print(f"  v{__version__}\n")
             print("  Terminal-Based Autonomous Job Application Agent\n")
             print("  1. Login")

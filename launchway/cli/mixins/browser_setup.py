@@ -1,4 +1,4 @@
-"""Browser profile setup mixin — one-time persistent login."""
+"""Browser profile setup mixin - one-time persistent login."""
 
 import logging
 from launchway.cli.utils import Colors

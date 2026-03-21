@@ -10,7 +10,7 @@ Scores jobs 0-100 based on profile match using:
   - Job type
   - Recency
 
-No domain-specific penalties are applied — the scorer works for any profession.
+No domain-specific penalties are applied - the scorer works for any profession.
 
 Field-name awareness: handles both "work experience" and "work_experience" so it
 works whether the profile came from AgentProfileService or the Launchway API.
@@ -31,7 +31,7 @@ class JobRelevanceScorer:
         self.profile = profile
         self._augment_profile()
         self.user_keywords = self._extract_user_keywords()
-        logger.debug(f"Scorer initialised — {len(self.user_keywords)} user keywords")
+        logger.debug(f"Scorer initialised - {len(self.user_keywords)} user keywords")
 
     # ── profile normalisation ─────────────────────────────────────────────────
 
@@ -89,7 +89,7 @@ class JobRelevanceScorer:
         Build the keyword set that represents this user's professional identity.
 
         Priority order:
-          1. resume_keywords (Gemini-extracted) — most accurate, domain-agnostic
+          1. resume_keywords (Gemini-extracted) - most accurate, domain-agnostic
           2. Profile fields: skills, summary, work experience titles/descriptions,
              education, projects
         """
@@ -162,7 +162,7 @@ class JobRelevanceScorer:
           Title keyword match:       0–30
           Description keyword match: 0–25
           Experience level match:    0–15
-          Salary match:              0–10  (0 default — no free points if no data)
+          Salary match:              0–10  (0 default - no free points if no data)
           Location match:            0–10
           Job type match:            0–5
           Recency:                   0–5
@@ -237,7 +237,7 @@ class JobRelevanceScorer:
         """
         Keyword overlap against job description + requirements (0-25).
 
-        Thresholds are intentionally conservative — a job description for ANY
+        Thresholds are intentionally conservative - a job description for ANY
         tech-adjacent role will naturally contain common words like "data", "cloud",
         "development" that appear in a software/AI profile. We require a higher bar
         of specific keyword overlap before awarding significant points.
@@ -261,7 +261,7 @@ class JobRelevanceScorer:
     def _score_experience_match(self, job_experience_level: str) -> int:
         """
         Experience level alignment (0-15).
-        Returns 0 when the job's level is unknown — no free points for missing data.
+        Returns 0 when the job's level is unknown - no free points for missing data.
         """
         if not job_experience_level:
             return 0
@@ -300,7 +300,7 @@ class JobRelevanceScorer:
         return "executive"
 
     def _score_salary_match(self, job_min, job_max, job_currency: str) -> int:
-        """Salary alignment (0-10).  Returns 0 when no data — no free points."""
+        """Salary alignment (0-10).  Returns 0 when no data - no free points."""
         user_min = self.profile.get("minimum_salary")
         if not user_min or (not job_min and not job_max):
             return 0
@@ -337,7 +337,7 @@ class JobRelevanceScorer:
     def _score_job_type_match(self, job_type: str) -> int:
         """
         Job type alignment (0-5).
-        Returns 0 when no preferences are set — no free points for missing data.
+        Returns 0 when no preferences are set - no free points for missing data.
         """
         desired = self.profile.get("desired_job_types", [])
         if not desired:

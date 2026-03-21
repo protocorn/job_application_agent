@@ -1,4 +1,4 @@
-"""Batch / single auto-apply mixin — runs agents locally after bootstrap."""
+"""Batch / single auto-apply mixin - runs agents locally after bootstrap."""
 
 import asyncio
 import json
@@ -194,7 +194,7 @@ Job description snippet:
         detailed_results = []
 
         self.print_info(f"\n{'='*60}")
-        self.print_info(f"BATCH APPLICATION MODE — {total_jobs} job(s)")
+        self.print_info(f"BATCH APPLICATION MODE - {total_jobs} job(s)")
         self.print_info(f"{'='*60}\n")
         self.print_warning("Do not close browser windows manually during the process")
 
@@ -371,7 +371,7 @@ Job description snippet:
         incomplete_count = len([j for j in detailed_results if not j['submitted']])
         if incomplete_count > 0:
             self.print_warning(f"\n{incomplete_count} application(s) were not fully submitted.")
-            self.print_info("The browser window is already open — complete and submit manually.")
+            self.print_info("The browser window is already open - complete and submit manually.")
         else:
             self.print_info("\nAll browser windows are still open for your review.")
 

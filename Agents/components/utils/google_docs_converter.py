@@ -86,7 +86,7 @@ class GoogleDocsConverter:
             credentials = GoogleOAuthService.get_credentials(str(user_id))
             if not credentials:
                 msg = (
-                    "[ERROR] Resume PDF download failed — Google Doc is private "
+                    "[ERROR] Resume PDF download failed - Google Doc is private "
                     "and no valid Google account credentials are stored.\n"
                     "  → Open the app → Profile → Resume → 'Connect Google Account'\n"
                     "  → Or set document sharing to 'Anyone with the link can view' in Google Docs"
@@ -120,7 +120,7 @@ class GoogleDocsConverter:
         except ImportError:
             # google_oauth_service is not available locally (installed package).
             # Fall back to the server API which has the credentials.
-            logger.info("google_oauth_service not available locally — using server API for PDF export")
+            logger.info("google_oauth_service not available locally - using server API for PDF export")
 
         except Exception as e:
             msg = f"[ERROR] Local OAuth PDF export failed: {e}"
@@ -136,7 +136,7 @@ class GoogleDocsConverter:
             token, _ = load_session()
             if not token:
                 msg = (
-                    "[ERROR] Resume PDF download failed — not logged in.\n"
+                    "[ERROR] Resume PDF download failed - not logged in.\n"
                     "  → Run: launchway login"
                 )
                 print(msg)
@@ -192,23 +192,23 @@ class GoogleDocsConverter:
             content_type = response.headers.get('Content-Type', '')
             if 'application/pdf' not in content_type:
                 logger.warning(
-                    f"Public export returned non-PDF content ({content_type}) — doc is likely private"
+                    f"Public export returned non-PDF content ({content_type}) - doc is likely private"
                 )
                 if user_id:
-                    print("  Resume Google Doc appears to be private — trying OAuth (connected Google account)...")
+                    print("  Resume Google Doc appears to be private - trying OAuth (connected Google account)...")
                     logger.info("🔑 Trying OAuth export fallback...")
                     if GoogleDocsConverter._download_as_pdf_with_oauth(url, output_path, user_id):
                         return True
-                    # OAuth also failed — the detailed reason was already printed inside _download_as_pdf_with_oauth
+                    # OAuth also failed - the detailed reason was already printed inside _download_as_pdf_with_oauth
                     msg = (
-                        "[ERROR] Resume PDF conversion failed — Google Doc is private and OAuth export failed.\n"
+                        "[ERROR] Resume PDF conversion failed - Google Doc is private and OAuth export failed.\n"
                         "  → Try reconnecting your Google account in the app, or check that it has access to this document."
                     )
                     print(msg)
                     logger.error(msg)
                 else:
                     msg = (
-                        "[ERROR] Resume PDF conversion failed — Google Doc appears to be private.\n"
+                        "[ERROR] Resume PDF conversion failed - Google Doc appears to be private.\n"
                         "  → Connect your Google account: open the app → Profile → Resume → 'Connect Google Account'\n"
                         "  → Or set document sharing to 'Anyone with the link can view' in Google Docs"
                     )
@@ -228,7 +228,7 @@ class GoogleDocsConverter:
         except requests.exceptions.RequestException as e:
             logger.warning(f"Public Google Docs PDF download failed: {e}")
             if user_id:
-                print("  Public resume download failed — trying OAuth fallback...")
+                print("  Public resume download failed - trying OAuth fallback...")
                 if GoogleDocsConverter._download_as_pdf_with_oauth(url, output_path, user_id):
                     return True
             msg = f"[ERROR] Failed to download resume PDF: {e}"

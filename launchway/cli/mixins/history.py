@@ -1,4 +1,4 @@
-"""Application history mixin — fetched via the Launchway API."""
+"""Application history mixin - fetched via the Launchway API."""
 
 import logging
 from launchway.api_client import LaunchwayAPIError

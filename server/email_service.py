@@ -257,7 +257,7 @@ The Launchway Team
                 </head>
                 <body>
                     <div class="container">
-                        <div class="header"><h1>Confirm Email Change — Launchway</h1></div>
+                        <div class="header"><h1>Confirm Email Change - Launchway</h1></div>
                         <div class="content">
                             <h2>Hi {first_name},</h2>
                             <p>You requested to change your Launchway account email address.</p>
@@ -272,7 +272,7 @@ The Launchway Team
                             <p>Or copy and paste this link into your browser:</p>
                             <p style="word-break: break-all; color: #FF8C42; font-weight: 500;">{verification_link}</p>
                             <p><strong>This link expires in 24 hours.</strong></p>
-                            <div class="alert">⚠️ If you did not request this change, please ignore this email — your account email will not be modified.</div>
+                            <div class="alert">⚠️ If you did not request this change, please ignore this email - your account email will not be modified.</div>
                             <p>Best regards,<br>The Launchway Team</p>
                         </div>
                         <div class="footer"><p>This is an automated email. Please do not reply.</p></div>
@@ -299,7 +299,7 @@ The Launchway Team"""
             payload = {
                 "from": self.from_email,
                 "to": [to_email],
-                "subject": "Confirm Your New Email Address — Launchway",
+                "subject": "Confirm Your New Email Address - Launchway",
                 "html": html_body,
                 "text": text_body
             }

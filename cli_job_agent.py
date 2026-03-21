@@ -175,7 +175,7 @@ class CLIJobAgent:
             self.print_error("Profile not loaded. Please log in again.")
             return False
 
-        # LaTeX resume mode is not yet available in production — require a Google Docs URL.
+        # LaTeX resume mode is not yet available in production - require a Google Docs URL.
         if self._is_latex_resume_mode():
             self.print_error("LaTeX resume auto-apply is not yet available in this version.")
             self.print_info("Please set your resume source to Google Docs in your profile.")
@@ -1440,7 +1440,7 @@ class CLIJobAgent:
                         
                         # Pre-fetch job description before opening the application form.
                         # Application form pages (Lever/Greenhouse/Workday) typically have no
-                        # description text — the listing page does.  We fetch it here so the
+                        # description text - the listing page does.  We fetch it here so the
                         # tailoring agent always has quality context.
                         pre_fetched_desc = None
                         if tailor:
@@ -2606,7 +2606,7 @@ class CLIJobAgent:
 
         Used as a pre-flight step before the browser opens the application form,
         because application pages (Lever, Greenhouse, Workday, etc.) often contain
-        no job description — only form fields.
+        no job description - only form fields.
 
         Returns extracted text (≥ 200 chars) or None on failure.
         """

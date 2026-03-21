@@ -61,8 +61,8 @@ def _yn(val) -> str:
 
 def _list_str(val) -> str:
     if isinstance(val, list):
-        return ", ".join(str(v) for v in val) if val else "—"
-    return str(val) if val else "—"
+        return ", ".join(str(v) for v in val) if val else "-"
+    return str(val) if val else "-"
 
 def _ask(prompt: str, current=None) -> str:
     display = f" (current: {current})" if current else ""
@@ -143,7 +143,7 @@ class ProfileMixin:
             val = p.get(key, "")
             if fmt:
                 val = fmt(val)
-            print(f"  {label:<28} {val or '—'}")
+            print(f"  {label:<28} {val or '-'}")
 
         section("Basic Information")
         row("Name",               "first name",  lambda v: f"{v} {p.get('last name','')}")
@@ -176,7 +176,7 @@ class ProfileMixin:
         if education:
             section("Education")
             for i, edu in enumerate(education, 1):
-                print(f"  {i}. {edu.get('degree','')} — {edu.get('institution','')}")
+                print(f"  {i}. {edu.get('degree','')} - {edu.get('institution','')}")
                 print(f"     Graduated: {edu.get('graduation_year','')}  |  GPA: {edu.get('gpa','')}")
 
         work_exp = p.get("work experience", p.get("work_experience", []))
@@ -267,7 +267,7 @@ class ProfileMixin:
         if val:
             iso = _to_iso_date(val)
             if iso == val and not _parse_date(val):
-                # Unrecognised format — warn but don't block
+                # Unrecognised format - warn but don't block
                 self.print_warning(f"Could not parse '{val}' as a date. Please use DD/MM/YYYY.")
                 self.pause()
                 return
@@ -335,7 +335,7 @@ class ProfileMixin:
         if current_url:
             print(f"  Current resume: {current_url}  [{current_type}]")
         else:
-            print(f"  Current resume: {'—'} (type: {current_type})")
+            print(f"  Current resume: {'-'} (type: {current_type})")
         print()
 
         print("  How would you like to provide your resume?\n")
@@ -412,13 +412,13 @@ class ProfileMixin:
         else:
             self.print_warning(
                 "Google account does not appear to be connected yet.\n"
-                "  You can still continue — publicly shared documents will work."
+                "  You can still continue - publicly shared documents will work."
             )
             return False
 
     def _update_resume_google_doc(self):
         self.clear_screen()
-        self.print_header("RESUME — GOOGLE DOCS URL")
+        self.print_header("RESUME - GOOGLE DOCS URL")
         print("  Paste the sharing link of your Google Doc resume.\n")
 
         # Offer Google OAuth connection before asking for the URL
@@ -449,7 +449,7 @@ class ProfileMixin:
         except Exception as e:
             print(" failed.\n")
             self.print_error(f"Could not process resume: {e}")
-            self.print_info("The URL has been saved — you can retry processing from this menu.")
+            self.print_info("The URL has been saved - you can retry processing from this menu.")
             # Still save the URL so the user doesn't lose it
             self._save_profile_changes({"resume_url": url, "resume_source_type": "google_doc"})
             self.pause()
@@ -466,7 +466,7 @@ class ProfileMixin:
         import os
 
         self.clear_screen()
-        self.print_header("RESUME — UPLOAD PDF / DOCX")
+        self.print_header("RESUME - UPLOAD PDF / DOCX")
         print(f"  {Colors.YELLOW}⚠️  WARNING: Resume tailoring is NOT available for PDF/DOCX uploads.{Colors.RESET}")
         print("  Your profile will be populated from the file, but AI tailoring")
         print("  requires a Google Docs URL. To enable tailoring, go back and")
@@ -619,7 +619,7 @@ class ProfileMixin:
             )
             print(" done.\n")
             self.print_success(
-                f"AI Engine saved — primary: {primary_mode}"
+                f"AI Engine saved - primary: {primary_mode}"
                 + (f", secondary: {secondary_mode}" if secondary_mode else ", no secondary")
             )
             print(f"\n  Fallback order: primary → secondary → retry primary → 60s cooldown → final retry.")
@@ -696,9 +696,9 @@ class ProfileMixin:
                 print()
                 for i, edu in enumerate(education, 1):
                     courses = _list_str(edu.get("relevant_courses", []))
-                    print(f"  {i}. {edu.get('degree','')} — {edu.get('institution','')}")
-                    print(f"     Year: {edu.get('graduation_year','')}  |  GPA: {edu.get('gpa') or '—'}")
-                    if courses and courses != "—":
+                    print(f"  {i}. {edu.get('degree','')} - {edu.get('institution','')}")
+                    print(f"     Year: {edu.get('graduation_year','')}  |  GPA: {edu.get('gpa') or '-'}")
+                    if courses and courses != "-":
                         print(f"     Courses: {courses}")
 
         elif choice == "3":
@@ -763,7 +763,7 @@ class ProfileMixin:
                     print(f"     {exp.get('start_date','')} – {exp.get('end_date','Present')}")
                     if exp.get("description"):
                         print(f"     {exp['description'][:120]}")
-                    if achievements and achievements != "—":
+                    if achievements and achievements != "-":
                         print(f"     Achievements: {achievements[:100]}")
 
         elif choice == "3":
@@ -958,7 +958,7 @@ class ProfileMixin:
         veteran_status = val or None
 
         disabilities_list = _ask_list(
-            "Disability Status (e.g. No disability, Blind, Deaf — comma-separated)",
+            "Disability Status (e.g. No disability, Blind, Deaf - comma-separated)",
             p.get("disabilities", []),
         )
 

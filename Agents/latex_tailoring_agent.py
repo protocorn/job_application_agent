@@ -666,7 +666,7 @@ def _collect_bullet_items(project_dir: str, min_length: int = 60) -> List[Dict[s
             except Exception:
                 continue
 
-            # \resumeItem{...} — brace-balanced extraction
+            # \resumeItem{...} - brace-balanced extraction
             for m in re.finditer(r"\\resumeItem\{", content):
                 start = m.end()
                 depth, pos = 1, start
@@ -690,7 +690,7 @@ def _collect_bullet_items(project_dir: str, min_length: int = 60) -> List[Dict[s
                         }
                     )
 
-            # \item <text> — capture to end of line
+            # \item <text> - capture to end of line
             for m in re.finditer(r"\\item\s+(.+)", content):
                 text = m.group(1).strip()
                 if len(text) >= min_length:
@@ -855,7 +855,7 @@ def tailor_latex_resume_from_base64(
             )
         else:
             logger.warning(
-                "Could not determine original page count — page overflow check will be skipped. "
+                "Could not determine original page count - page overflow check will be skipped. "
                 "Compile error: %s",
                 _orig_meta.get("error"),
             )
@@ -901,7 +901,7 @@ CRITICAL RULES (must follow exactly):
 
 3) PRESERVE THE PREAMBLE: Do not change the preamble (everything before \\begin{{document}}) except to add content. Keep all \\addtolength, \\setlength, geometry, and custom command definitions exactly as in the original. Only change body content (sections, bullets, text).
 
-4) CONTENT ONLY: Prefer changing only section content—experience bullets, skills list, summary, project descriptions—to match the job. Keep the same structure, section order, and formatting macros.
+4) CONTENT ONLY: Prefer changing only section content-experience bullets, skills list, summary, project descriptions-to match the job. Keep the same structure, section order, and formatting macros.
 
 5) NO MARKDOWN: Do not use *, **, #, backticks, or markdown wrappers.
 
@@ -1052,7 +1052,7 @@ REPAIR PAYLOAD:
         shrink_attempts_log: List[str] = []
         if tailored_pdf_bytes and original_page_count is not None:
             logger.info(
-                "Effective page counts — original: %s  tailored: %s",
+                "Effective page counts - original: %s  tailored: %s",
                 original_page_count, tailored_page_count,
             )
             already_shortened: set = set()
@@ -1069,7 +1069,7 @@ REPAIR PAYLOAD:
                 all_items = _collect_bullet_items(temp_dir, min_length=60)
                 candidates = [it for it in all_items if it["full_match"] not in already_shortened]
                 if not candidates:
-                    logger.warning("No more bullet items available to shorten — stopping.")
+                    logger.warning("No more bullet items available to shorten - stopping.")
                     break
 
                 batch = candidates[:5]
@@ -1096,7 +1096,7 @@ REPAIR PAYLOAD:
                 )
 
                 if applied == 0:
-                    logger.info("Batch %d produced no changes — skipping recompile.", batch_num)
+                    logger.info("Batch %d produced no changes - skipping recompile.", batch_num)
                     continue
 
                 _fix_empty_latex_lists_in_project(temp_dir)
@@ -1114,7 +1114,7 @@ REPAIR PAYLOAD:
                     )
                 else:
                     logger.warning(
-                        "Shrink batch %d produced a compile error — keeping previous version. "
+                        "Shrink batch %d produced a compile error - keeping previous version. "
                         "Error: %s",
                         batch_num, shrunk_meta.get("error"),
                     )
@@ -1124,7 +1124,7 @@ REPAIR PAYLOAD:
                 logger.info("Page count resolved: %s page(s)", tailored_page_count)
             elif tailored_page_count is not None and tailored_page_count > original_page_count:
                 logger.warning(
-                    "Could not reduce to %d page(s) after %d batch(es) — final: %d page(s)",
+                    "Could not reduce to %d page(s) after %d batch(es) - final: %d page(s)",
                     original_page_count, batch_num, tailored_page_count,
                 )
         # ─────────────────────────────────────────────────────────────────────
@@ -1161,7 +1161,7 @@ REPAIR PAYLOAD:
                 tailored_pdf_filename = os.path.basename(tailored_pdf_path)
                 tailored_pdf_base64 = base64.b64encode(tailored_pdf_bytes).decode("ascii")
             else:
-                # No compiled bytes available — fall back to compiling from the zip
+                # No compiled bytes available - fall back to compiling from the zip
                 compile_result = compile_latex_zip_to_pdf(
                     latex_zip_base64=tailored_zip_base64,
                     main_tex_file=main_tex_file,

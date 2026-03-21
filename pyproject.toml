@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name        = "launchway"
 version     = "0.2.42"
-description = "AI-powered job application automation — tailor resumes, find jobs, apply autonomously."
+description = "AI-powered job application automation - tailor resumes, find jobs, apply autonomously."
 readme      = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -33,7 +33,7 @@ classifiers = [
 # ─── Dependencies ────────────────────────────────────────────────────────────
 
 dependencies = [
-    # HTTP — CLI↔server communication
+    # HTTP - CLI↔server communication
     "requests>=2.31.0",
 
     # AES decryption of the encrypted agents bundle (agent_bootstrap.py)
@@ -82,7 +82,7 @@ dependencies = [
 
 [project.optional-dependencies]
 server = [
-    # Database (server-side only — CLI users do not need direct DB access)
+    # Database (server-side only - CLI users do not need direct DB access)
     "SQLAlchemy>=2.0.0",
     "psycopg2-binary>=2.9.0",
     "alembic>=1.12.0",
@@ -120,7 +120,7 @@ dev = [
 [project.scripts]
 launchway = "launchway.cli.agent:main"
 
-# ─── URLs — must come after all [project] keys in TOML ───────────────────────
+# ─── URLs - must come after all [project] keys in TOML ───────────────────────
 
 [project.urls]
 Homepage      = "https://launchway.app"
@@ -139,7 +139,7 @@ exclude = ["server*", "Website*", "tests*", "Testing*", "Agents*"]
 "launchway" = [
     "*.yaml",
     "*.txt",
-    "encrypted_agents/**/*.enc",    # encrypted agent blobs — decrypted at runtime
+    "encrypted_agents/**/*.enc",    # encrypted agent blobs - decrypted at runtime
     "encrypted_agents/*.txt",       # non-secret metadata (e.g. key fingerprint)
     "encrypted_support/*.enc",      # encrypted support files (credentials.json, etc.)
 ]

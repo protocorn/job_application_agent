@@ -3,7 +3,7 @@ Resume Keyword Extractor
 
 Extracts structured professional keywords from a user's resume using a
 lightweight Gemini model. Keywords are stored in the user's profile under
-'resume_keywords' and reused for job matching and resume tailoring — no
+'resume_keywords' and reused for job matching and resume tailoring - no
 domain-specific assumptions are made, so the extractor works for any profession.
 """
 
@@ -16,7 +16,7 @@ from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-# Lazy import to avoid circular deps — imported only when needed
+# Lazy import to avoid circular deps - imported only when needed
 def _get_key_manager():
     from gemini_key_manager import GeminiKeyManager
     return GeminiKeyManager
@@ -30,7 +30,7 @@ _FALLBACK_MODEL = "gemini-1.5-flash"
 _EXTRACT_PROMPT = """\
 You are a professional resume parser. Extract structured keywords from the resume below.
 
-Return ONLY a valid JSON object with EXACTLY these keys — no extra text, no markdown fences:
+Return ONLY a valid JSON object with EXACTLY these keys - no extra text, no markdown fences:
 {
   "skills": ["specific technical/professional skills, tools, software, platforms, technologies, methodologies"],
   "job_titles": ["job titles this person has held or is targeting"],
@@ -43,7 +43,7 @@ Return ONLY a valid JSON object with EXACTLY these keys — no extra text, no ma
 
 Rules:
 - Be comprehensive: include ALL technologies, frameworks, languages, tools, methodologies, certifications
-- This tool is used across ALL professions — include domain-specific terms for engineering, finance, medicine, law, sales, design, etc.
+- This tool is used across ALL professions - include domain-specific terms for engineering, finance, medicine, law, sales, design, etc.
 - Do NOT include company names, personal information (name, email, phone), or generic filler words like "team", "project", "experience"
 - For years_of_experience: integer estimate based on work history (0 if unclear)
 
@@ -117,7 +117,7 @@ class ResumeKeywordExtractor:
         text = _fetch_gdoc_as_text(resume_url)
         if not text:
             logger.warning(
-                "Could not fetch resume text from URL — "
+                "Could not fetch resume text from URL - "
                 "make sure the doc is shared as 'Anyone with the link can view'."
             )
             return None
@@ -129,7 +129,7 @@ class ResumeKeywordExtractor:
 
         Returns a dict with keys: skills, job_titles, industries, domains,
         education_fields, experience_level, years_of_experience, extracted_at.
-        Never raises — returns an empty-but-valid result on extraction failure.
+        Never raises - returns an empty-but-valid result on extraction failure.
         """
         if not resume_text or not resume_text.strip():
             logger.error("extract_from_text called with empty text")
@@ -161,7 +161,7 @@ class ResumeKeywordExtractor:
                 except Exception as e:
                     from gemini_key_manager import AiEngineNotConfiguredError
                     if isinstance(e, AiEngineNotConfiguredError):
-                        raise   # propagate immediately — no fallback makes sense
+                        raise   # propagate immediately - no fallback makes sense
                     logger.warning(f"Model {model_name!r} failed via key_manager: {e}")
             logger.error("All Gemini models failed during keyword extraction (key_manager path)")
             return None

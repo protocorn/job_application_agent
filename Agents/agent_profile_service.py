@@ -103,7 +103,7 @@ class AgentProfileService:
                 "visa sponsorship": profile.visa_sponsorship if profile and profile.visa_sponsorship else "",
                 "preferred location": profile.preferred_location if profile and profile.preferred_location else [""],
                 "willing to relocate": profile.willing_to_relocate if profile and profile.willing_to_relocate is not None else "",
-                # AI Engine — included so agents can build a GeminiKeyManager
+                # AI Engine - included so agents can build a GeminiKeyManager
                 "api_primary_mode": profile.api_primary_mode if profile and profile.api_primary_mode else "launchway",
                 "api_secondary_mode": profile.api_secondary_mode if profile and profile.api_secondary_mode else None,
                 # Decrypted key (server-side only; never sent to CLI clients)

@@ -151,7 +151,7 @@ def read_google_doc_content(docs_service, document_id, max_retries=3):
     Retries on:
     - Transient HTTP errors (429, 500, 502, 503, 504)
     - Empty body responses (Google sometimes returns an empty body immediately
-      after a 401 token-refresh cycle — a known transient API behaviour)
+      after a 401 token-refresh cycle - a known transient API behaviour)
     - Empty extracted text (handles docs whose content couldn't be parsed on
       the first attempt, e.g. due to a partial/stale response)
     """
@@ -616,7 +616,7 @@ def _normalize_for_match(text):
     t = unicodedata.normalize('NFKC', t)
     t = t.replace('\u00A0', ' ')
     t = t.replace('"', '"').replace('"', '"').replace(''', "'").replace(''', "'")
-    t = t.replace('–', '-').replace('—', '-')
+    t = t.replace('–', '-').replace('-', '-')
     t = re.sub(r"\s+", " ", t)
     return t.strip()
 
@@ -1329,7 +1329,7 @@ def apply_json_replacements_to_doc(docs_service, document_id, replacements_json,
                 if _normalize_for_match(plain_original_text) in doc_text_norm:
                     print(f"Warning: normalized match found but exact text not present; skipping: '{plain_original_text[:60]}...'")
                 else:
-                    print(f"! Could not find match for: '{plain_original_text[:60]}...' — skipping")
+                    print(f"! Could not find match for: '{plain_original_text[:60]}...' - skipping")
             else:
                 print(f"Warning: multiple ({count}) occurrences of target text; skipping to avoid over-replacement")
 
@@ -2279,7 +2279,7 @@ if __name__ == "__main__":
     # Example usage - replace with your actual values
     google_doc_url = "https://docs.google.com/document/d/1flfyzOJ_5sOklftoq76HLErYDmEYYdOsEsAB4G4ZMIs/edit?tab=t.0"
     job_description = """
-    Figma is growing our team of passionate creatives and builders on a mission to make design accessible to all. Figma’s platform helps teams bring ideas to life—whether you're brainstorming, creating a prototype, translating designs into code, or iterating with AI. From idea to product, Figma empowers teams to streamline workflows, move faster, and work together in real time from anywhere in the world. If you're excited to shape the future of design and collaboration, join us!
+    Figma is growing our team of passionate creatives and builders on a mission to make design accessible to all. Figma’s platform helps teams bring ideas to life-whether you're brainstorming, creating a prototype, translating designs into code, or iterating with AI. From idea to product, Figma empowers teams to streamline workflows, move faster, and work together in real time from anywhere in the world. If you're excited to shape the future of design and collaboration, join us!
 
 We’re looking for Data Science Interns who are excited to use data to answer big questions and guide decisions across Figma. At Figma, interns are embedded into small, collaborative teams where they’ll partner closely with engineers, PMs, and designers to make sense of data, build models, and surface insights that shape our product and business.
 

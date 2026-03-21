@@ -18,7 +18,7 @@ def check_browsers_installed() -> bool:
     try:
         from playwright.sync_api import sync_playwright
         with sync_playwright() as pw:
-            # Attempt to launch headlessly — will throw if binary is missing
+            # Attempt to launch headlessly - will throw if binary is missing
             browser = pw.chromium.launch(headless=True)
             browser.close()
         return True

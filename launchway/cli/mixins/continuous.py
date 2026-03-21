@@ -1,4 +1,4 @@
-"""Continuous auto-apply mixin — fully autonomous automation mode."""
+"""Continuous auto-apply mixin - fully autonomous automation mode."""
 
 import asyncio
 import json
@@ -480,7 +480,7 @@ class ContinuousApplyMixin:
                 except Exception as e:
                     self.print_error(f"Failed to setup proxies: {e}")
 
-        goal_str = self.get_input("Round goal — jobs to apply per round (max 10, default: 5): ").strip()
+        goal_str = self.get_input("Round goal - jobs to apply per round (max 10, default: 5): ").strip()
         try:
             session_goal = min(10, max(1, int(goal_str))) if goal_str else 5
         except ValueError:
@@ -705,7 +705,7 @@ class ContinuousApplyMixin:
         async def _fill_queue_to_goal() -> bool:
             all_queries = automation_state['query_variations']
             self.print_info(f"\n{'='*60}")
-            self.print_info(f"🔍 ROUND {automation_state['round_number']} — DISCOVERING JOBS (goal: {session_goal})")
+            self.print_info(f"🔍 ROUND {automation_state['round_number']} - DISCOVERING JOBS (goal: {session_goal})")
             self.print_info(f"{'='*60}")
 
             while overflow_queue and len(job_queue) < session_goal:
@@ -756,7 +756,7 @@ class ContinuousApplyMixin:
                 logger.error(f"Job discovery error: {e}", exc_info=True)
 
             if len(job_queue) >= session_goal:
-                self.print_success(f"✓ Goal reached — {len(job_queue)} jobs queued"
+                self.print_success(f"✓ Goal reached - {len(job_queue)} jobs queued"
                                    + (f" (+{len(overflow_queue)} overflow for next round)" if overflow_queue else ""))
                 return True
 
@@ -767,7 +767,7 @@ class ContinuousApplyMixin:
             round_submitted = 0
             round_goal      = min(session_goal, len(job_queue))
             while job_queue and round_submitted < session_goal and automation_state['running']:
-                # Check credits before each job — stop gracefully when exhausted
+                # Check credits before each job - stop gracefully when exhausted
                 try:
                     _avail, _daily = self.api.check_credit_available("job_applications")
                     if _daily.get("error") == "credit_check_unavailable":
@@ -792,7 +792,7 @@ class ContinuousApplyMixin:
 
                 self.print_header(
                     f"ROUND {automation_state['round_number']}  •  "
-                    f"JOB {round_submitted + 1}/{round_goal}  —  {job['company']}"
+                    f"JOB {round_submitted + 1}/{round_goal}  -  {job['company']}"
                 )
                 self.print_info(f"Title:     {job['title']}")
                 self.print_info(f"URL:       {job['url'][:70]}...")
@@ -827,7 +827,7 @@ class ContinuousApplyMixin:
             total_secs   = cooldown_minutes * 60
             wake_at      = datetime.now() + timedelta(seconds=total_secs)
             self.print_info(
-                f"\n😴 Round complete — cooldown until {wake_at.strftime('%I:%M %p')} "
+                f"\n😴 Round complete - cooldown until {wake_at.strftime('%I:%M %p')} "
                 f"({cooldown_minutes} min)"
             )
             while True:
@@ -839,7 +839,7 @@ class ContinuousApplyMixin:
                 print(f"\r  ⏳ Cooldown: {mins:02d}:{secs:02d} remaining … (Ctrl+C to stop)", end='', flush=True)
                 await asyncio.sleep(15)
             print()
-            self.print_success("✓ Cooldown finished — starting next round")
+            self.print_success("✓ Cooldown finished - starting next round")
 
         try:
             while automation_state['running']:
@@ -867,7 +867,7 @@ class ContinuousApplyMixin:
                     self.print_info("  3. Stop")
                     choice = self.get_input("Choice [1/2/3, default 1]: ").strip()
                     if choice == '2':
-                        self.print_info("Returning to menu — re-run to change parameters.")
+                        self.print_info("Returning to menu - re-run to change parameters.")
                         break
                     if choice == '3':
                         break
@@ -886,7 +886,7 @@ class ContinuousApplyMixin:
                 round_submitted = await _run_round()
 
                 self.print_success(
-                    f"\n🏁 Round {automation_state['round_number']} done — "
+                    f"\n🏁 Round {automation_state['round_number']} done - "
                     f"{round_submitted} submitted | "
                     f"total: {automation_state['applications_submitted']}"
                 )

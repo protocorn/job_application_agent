@@ -1,4 +1,4 @@
-"""Resume tailoring mixin — runs locally after agent bootstrap."""
+"""Resume tailoring mixin - runs locally after agent bootstrap."""
 
 import logging
 import os
@@ -81,7 +81,7 @@ class TailoringMixin:
         """
         Ensure Mimikree credentials are available for local resume tailoring.
         Tries the API first; if not connected, offers: open signup, enter login, or skip.
-        Never forces connection — returns (None, None) if user skips; callers may continue without Mimikree.
+        Never forces connection - returns (None, None) if user skips; callers may continue without Mimikree.
         """
         if not self.current_user:
             self.print_error("You must be logged in before using resume tailoring.")
@@ -109,7 +109,7 @@ class TailoringMixin:
         self.print_info("Mimikree is not connected. Tailoring can still run, but quality may be lower.")
         while True:
             print(f"\n  {Colors.BOLD}Mimikree options:{Colors.ENDC}")
-            print("    1) Open signup page (create account) — https://www.mimikree.com/signup")
+            print("    1) Open signup page (create account) - https://www.mimikree.com/signup")
             print("    2) Enter login details to connect")
             print("    3) Continue without Mimikree (reduced accuracy)")
             print("    4) Never show this prompt again")
@@ -166,7 +166,7 @@ class TailoringMixin:
 
             if choice == '4':
                 self._set_skip_mimikree_prompt(True)
-                self.print_info("Got it — we will stop asking about Mimikree for this account.")
+                self.print_info("Got it - we will stop asking about Mimikree for this account.")
                 self.print_info("Tailoring will continue without Mimikree and may be less accurate.")
                 return None, None
 
@@ -227,7 +227,7 @@ class TailoringMixin:
             return
 
         print("\nEnter job description:")
-        print("  (Paste the full text — press Enter on a blank line twice when done)\n")
+        print("  (Paste the full text - press Enter on a blank line twice when done)\n")
         jd_lines = []
         while True:
             line = input("  > ")
@@ -279,7 +279,7 @@ class TailoringMixin:
                     self.print_error("Credit debit failed; tailored output will not be kept in this run.")
                     raise
             else:
-                self.print_error("Resume tailoring failed — no URL returned.")
+                self.print_error("Resume tailoring failed - no URL returned.")
 
             self.pause()
 

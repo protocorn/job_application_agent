@@ -1,4 +1,4 @@
-"""Account settings mixin — password change, email update, account info via API."""
+"""Account settings mixin - password change, email update, account info via API."""
 
 import logging
 import os
@@ -87,7 +87,7 @@ class SettingsMixin:
             created = created.split('T')[0]
         print(f"    Member Since: {created or 'N/A'}")
         print(f"    Email Verified: {'Yes' if acct.get('email_verified') else 'No'}")
-        total = acct.get('total_applications', '—')
+        total = acct.get('total_applications', '-')
         print(f"    Total Applications: {total}")
 
         try:
@@ -96,8 +96,8 @@ class SettingsMixin:
                 print(f"\n  {Colors.BOLD}Rate Limits:{Colors.ENDC}")
                 tailoring = credits.get('resume_tailoring', {}).get('daily', {})
                 apps      = credits.get('job_applications', {}).get('daily', {})
-                print(f"    Resume Tailoring: {tailoring.get('used',0)}/{tailoring.get('limit','—')} today")
-                print(f"    Applications:     {apps.get('used',0)}/{apps.get('limit','—')} today")
+                print(f"    Resume Tailoring: {tailoring.get('used',0)}/{tailoring.get('limit','-')} today")
+                print(f"    Applications:     {apps.get('used',0)}/{apps.get('limit','-')} today")
         except LaunchwayAPIError:
             pass
 
@@ -203,7 +203,7 @@ class SettingsMixin:
         if env_file.exists():
             lines = env_file.read_text(encoding="utf-8").splitlines()
 
-        # Rewrite lines — remove old AI_PROVIDER and GOOGLE_API_KEY entries
+        # Rewrite lines - remove old AI_PROVIDER and GOOGLE_API_KEY entries
         keys_to_drop = {"AI_PROVIDER"}
         if remove_key or api_key is not None:
             keys_to_drop.add("GOOGLE_API_KEY")
