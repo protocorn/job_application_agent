@@ -27,7 +27,14 @@ class PatternRecorder:
     - Record new field label → profile field mappings
     - Update existing patterns (increment counts, recalculate confidence)
     - Filter sensitive fields (privacy protection)
+    - Validate that profile_field is a known global field (not user-specific paths)
     - Calculate confidence scores
+
+    Global vs. user-specific:
+        Only flat, universal profile fields belong in field_label_patterns.
+        Anything with array indexing (work_experience[0].title) or embedded
+        values (education[0].end (August 2025)) is user-specific and must NOT
+        be stored here — those go in user_field_overrides instead.
     """
 
     # Privacy: Never record patterns for these sensitive fields
@@ -49,6 +56,42 @@ class PatternRecorder:
         r'routing.*number',
         r'account.*number',
     ]
+
+    # Whitelist of profile fields that are universal across all users.
+    # ONLY these are allowed in the global field_label_patterns table.
+    # Anything not in this set is user-specific and belongs in user_field_overrides.
+    VALID_GLOBAL_PROFILE_FIELDS = {
+        # Identity — 'full_name' is the only supported combo field (→ first_name + last_name)
+        'first_name', 'last_name', 'full_name', 'middle_name', 'preferred_name',
+        'email', 'phone', 'mobile',
+
+        # Location
+        'address', 'address_line_1', 'address_line_2',
+        'city', 'state', 'country', 'zip_code', 'postal_code',
+
+        # Professional links
+        'linkedin', 'github', 'portfolio', 'website', 'twitter',
+
+        # Work authorization / demographics (EEO fields)
+        'visa_status', 'work_authorization', 'sponsorship_required',
+        'veteran_status', 'disability_status',
+        'gender', 'gender_identity',
+        'race', 'ethnicity', 'race_ethnicity', 'nationality',
+        'pronouns',
+
+        # Preferences
+        'willing_to_relocate', 'remote_preference', 'start_date',
+        'notice_period', 'salary_range',
+
+        # Education summary (non-indexed)
+        'highest_education', 'degree', 'major', 'gpa',
+
+        # Experience summary (non-indexed)
+        'years_of_experience', 'current_title', 'current_company',
+
+        # Application extras
+        'cover_letter', 'hear_about_us', 'referral_source',
+    }
 
     # Initial confidence for new patterns
     INITIAL_CONFIDENCE = 0.85
@@ -116,6 +159,14 @@ class PatternRecorder:
             logger.debug(
                 f"PatternRecorder: Skipping sensitive field '{field_label}' "
                 "(privacy exclusion)"
+            )
+            return False
+
+        # Global field validity check: reject user-specific / dynamic profile paths
+        if not self._is_valid_global_field(profile_field):
+            logger.debug(
+                f"PatternRecorder: Skipping user-specific profile_field '{profile_field}' "
+                f"for label '{field_label}' — not a valid global field"
             )
             return False
 
@@ -241,6 +292,14 @@ class PatternRecorder:
             )
             return False
 
+        # Global field validity check
+        if not self._is_valid_global_field(profile_field):
+            logger.debug(
+                f"PatternRecorder: Skipping user-specific profile_field '{profile_field}' "
+                f"for label '{field_label}' — not a valid global field"
+            )
+            return False
+
         normalized_label = self._normalize_label(field_label)
 
         try:
@@ -345,6 +404,34 @@ class PatternRecorder:
                 return False
 
         return True
+
+    def _is_valid_global_field(self, profile_field: str) -> bool:
+        """
+        Check if a profile_field is safe to store in the GLOBAL field_label_patterns table.
+
+        Rejects anything that is user-specific or dynamic:
+          - Array-indexed paths:  work_experience[0].title
+          - Embedded values:      education[0].end (August 2025)
+          - Deep nested paths:    anything with more than one dot segment
+          - Not in the whitelist: unknown / custom fields
+
+        Returns:
+            True if the field is a known, universal profile field
+            False if it looks user-specific (should go in user_field_overrides)
+        """
+        if not profile_field:
+            return False
+
+        # Structural guards — these patterns always indicate user-specific data
+        if '[' in profile_field:        # array indexing: work_experience[0]
+            return False
+        if '(' in profile_field:        # embedded value: (August 2025)
+            return False
+        if profile_field.count('.') > 0:  # any dotted path: obj.field
+            return False
+
+        # Whitelist check — must be a known universal field
+        return profile_field.lower() in self.VALID_GLOBAL_PROFILE_FIELDS
 
     def _normalize_label(self, label: str) -> str:
         """

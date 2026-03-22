@@ -16,11 +16,13 @@ from loguru import logger
 from components.executors.field_interactor_v2 import FieldInteractorV2
 from components.executors.deterministic_field_mapper import DeterministicFieldMapper
 from components.executors.learned_patterns_mapper import LearnedPatternsMapper
+from components.executors.semantic_field_mapper import SemanticFieldMapper
 from components.brains.gemini_field_mapper import GeminiFieldMapper
 from components.exceptions.field_exceptions import RequiresHumanInputError
 from components.state.field_completion_tracker import FieldCompletionTracker
 from components.validators.field_value_validator import FieldValueValidator
 from components.pattern_recorder import PatternRecorder
+from components.user_pattern_recorder import UserPatternRecorder
 
 
 class FieldAttemptTracker:
@@ -89,9 +91,23 @@ class GenericFormFillerV2Enhanced:
         self.user_id = user_id
         self.interactor = FieldInteractorV2(page, action_recorder)
         self.deterministic_mapper = DeterministicFieldMapper()
-        self.learned_mapper = LearnedPatternsMapper()  # NEW: Tier 2 - Learned patterns
+        self.learned_mapper = LearnedPatternsMapper(user_id=str(user_id) if user_id else None)  # Tier 2 - Learned patterns (user overrides first)
+        self.semantic_mapper = SemanticFieldMapper()        # Tier 3 - Local semantic similarity (before Gemini)
         self.ai_mapper = GeminiFieldMapper()
-        self.pattern_recorder = PatternRecorder()  # NEW: Records AI successes
+        self.pattern_recorder = PatternRecorder()        # Records AI successes → global table
+        self.user_pattern_recorder = UserPatternRecorder()  # Records human fills → per-user table
+
+        # Pre-load successful DB labels as extra anchors for the semantic mapper.
+        # This means "First Name" (seen in the DB) becomes part of the embedding index
+        # for first_name, so novel phrasings are compared against real-world examples.
+        self._load_db_anchors_into_semantic_mapper()
+
+        # Load user-specific cached answers for Gemini context enrichment.
+        # These are values the user previously typed that are NOT in the standard profile
+        # (e.g. "Supervisor Name", "Reason for Leaving", "Secondary Citizenship").
+        # Passed to Gemini so it can fill similar fields on future forms.
+        self._user_gemini_context: Dict[str, str] = self._load_user_gemini_context()
+
         self.completion_tracker = FieldCompletionTracker()
         self.attempt_tracker = FieldAttemptTracker()
         self.pre_filled_values = {}  # Track original values of fields before agent touches them
@@ -107,6 +123,242 @@ class GenericFormFillerV2Enhanced:
         # same field label+category, we stop retrying it (it most likely needs human input).
         self._field_failure_counts: dict = {}  # {page_key: {fingerprint: int}}
         self._MAX_FIELD_FAILURES = 3
+
+    # ── Semantic mapper: DB anchor loading ────────────────────────────────
+
+    def _load_db_anchors_into_semantic_mapper(self) -> None:
+        """
+        Load successful field_label_raw values from the DB and add them as
+        extra anchors for the semantic mapper.  This runs synchronously at
+        startup (one small SQL query) and is fast (<50 ms).
+
+        Effect: the semantic model's embedding index now includes all real-world
+        label phrasings the system has already seen, making future fuzzy matches
+        more accurate without any DB lookup at fill-time.
+        """
+        if not SemanticFieldMapper.is_available():
+            return
+        try:
+            from sqlalchemy import create_engine, text as sa_text
+            from urllib.parse import quote_plus
+            import os
+
+            DB_HOST     = os.getenv('DB_HOST', 'localhost')
+            DB_PORT     = os.getenv('DB_PORT', '5432')
+            DB_NAME     = os.getenv('DB_NAME', 'job_agent_db')
+            DB_USER     = os.getenv('DB_USER', 'postgres')
+            DB_PASSWORD = os.getenv('DB_PASSWORD', '')
+            encoded_pw  = quote_plus(DB_PASSWORD)
+            url = f"postgresql://{DB_USER}:{encoded_pw}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+            engine = create_engine(url, pool_pre_ping=True)
+            with engine.connect() as conn:
+                rows = conn.execute(sa_text("""
+                    SELECT profile_field, field_label_raw
+                    FROM field_label_patterns
+                    WHERE confidence_score >= 0.70
+                      AND occurrence_count >= 2
+                      AND profile_field IS NOT NULL
+                      AND field_label_raw IS NOT NULL
+                    ORDER BY occurrence_count DESC
+                    LIMIT 500
+                """)).fetchall()
+
+            db_anchors: Dict[str, List[str]] = {}
+            for profile_field, label_raw in rows:
+                db_anchors.setdefault(profile_field, []).append(label_raw)
+
+            if db_anchors:
+                self.semantic_mapper.add_db_anchors(db_anchors)
+                logger.info(
+                    f"SemanticFieldMapper: Pre-loaded DB anchors for "
+                    f"{len(db_anchors)} profile fields."
+                )
+
+        except Exception as e:
+            logger.debug(f"SemanticFieldMapper: Could not load DB anchors: {e}")
+
+    def _load_user_gemini_context(self) -> Dict[str, Any]:
+        """
+        Load ALL user_field_overrides entries into an in-memory pool.
+
+        This includes BOTH:
+          - profile_field IS NULL  → unmappable, always needs Gemini context
+          - profile_field IS NOT NULL → mapped by profiler, but may be absent
+            from the user's actual profile (orphaned after backfill).  Detected
+            and included at call-time when the profile is available.
+
+        Pool format: {field_label_raw: {'value': str, 'profile_field': str|None}}
+
+        At call-time, _select_relevant_user_context(fields, profile) excludes
+        entries where get_profile_value(profile, profile_field) returns a value
+        — those are handled directly by _try_learned_pattern and don't need
+        to be re-sent to Gemini.
+        """
+        if not self.user_id:
+            return {}
+
+        try:
+            from sqlalchemy import create_engine, text as sa_text
+            from urllib.parse import quote_plus
+
+            DB_HOST     = os.getenv('DB_HOST', 'localhost')
+            DB_PORT     = os.getenv('DB_PORT', '5432')
+            DB_NAME     = os.getenv('DB_NAME', 'job_agent_db')
+            DB_USER     = os.getenv('DB_USER', 'postgres')
+            DB_PASSWORD = os.getenv('DB_PASSWORD', '')
+            encoded_pw  = quote_plus(DB_PASSWORD)
+            url = f"postgresql://{DB_USER}:{encoded_pw}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+            engine = create_engine(url, pool_pre_ping=True)
+            with engine.connect() as conn:
+                rows = conn.execute(sa_text("""
+                    SELECT field_label_raw, field_value_cached, profile_field
+                    FROM user_field_overrides
+                    WHERE user_id              = :uid
+                      AND field_value_cached   IS NOT NULL
+                      AND field_value_cached   <> ''
+                      AND field_category       NOT IN ('file_upload')
+                      AND confidence_score     >= 0.80
+                    ORDER BY occurrence_count DESC, confidence_score DESC
+                    LIMIT 200
+                """), {'uid': str(self.user_id)}).fetchall()
+
+            pool = {
+                row[0]: {'value': row[1], 'profile_field': row[2]}
+                for row in rows
+            }
+            if pool:
+                null_count    = sum(1 for v in pool.values() if v['profile_field'] is None)
+                mapped_count  = len(pool) - null_count
+                logger.info(
+                    f"GeminiContextLoader: Pool loaded — {len(pool)} entries "
+                    f"({null_count} unmapped, {mapped_count} profile-mapped) "
+                    f"for user {self.user_id}"
+                )
+            return pool
+
+        except Exception as e:
+            logger.debug(f"GeminiContextLoader: Could not load user context: {e}")
+            return {}
+
+    # SIMILARITY THRESHOLD: how semantically close a context entry must be to
+    # at least one field in the current batch to be included in the prompt.
+    # 0.55 is intentionally lower than the field-mapping threshold (0.72) because
+    # here we want recall (don't miss a useful hint) not precision (don't fill wrong).
+    _CONTEXT_SIMILARITY_THRESHOLD = 0.55
+
+    # Maximum context entries per Gemini call — keeps prompt size bounded.
+    _MAX_CONTEXT_ENTRIES = 15
+
+    def _select_relevant_user_context(
+        self,
+        fields: List[Dict[str, Any]],
+        profile: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, str]:
+        """
+        From the full user-context pool, return only the entries that Gemini
+        actually needs — i.e. entries where the profile cannot supply the value.
+
+        Step 1 — Profile exclusion (Flaw 1 fix)
+        ----------------------------------------
+        For every pool entry that has a profile_field set, check whether the
+        current profile already has a value for that field.  If it does,
+        _try_learned_pattern will fill it directly — no need to send it to
+        Gemini as a hint.  If the profile is missing the value (orphaned after
+        profiler backfill), include it in the context so Gemini can use it.
+
+        Step 2 — Semantic relevance filter
+        ------------------------------------
+        If the surviving pool is still larger than _MAX_CONTEXT_ENTRIES, use
+        the already-loaded sentence-embedding model to keep only the entries
+        whose label is semantically close to at least one field in this batch.
+
+        Args:
+            fields:  The list of form fields being sent to Gemini this batch.
+            profile: The user's profile dict for this run (used in Step 1).
+
+        Returns:
+            Filtered {label: value} dict for the Gemini prompt.
+        """
+        raw_pool = self._user_gemini_context
+        if not raw_pool:
+            return {}
+
+        # ── Step 1: exclude entries the profile can already satisfy ──────────
+        pool: Dict[str, str] = {}
+        for label, entry in raw_pool.items():
+            pf    = entry.get('profile_field')
+            value = entry.get('value', '')
+
+            if pf and profile:
+                profile_val = self.learned_mapper.get_profile_value(profile, pf)
+                if profile_val:
+                    # Profile has this value → _try_learned_pattern handles it,
+                    # no need to include in Gemini context.
+                    continue
+                # Profile does NOT have the value → orphaned entry, include it.
+                pool[label] = value
+            else:
+                # profile_field is None → always include (unmappable field)
+                pool[label] = value
+
+        if not pool:
+            return {}
+
+        # ── Step 2: small pool → send as-is ──────────────────────────────────
+        if len(pool) <= self._MAX_CONTEXT_ENTRIES:
+            return pool
+
+        # ── Step 3: semantic relevance filter ────────────────────────────────
+        try:
+            import numpy as np
+            from components.executors.semantic_field_mapper import SemanticFieldMapper
+
+            if not SemanticFieldMapper.is_available() or SemanticFieldMapper._model is None:
+                return dict(list(pool.items())[:self._MAX_CONTEXT_ENTRIES])
+
+            model = SemanticFieldMapper._model
+
+            field_labels   = [f.get('label', '') for f in fields if f.get('label')]
+            context_labels = list(pool.keys())
+
+            if not field_labels:
+                return dict(list(pool.items())[:self._MAX_CONTEXT_ENTRIES])
+
+            all_labels = field_labels + context_labels
+            embeddings = model.encode(
+                all_labels,
+                normalize_embeddings=True,
+                show_progress_bar=False,
+            )
+
+            field_vecs   = embeddings[:len(field_labels)]
+            context_vecs = embeddings[len(field_labels):]
+
+            sim_matrix = context_vecs @ field_vecs.T
+            max_sims   = sim_matrix.max(axis=1)
+
+            scored = sorted(
+                [(context_labels[i], float(max_sims[i]))
+                 for i in range(len(context_labels))
+                 if max_sims[i] >= self._CONTEXT_SIMILARITY_THRESHOLD],
+                key=lambda x: x[1],
+                reverse=True,
+            )
+
+            selected = {label: pool[label] for label, _ in scored[:self._MAX_CONTEXT_ENTRIES]}
+
+            logger.debug(
+                f"GeminiContextLoader: {len(raw_pool)} pool → "
+                f"{len(pool)} after profile exclusion → "
+                f"{len(selected)} after semantic filter"
+            )
+            return selected
+
+        except Exception as e:
+            logger.debug(f"GeminiContextLoader: Semantic filter failed ({e}), using top-N")
+            return dict(list(pool.items())[:self._MAX_CONTEXT_ENTRIES])
 
     # ── AI-fill label lock helpers ─────────────────────────────────────────
 
@@ -245,40 +497,13 @@ class GenericFormFillerV2Enhanced:
             # Step 5: Wait for dynamic content
             await self.page.wait_for_timeout(self.DYNAMIC_CONTENT_WAIT_MS)
 
-        # Step 6: Final Gemini review and correction before submission
+        # Step 6: Lightweight heuristic cross-check (no Gemini call)
+        # The Gemini review + correction cycle was replaced by a capture-filter
+        # call in HumanFillTracker.  Here we do a fast, zero-cost sanity check
+        # to catch the most common fill mistake: a URL value in a non-URL field
+        # or a plain-text value in a URL field.
         if result["filled_fields"]:
-            logger.info("🤖 Performing final Gemini review...")
-            review_result = await self._final_gemini_review(result["filled_fields"], profile)
-            result["gemini_review"] = review_result
-
-            if not review_result.get("approved", False):
-                logger.warning(f"⚠️ Gemini flagged issues: {review_result.get('issues', [])}")
-
-                # Step 7: Attempt to correct flagged issues
-                logger.info("🔧 Attempting to correct Gemini-flagged issues...")
-                corrections_made = await self._correct_gemini_issues(
-                    review_result.get('issues', []),
-                    result["filled_fields"],
-                    last_detected_fields,
-                    profile,
-                    result
-                )
-
-                if corrections_made > 0:
-                    logger.info(f"✅ Corrected {corrections_made} issues - performing re-review...")
-                    # Re-review after corrections
-                    review_result = await self._final_gemini_review(result["filled_fields"], profile)
-                    result["gemini_review"] = review_result
-
-                    if review_result.get("approved", False):
-                        logger.info("✅ Form approved after corrections")
-                        result["success"] = True
-                    else:
-                        logger.warning("⚠️ Issues remain after correction attempts")
-                        result["success"] = False
-                else:
-                    logger.warning("⚠️ Could not automatically correct flagged issues")
-                    result["success"] = False
+            self._heuristic_fill_check(result)
 
         # Final summary
         result["total_fields_filled"] = len(result["filled_fields"])
@@ -734,29 +959,40 @@ class GenericFormFillerV2Enhanced:
             elif next_method == 'learned_pattern':
                 fields_needing_learned.append(field)
 
-        # PHASE 1.5: Learned patterns - DISABLED for speed
-        # This phase was slow (2+ min of DB queries) and added little value
-        # Gemini mapping (Phase 2) handles everything the patterns would have found
-        fields_needing_ai = []
-        # if fields_needing_learned:
-        #     logger.info(f"🧠 Phase 1.5: Attempting learned pattern matching for {len(fields_needing_learned)} fields...")
-        #     for field in fields_needing_learned:
-        #         field_id = self._get_field_id(field)
-        #         field_label = field.get('label', 'Unknown')
-        #
-        #         success = await self._try_learned_pattern(field, profile, result)
-        #         self.attempt_tracker.mark_attempted(field_id, 'learned_pattern')
-        #
-        #         if success:
-        #             filled_count += 1
-        #             continue  # Success, move to next field
-        #         else:
-        #             # Learned pattern failed - add to AI batch
-        #             if not self.attempt_tracker.has_attempted(field_id, 'ai'):
-        #                 fields_needing_ai.append(field)
+        # PHASE 1.5: Per-user override lookup (fast single-row DB query per field)
+        # These are human-filled / human-corrected values — trusted immediately.
+        fields_needing_semantic = []
+        if fields_needing_learned:
+            logger.info(
+                f"🗂️  Phase 1.5: Checking user overrides for "
+                f"{len(fields_needing_learned)} fields..."
+            )
+            for field in fields_needing_learned:
+                field_id = self._get_field_id(field)
+                success = await self._try_learned_pattern(field, profile, result)
+                self.attempt_tracker.mark_attempted(field_id, 'learned_pattern')
+                if success:
+                    filled_count += 1
+                else:
+                    fields_needing_semantic.append(field)
         
-        # Send ALL fields that need learned patterns directly to AI instead
-        fields_needing_ai = fields_needing_learned
+        # PHASE 1.75: Semantic mapping (local model, ~5 ms/field, no API cost)
+        # Handles paraphrases the DB has never seen before.
+        # Successful matches are written back to the DB as exact patterns.
+        fields_needing_ai = []
+        if fields_needing_semantic and SemanticFieldMapper.is_available():
+            logger.info(
+                f"🔍 Phase 1.75: Semantic mapping for "
+                f"{len(fields_needing_semantic)} fields..."
+            )
+            for field in fields_needing_semantic:
+                success = await self._try_semantic(field, profile, result)
+                if success:
+                    filled_count += 1
+                else:
+                    fields_needing_ai.append(field)
+        else:
+            fields_needing_ai = fields_needing_semantic
 
         # PHASE 2 & 3: Batch AI processing
         if fields_needing_ai:
@@ -840,14 +1076,23 @@ class GenericFormFillerV2Enhanced:
         profile: Dict[str, Any],
         result: Dict[str, Any]
     ) -> bool:
-        """Try to fill field using learned patterns from database."""
-        field_label = field.get('label', 'Unknown')
+        """
+        Try to fill field using learned patterns from database.
+
+        Only fills when profile_field is mapped to a known profile key.
+        Entries where profile_field is NULL are intentionally skipped here —
+        they fall through to Gemini, which receives them as context hints via
+        _user_gemini_context.  This prevents cached answers to job-specific
+        questions (e.g. "Relocate to Seattle? → Yes") from being blindly
+        reused on a different job posting.
+        """
+        field_label    = field.get('label', 'Unknown')
+        field_category = field.get('field_category', 'text_input')
 
         try:
-            # Query learned patterns
             learned_pattern = self.learned_mapper.map_field(
                 field_label,
-                field.get('field_category', 'text_input'),
+                field_category,
                 profile
             )
 
@@ -855,22 +1100,34 @@ class GenericFormFillerV2Enhanced:
                 logger.debug(f"⏭️ No learned pattern for '{field_label}'")
                 return False
 
-            # Get value from profile using the learned profile field
-            value = self.learned_mapper.get_profile_value(profile, learned_pattern.profile_field)
+            # Only proceed when profile_field is mapped — that means the
+            # profiler confirmed this is a stable, reusable personal fact.
+            # NULL profile_field means the answer may be job-specific; those
+            # entries are passed to Gemini as hints, not auto-filled.
+            if not learned_pattern.profile_field:
+                logger.debug(
+                    f"⏭️ User override for '{field_label}' has no profile_field mapping — "
+                    f"skipping direct fill, will surface as Gemini context hint"
+                )
+                return False
+
+            value = self.learned_mapper.get_profile_value(
+                profile, learned_pattern.profile_field
+            )
 
             if not value:
                 logger.debug(
-                    f"⏭️ Learned pattern found '{field_label}' → {learned_pattern.profile_field}, "
-                    f"but no value in profile"
+                    f"⏭️ Learned pattern found '{field_label}' → "
+                    f"{learned_pattern.profile_field}, but no value in profile"
                 )
-                # Record failure to reduce confidence
-                await self.pattern_recorder.record_pattern(
-                    field_label,
-                    learned_pattern.profile_field,
-                    field.get('field_category', 'text_input'),
-                    success=False,
-                    user_id=self.user_id
-                )
+                if learned_pattern.source == "global":
+                    await self.pattern_recorder.record_pattern(
+                        field_label,
+                        learned_pattern.profile_field,
+                        field_category,
+                        success=False,
+                        user_id=self.user_id,
+                    )
                 return False
 
             # Get fresh element
@@ -882,30 +1139,35 @@ class GenericFormFillerV2Enhanced:
             cleaned_value = FieldValueValidator.validate_and_clean(
                 value,
                 field_label,
-                field.get('field_category', 'text_input')
+                field_category
             )
 
             # Prepare field data
             field_data = {
                 'element': element,
                 'label': field_label,
-                'field_category': field.get('field_category', 'text_input'),
+                'field_category': field_category,
                 'stable_id': field.get('stable_id', '')
             }
 
             # Include group data for radio_group and checkbox_group
-            if field.get('field_category') == 'radio_group':
+            if field_category == 'radio_group':
                 field_data['individual_radios'] = field.get('individual_radios', [])
-            elif field.get('field_category') == 'checkbox_group':
+            elif field_category == 'checkbox_group':
                 field_data['individual_checkboxes'] = field.get('individual_checkboxes', [])
 
             # Fill the field
             fill_result = await self.interactor.fill_field(field_data, cleaned_value, profile)
 
             if fill_result['success']:
+                source_desc = (
+                    f"from {learned_pattern.profile_field}"
+                    if learned_pattern.profile_field
+                    else "cached human fill"
+                )
                 logger.info(
                     f"✅ Learned Pattern: '{field_label}' = '{cleaned_value}' "
-                    f"(from {learned_pattern.profile_field}, confidence: {learned_pattern.confidence_score:.2f})"
+                    f"({source_desc}, confidence: {learned_pattern.confidence_score:.2f})"
                 )
                 result["fields_by_method"]["learned_pattern"] += 1
                 result["filled_fields"][field_label] = cleaned_value
@@ -913,29 +1175,113 @@ class GenericFormFillerV2Enhanced:
                 field_id = self._get_field_id(field)
                 self.completion_tracker.mark_field_completed(field_id, field_label, cleaned_value)
 
-                # Record successful reuse to boost confidence
-                await self.pattern_recorder.record_pattern(
-                    field_label,
-                    learned_pattern.profile_field,
-                    field.get('field_category', 'text_input'),
-                    success=True,
-                    user_id=self.user_id
-                )
+                # Record successful reuse to boost confidence (only for global patterns)
+                if learned_pattern.profile_field and learned_pattern.source == "global":
+                    await self.pattern_recorder.record_pattern(
+                        field_label,
+                        learned_pattern.profile_field,
+                        field_category,
+                        success=True,
+                        user_id=self.user_id,
+                    )
                 return True
             else:
                 logger.debug(f"⏭️ Learned pattern fill failed for '{field_label}'")
-                # Record failure to reduce confidence
-                await self.pattern_recorder.record_pattern(
-                    field_label,
-                    learned_pattern.profile_field,
-                    field.get('field_category', 'text_input'),
-                    success=False,
-                    user_id=self.user_id
-                )
+                if learned_pattern.profile_field and learned_pattern.source == "global":
+                    await self.pattern_recorder.record_pattern(
+                        field_label,
+                        learned_pattern.profile_field,
+                        field_category,
+                        success=False,
+                        user_id=self.user_id,
+                    )
                 return False
 
         except Exception as e:
             logger.error(f"❌ Error in learned pattern attempt for '{field_label}': {e}")
+            return False
+
+    async def _try_semantic(
+        self,
+        field: Dict[str, Any],
+        profile: Dict[str, Any],
+        result: Dict[str, Any],
+    ) -> bool:
+        """
+        Try to fill field using local sentence-embedding similarity.
+
+        Runs entirely on-device (~5 ms per field after model load).
+        If a confident match is found, the mapping is recorded to the global
+        DB so it becomes an exact match next time — no model call needed.
+        """
+        field_label   = field.get('label', 'Unknown')
+        field_category = field.get('field_category', 'text_input')
+
+        try:
+            match = self.semantic_mapper.map_field(field_label)
+            if not match:
+                return False
+
+            # Resolve the profile value
+            value = self.learned_mapper.get_profile_value(profile, match.profile_field)
+            if not value:
+                logger.debug(
+                    f"🔍 Semantic match '{field_label}' → {match.profile_field} "
+                    f"(sim={match.confidence:.2f}), but no profile value"
+                )
+                return False
+
+            element = await self._get_fresh_element(field)
+            if not element:
+                return False
+
+            cleaned_value = FieldValueValidator.validate_and_clean(
+                value, field_label, field_category
+            )
+
+            field_data = {
+                'element':       element,
+                'label':         field_label,
+                'field_category': field_category,
+                'stable_id':     field.get('stable_id', ''),
+            }
+            if field_category == 'radio_group':
+                field_data['individual_radios'] = field.get('individual_radios', [])
+            elif field_category == 'checkbox_group':
+                field_data['individual_checkboxes'] = field.get('individual_checkboxes', [])
+
+            fill_result = await self.interactor.fill_field(field_data, cleaned_value, profile)
+
+            if fill_result['success']:
+                logger.info(
+                    f"✅ Semantic Match: '{field_label}' = '{cleaned_value}' "
+                    f"(→ {match.profile_field}, similarity={match.confidence:.2f})"
+                )
+                result["fields_by_method"]["semantic"] = (
+                    result["fields_by_method"].get("semantic", 0) + 1
+                )
+                result["filled_fields"][field_label] = cleaned_value
+
+                field_id = self._get_field_id(field)
+                self.completion_tracker.mark_field_completed(
+                    field_id, field_label, cleaned_value
+                )
+
+                # Record to global DB → becomes exact match next run
+                await self.pattern_recorder.record_pattern(
+                    field_label,
+                    match.profile_field,
+                    field_category,
+                    success=True,
+                    user_id=self.user_id,
+                )
+                return True
+
+            logger.debug(f"⏭️ Semantic fill failed for '{field_label}'")
+            return False
+
+        except Exception as e:
+            logger.error(f"❌ Error in semantic attempt for '{field_label}': {e}")
             return False
 
     async def _try_ai_batch(
@@ -954,9 +1300,20 @@ class GenericFormFillerV2Enhanced:
         filled_count = 0
         
         try:
-            # Make ONE batch Gemini call for all fields
+            # Make ONE batch Gemini call for all fields, injecting only the
+            # user-context entries that are relevant to this specific batch.
+            relevant_ctx = self._select_relevant_user_context(fields, profile)
             logger.info(f"🧠 Making batch Gemini call for {len(fields)} fields...")
-            ai_mappings = await self.ai_mapper.map_fields_to_profile(fields, profile, full_auto_mode=self.full_auto_mode)
+            if relevant_ctx:
+                logger.info(
+                    f"   Enriching prompt with {len(relevant_ctx)} relevant "
+                    f"user-context entries (pool size: {len(self._user_gemini_context)})"
+                )
+            ai_mappings = await self.ai_mapper.map_fields_to_profile(
+                fields, profile,
+                full_auto_mode=self.full_auto_mode,
+                user_context=relevant_ctx or None,
+            )
             logger.info(f"✅ Received {len(ai_mappings)} mappings from Gemini")
             
             # Apply each mapping
@@ -1179,8 +1536,13 @@ class GenericFormFillerV2Enhanced:
 
         try:
             # Get AI mapping
-            field_id = self._get_field_id(field)
-            ai_mappings = await self.ai_mapper.map_fields_to_profile([field], profile, full_auto_mode=self.full_auto_mode)
+            field_id     = self._get_field_id(field)
+            relevant_ctx = self._select_relevant_user_context([field], profile)
+            ai_mappings  = await self.ai_mapper.map_fields_to_profile(
+                [field], profile,
+                full_auto_mode=self.full_auto_mode,
+                user_context=relevant_ctx or None,
+            )
 
             if field_id not in ai_mappings:
                 logger.debug(f"⏭️ No AI mapping for '{field_label}'")
@@ -1433,15 +1795,55 @@ If none of the flagged issues represent a true contradiction with the profile, r
             logger.error(f"Error correcting Gemini issues: {e}")
             return 0
 
+    def _heuristic_fill_check(self, result: Dict[str, Any]) -> None:
+        """
+        Zero-cost sanity check on filled fields.  Replaces the removed Gemini
+        review cycle for the most common fill mistake: a URL ending up in a
+        non-URL field, or plain text in a URL field.
+
+        Logs warnings only — does not attempt corrections (those would require
+        a Gemini call we intentionally eliminated).
+        """
+        url_re      = re.compile(r'https?://', re.IGNORECASE)
+        url_labels  = re.compile(r'\b(linkedin|github|portfolio|website|url|link)\b', re.IGNORECASE)
+        city_labels = re.compile(r'\b(city|town|municipality)\b', re.IGNORECASE)
+        state_labels = re.compile(r'\b(state|province|region)\b', re.IGNORECASE)
+
+        issues = []
+        for label, value in result.get("filled_fields", {}).items():
+            val_is_url = bool(url_re.search(str(value)))
+            label_wants_url  = bool(url_labels.search(label))
+            label_wants_city  = bool(city_labels.search(label))
+            label_wants_state = bool(state_labels.search(label))
+
+            if label_wants_url and not val_is_url:
+                issues.append(f"'{label}' expected a URL but got: '{str(value)[:50]}'")
+            elif (label_wants_city or label_wants_state) and val_is_url:
+                issues.append(f"'{label}' expected a location but got a URL: '{str(value)[:50]}'")
+
+        if issues:
+            logger.warning(f"⚠️ Heuristic fill check flagged {len(issues)} potential issues:")
+            for issue in issues:
+                logger.warning(f"   {issue}")
+            result["fill_warnings"] = issues
+        else:
+            logger.info("✅ Heuristic fill check passed")
+
     async def _final_gemini_review(
         self,
         filled_fields: Dict[str, str],
         profile: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Final Gemini review of all filled fields before submission.
-        Returns: {"approved": bool, "issues": List[str]}
+        DEPRECATED — replaced by _heuristic_fill_check (no Gemini call) +
+        HumanFillTracker._filter_captures_with_gemini (runs at flush time,
+        sends no personal data).
+
+        Kept to avoid breaking any external callers; returns approved=True
+        immediately without making any API call.
         """
+        logger.debug("_final_gemini_review: skipped (replaced by heuristic check)")
+        return {"approved": True, "issues": []}
         try:
             from google import genai
             import os

@@ -101,27 +101,42 @@ class GeminiFieldMapper:
         except Exception as e:
             logger.error(f"❌ Failed to configure Gemini API: {e}")
     
-    async def map_fields_to_profile(self, form_fields: List[Dict[str, Any]], profile: Dict[str, Any], full_auto_mode: bool = False) -> Dict[str, Dict[str, Any]]:
+    async def map_fields_to_profile(
+        self,
+        form_fields: List[Dict[str, Any]],
+        profile: Dict[str, Any],
+        full_auto_mode: bool = False,
+        user_context: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, Dict[str, Any]]:
         """
         Maps form fields to our profile schema using Gemini with explicit ID-based mapping.
-        
+
         Args:
-            form_fields: List of field dictionaries with 'stable_id', 'label', 'options', etc.
-            profile: User's profile data for context
-            full_auto_mode: When True, agent operates in 100% auto-submit mode (no human prompts)
-            
+            form_fields:  List of field dictionaries with 'stable_id', 'label', 'options', etc.
+            profile:      User's profile data for context.
+            full_auto_mode: When True, agent operates in 100% auto-submit mode (no human prompts).
+            user_context: Optional dict of {field_label_raw: cached_value} pairs from
+                          user_field_overrides.  These are answers the user has previously
+                          typed that are NOT in the profile (e.g. supervisor name, GPA,
+                          reason for leaving).  Injected into the prompt so Gemini can use
+                          them when it encounters similar questions on this form.
+
         Returns:
             Dictionary mapping stable field IDs to profile data and selected values
         """
         try:
             if not form_fields:
                 return {}
-            
+
             # Create a comprehensive field catalog with unique IDs
             field_catalog = self._create_field_catalog(form_fields)
-            
+
             # Get AI mapping for all fields at once with explicit ID references
-            ai_mapping = await self._get_ai_field_mapping(field_catalog, profile, full_auto_mode=full_auto_mode)
+            ai_mapping = await self._get_ai_field_mapping(
+                field_catalog, profile,
+                full_auto_mode=full_auto_mode,
+                user_context=user_context,
+            )
             
             # Process AI mapping results
             result = {}
@@ -169,11 +184,21 @@ class GeminiFieldMapper:
         
         return catalog
 
-    async def _get_ai_field_mapping(self, field_catalog: Dict[str, Dict[str, Any]], profile: Dict[str, Any], full_auto_mode: bool = False) -> Dict[str, Dict[str, Any]]:
+    async def _get_ai_field_mapping(
+        self,
+        field_catalog: Dict[str, Dict[str, Any]],
+        profile: Dict[str, Any],
+        full_auto_mode: bool = False,
+        user_context: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, Dict[str, Any]]:
         """Get AI mapping for all fields with explicit ID-based responses."""
         try:
             # Create comprehensive prompt with field catalog
-            prompt = self._create_comprehensive_mapping_prompt(field_catalog, profile, full_auto_mode=full_auto_mode)
+            prompt = self._create_comprehensive_mapping_prompt(
+                field_catalog, profile,
+                full_auto_mode=full_auto_mode,
+                user_context=user_context,
+            )
             
             model = genai.GenerativeModel(self.model_name)
             response = model.generate_content(prompt)
@@ -185,7 +210,13 @@ class GeminiFieldMapper:
             logger.error(f"❌ Error getting AI field mapping: {e}")
             return {}
 
-    def _create_comprehensive_mapping_prompt(self, field_catalog: Dict[str, Dict[str, Any]], profile: Dict[str, Any], full_auto_mode: bool = False) -> str:
+    def _create_comprehensive_mapping_prompt(
+        self,
+        field_catalog: Dict[str, Dict[str, Any]],
+        profile: Dict[str, Any],
+        full_auto_mode: bool = False,
+        user_context: Optional[Dict[str, str]] = None,
+    ) -> str:
         """Create a comprehensive prompt that includes all field IDs and options."""
         # Create profile context
         profile_context = self._create_profile_context(profile, "comprehensive mapping")
@@ -258,6 +289,25 @@ MANDATORY FILLS in full auto mode (NEVER use NEEDS_HUMAN_INPUT for these):
         else:
             full_auto_section = ""
 
+        # Build the user-context block only when there are extra entries
+        if user_context:
+            ctx_lines = "\n".join(
+                f'  - "{label}": "{value}"'
+                for label, value in user_context.items()
+                if value
+            )
+            user_context_block = f"""
+USER-SPECIFIC CONTEXT (from previous sessions — answers this user has given before that are NOT in the profile):
+{ctx_lines}
+
+Use this context to fill fields that aren't covered by the profile.  For example, if a field asks
+"Reason for Leaving" and the context includes a previous answer to "Reason for Leaving (required)",
+use that answer.  Apply reasonable semantic matching — "Manager Name" can use the "Supervisor Name"
+answer, "Ending GPA" can use the "GPA" answer, etc.
+"""
+        else:
+            user_context_block = ""
+
         prompt = f"""
 You are helping to fill out a job application form. I will provide you with a catalog of all form fields with their unique IDs, and you need to map each field to the appropriate action.
 
@@ -272,6 +322,7 @@ Double-check: the value you assign to each ID must make sense for THAT field's L
 
 USER PROFILE:
 {profile_context}
+{user_context_block}
 
 FORM FIELDS CATALOG:
 {catalog_str}

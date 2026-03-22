@@ -35,6 +35,9 @@ numpy>=1.25.0
 Pillow
 PyPDF2>=3.0.0
 
+# Semantic field mapping (local embeddings, no API cost)
+sentence-transformers>=3.0.0
+
 # Config / utilities
 python-dotenv>=1.0.0
 python-dateutil>=2.8.2

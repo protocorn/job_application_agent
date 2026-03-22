@@ -4,11 +4,16 @@ Learned Patterns Mapper - Uses global database of learned field mappings
 This mapper queries the field_label_patterns database to reuse successful
 field label → profile field mappings, reducing expensive AI API calls by 60-80%.
 
+Lookup priority (highest → lowest):
+  1. user_field_overrides  — per-user human fills / corrections (no occurrence minimum)
+  2. field_label_patterns  — global AI-learned patterns (confidence ≥ 0.70, occurrences ≥ 2)
+  3. Gemini AI             — fallback when no pattern exists
+
 Privacy: Only uses labels and mappings, never stores actual field values.
 """
 import re
 from typing import Dict, Optional, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from loguru import logger
 from sqlalchemy import create_engine, text
@@ -29,6 +34,9 @@ class LearnedPattern:
     occurrence_count: int  # Number of times seen
     last_used: Optional[datetime]
     pattern_id: int  # Database ID for tracking
+    # For user overrides: the cached value the human typed (may be None)
+    cached_value: Optional[str] = field(default=None)
+    source: str = field(default="global")  # "global" | "user_override"
 
 
 class LearnedPatternsMapper:
@@ -38,13 +46,17 @@ class LearnedPatternsMapper:
     Strategy:
     1. Normalize field label
     2. Check in-memory cache (5-min TTL)
-    3. Query database (exact match first, then fuzzy)
-    4. Return pattern if confidence >= 0.70 and occurrences >= 2
+    3. Query user_field_overrides first (per-user, no occurrence minimum)
+    4. Query field_label_patterns (global, confidence >= 0.70 and occurrences >= 2)
+    5. Return pattern or None (triggers Gemini AI fallback)
     """
 
-    # Confidence threshold for auto-using patterns
+    # Confidence threshold for auto-using global patterns
     MIN_CONFIDENCE = 0.70
     MIN_OCCURRENCES = 2
+
+    # User overrides are always trusted if confidence >= this (human = correct by definition)
+    MIN_CONFIDENCE_USER_OVERRIDE = 0.50
 
     # Fuzzy matching similarity threshold (pg_trgm)
     FUZZY_SIMILARITY_THRESHOLD = 0.75
@@ -52,9 +64,17 @@ class LearnedPatternsMapper:
     # Cache TTL (5 minutes)
     CACHE_TTL_SECONDS = 300
 
-    def __init__(self):
-        """Initialize mapper with database connection and cache."""
-        self.pattern_cache = {}  # {normalized_label: (pattern, timestamp)}
+    def __init__(self, user_id: Optional[str] = None, site_domain: Optional[str] = None):
+        """
+        Initialize mapper with database connection and cache.
+
+        Args:
+            user_id:     When provided, user_field_overrides is checked first.
+            site_domain: Optional domain for site-scoped user overrides (e.g. 'greenhouse.io').
+        """
+        self.user_id = user_id
+        self.site_domain = site_domain
+        self.pattern_cache = {}  # {cache_key: (pattern, timestamp)}
         self.cache_timestamps = {}
         self._init_database()
 
@@ -83,15 +103,23 @@ class LearnedPatternsMapper:
         self,
         field_label: str,
         field_category: str,
-        profile: Dict[str, Any]
+        profile: Dict[str, Any],
+        user_id: Optional[str] = None,
+        site_domain: Optional[str] = None,
     ) -> Optional[LearnedPattern]:
         """
         Map a field label to a profile field using learned patterns.
 
+        Lookup order:
+          1. user_field_overrides  (if user_id provided) — no occurrence minimum
+          2. field_label_patterns  (global)              — confidence ≥ 0.70, occurrences ≥ 2
+
         Args:
-            field_label: The visible label of the form field
+            field_label:   The visible label of the form field
             field_category: Type of field (dropdown, text_input, etc.)
-            profile: User profile dict (not used for mapping, but kept for consistency)
+            profile:       User profile dict (not used for mapping, kept for consistency)
+            user_id:       Override the instance-level user_id for this call
+            site_domain:   Override the instance-level site_domain for this call
 
         Returns:
             LearnedPattern if found with sufficient confidence, None otherwise
@@ -99,33 +127,164 @@ class LearnedPatternsMapper:
         if not self.engine:
             return None
 
+        effective_user_id    = user_id    or self.user_id
+        effective_site_domain = site_domain or self.site_domain
+
         # Normalize label
         normalized_label = self._normalize_label(field_label)
 
+        # Cache key includes user so per-user overrides don't bleed into global cache
+        cache_key = f"{effective_user_id or 'global'}:{normalized_label}"
+
         # Check cache first
-        cached_pattern = self._get_from_cache(normalized_label)
+        cached_pattern = self._get_from_cache(cache_key)
         if cached_pattern is not None:
             logger.debug(f"LearnedPatternsMapper: Cache hit for '{field_label}'")
             return cached_pattern
 
-        # Try exact match first (faster)
-        pattern = self._query_exact_match(normalized_label, field_category)
+        pattern = None
 
-        # Fallback to fuzzy match if exact match fails
+        # ── Priority 1: per-user overrides ──────────────────────────────────
+        if effective_user_id:
+            pattern = self._query_user_override(
+                normalized_label, field_category, effective_user_id, effective_site_domain
+            )
+            if pattern:
+                logger.info(
+                    f"LearnedPatternsMapper: [USER OVERRIDE] '{field_label}' → "
+                    f"{pattern.profile_field or '(cached value)'} "
+                    f"(confidence: {pattern.confidence_score:.2f})"
+                )
+
+        # ── Priority 2: global learned patterns ─────────────────────────────
+        if pattern is None:
+            pattern = self._query_exact_match(normalized_label, field_category)
+
         if pattern is None:
             pattern = self._query_fuzzy_match(normalized_label, field_category)
 
         # Cache the result (even if None, to avoid repeated queries)
         if pattern:
-            self._add_to_cache(normalized_label, pattern)
-            logger.info(
-                f"LearnedPatternsMapper: Mapped '{field_label}' → {pattern.profile_field} "
-                f"(confidence: {pattern.confidence_score:.2f}, occurrences: {pattern.occurrence_count})"
+            self._add_to_cache(cache_key, pattern)
+            if pattern.source == "global":
+                logger.info(
+                    f"LearnedPatternsMapper: Mapped '{field_label}' → {pattern.profile_field} "
+                    f"(confidence: {pattern.confidence_score:.2f}, occurrences: {pattern.occurrence_count})"
             )
         else:
             logger.debug(f"LearnedPatternsMapper: No pattern found for '{field_label}'")
 
         return pattern
+
+    def _query_user_override(
+        self,
+        normalized_label: str,
+        field_category: str,
+        user_id: str,
+        site_domain: Optional[str] = None,
+    ) -> Optional[LearnedPattern]:
+        """
+        Query user_field_overrides for a per-user pattern.
+
+        No occurrence minimum — a single human fill is trusted immediately.
+        Tries exact match first, then fuzzy (if pg_trgm available).
+        Site-domain-scoped rows are preferred over global rows (NULL site_domain).
+        """
+        if not self.SessionLocal:
+            return None
+
+        try:
+            session = self.SessionLocal()
+
+            result = session.execute(text("""
+                SELECT
+                    id,
+                    profile_field,
+                    field_category,
+                    confidence_score,
+                    occurrence_count,
+                    last_used,
+                    field_value_cached,
+                    -- Prefer site-scoped rows over global rows
+                    CASE WHEN site_domain = :site_domain THEN 1 ELSE 0 END AS scope_rank
+                FROM user_field_overrides
+                WHERE user_id = :user_id
+                  AND field_label_normalized = :label
+                  AND confidence_score >= :min_confidence
+                  AND (site_domain = :site_domain OR site_domain IS NULL)
+                ORDER BY scope_rank DESC, confidence_score DESC, occurrence_count DESC
+                LIMIT 1
+            """), {
+                'user_id':      user_id,
+                'label':        normalized_label,
+                'site_domain':  site_domain,
+                'min_confidence': self.MIN_CONFIDENCE_USER_OVERRIDE,
+            }).first()
+
+            session.close()
+
+            if result:
+                return LearnedPattern(
+                    profile_field=result[1] or "",
+                    field_category=result[2] or field_category,
+                    confidence_score=float(result[3]),
+                    occurrence_count=result[4],
+                    last_used=result[5],
+                    pattern_id=result[0],
+                    cached_value=result[6],
+                    source="user_override",
+                )
+
+            # Fuzzy fallback for user overrides
+            try:
+                result = session.execute(text("""
+                    SELECT
+                        id,
+                        profile_field,
+                        field_category,
+                        confidence_score,
+                        occurrence_count,
+                        last_used,
+                        field_value_cached,
+                        similarity(field_label_normalized, :label) AS sim
+                    FROM user_field_overrides
+                    WHERE user_id = :user_id
+                      AND similarity(field_label_normalized, :label) > :sim_threshold
+                      AND confidence_score >= :min_confidence
+                      AND (site_domain = :site_domain OR site_domain IS NULL)
+                    ORDER BY sim DESC, confidence_score DESC
+                    LIMIT 1
+                """), {
+                    'user_id':        user_id,
+                    'label':          normalized_label,
+                    'site_domain':    site_domain,
+                    'sim_threshold':  self.FUZZY_SIMILARITY_THRESHOLD,
+                    'min_confidence': self.MIN_CONFIDENCE_USER_OVERRIDE,
+                }).first()
+
+                if result:
+                    logger.debug(
+                        f"LearnedPatternsMapper: Fuzzy user override match "
+                        f"(similarity: {result[7]:.2f})"
+                    )
+                    return LearnedPattern(
+                        profile_field=result[1] or "",
+                        field_category=result[2] or field_category,
+                        confidence_score=float(result[3]),
+                        occurrence_count=result[4],
+                        last_used=result[5],
+                        pattern_id=result[0],
+                        cached_value=result[6],
+                        source="user_override",
+                    )
+            except Exception:
+                pass  # pg_trgm not available; that's fine
+
+            return None
+
+        except Exception as e:
+            logger.error(f"LearnedPatternsMapper: User override query failed: {e}")
+            return None
 
     def _normalize_label(self, label: str) -> str:
         """
@@ -205,7 +364,8 @@ class LearnedPatternsMapper:
                     confidence_score=float(result[3]),
                     occurrence_count=result[4],
                     last_used=result[5],
-                    pattern_id=result[0]
+                    pattern_id=result[0],
+                    source="global",
                 )
 
             return None
@@ -278,7 +438,8 @@ class LearnedPatternsMapper:
                     confidence_score=float(result[3]),
                     occurrence_count=result[4],
                     last_used=result[5],
-                    pattern_id=result[0]
+                    pattern_id=result[0],
+                    source="global",
                 )
 
             return None
@@ -312,20 +473,44 @@ class LearnedPatternsMapper:
         self.pattern_cache[normalized_label] = pattern
         self.cache_timestamps[normalized_label] = datetime.now()
 
+    # Combo fields: profile_field value → how to build the combined string.
+    # Only add combos that are 100% unambiguous across every job form.
+    COMBO_FIELDS: Dict[str, list] = {
+        'full_name': ['first_name', 'last_name'],
+    }
+
     def get_profile_value(self, profile: Dict[str, Any], profile_field: str) -> Optional[Any]:
         """
         Extract value from profile using the mapped profile_field.
 
-        Handles nested fields and common profile structure variations.
+        Handles:
+          - Combo fields (full_name → "First Last")
+          - Direct key access
+          - Common key variations (spaces, title-case, no-underscore)
 
         Args:
             profile: User profile dictionary
-            profile_field: Field name to extract (e.g., "first_name", "veteran_status")
+            profile_field: Field name to extract (e.g., "first_name", "full_name")
 
         Returns:
             Value from profile, or None if not found
         """
-        # Direct key access
+        # ── Combo field handling ─────────────────────────────────────────────
+        if profile_field in self.COMBO_FIELDS:
+            parts = []
+            for sub_field in self.COMBO_FIELDS[profile_field]:
+                val = self.get_profile_value(profile, sub_field)
+                if val:
+                    parts.append(str(val).strip())
+            if parts:
+                return ' '.join(parts)
+            logger.debug(
+                f"LearnedPatternsMapper: Combo field '{profile_field}' "
+                f"— no sub-fields resolved"
+            )
+            return None
+
+        # ── Direct key access ────────────────────────────────────────────────
         if profile_field in profile:
             return profile[profile_field]
 
@@ -337,7 +522,7 @@ class LearnedPatternsMapper:
         # Try common variations
         variations = [
             profile_field.replace('_', ' ').title(),  # "first_name" → "First Name"
-            profile_field.replace('_', ''),  # "first_name" → "firstname"
+            profile_field.replace('_', ''),            # "first_name" → "firstname"
         ]
 
         for variation in variations:

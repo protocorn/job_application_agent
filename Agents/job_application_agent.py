@@ -447,6 +447,13 @@ class RefactoredJobAgent:
         # Update the state machine's page reference if it exists
         if hasattr(self, 'state_machine') and self.state_machine:
             self.state_machine.page = new_page
+
+        # Re-attach human fill tracker to the new tab
+        if hasattr(self, '_human_tracker') and self._human_tracker:
+            try:
+                await self._human_tracker.update_page(new_page)
+            except Exception as _ht_err:
+                logger.warning(f"HumanFillTracker: Re-attach on tab switch failed: {_ht_err}")
         
         logger.info("✅ All components updated for new page")
 
@@ -493,7 +500,43 @@ class RefactoredJobAgent:
             # Wait a bit more for dynamic content to load
             await self.page.wait_for_timeout(3000)
             self._log_to_jobs("info", "✅ Page loaded successfully")
-            
+
+            # ── User Override Profiler ───────────────────────────────────────
+            # Backfill profile_field for any user_field_overrides rows that still
+            # have profile_field = NULL from previous sessions.  Runs in the
+            # background so it doesn't delay page processing.
+            if self.user_id:
+                try:
+                    from components.user_override_profiler import UserOverrideProfiler
+                    _profiler = UserOverrideProfiler()
+                    asyncio.create_task(
+                        _profiler.run(user_id=str(self.user_id)),
+                        # Python 3.11+ supports name= kwarg; wrap to stay compatible
+                    )
+                except Exception as _prof_err:
+                    logger.debug(f"UserOverrideProfiler: skipped: {_prof_err}")
+            # ────────────────────────────────────────────────────────────────
+
+            # ── Human Fill Tracker ───────────────────────────────────────────
+            # Attach immediately after the page loads.  The tracker runs for the
+            # entire lifetime of the tab — including after the state machine ends
+            # and the browser stays open for manual completion.  Debounce handles
+            # saves automatically; no user action required.
+            self._human_tracker = None
+            try:
+                from components.human_fill_tracker import HumanFillTracker
+                from components.user_pattern_recorder import UserPatternRecorder
+                self._human_tracker = HumanFillTracker(
+                    page                  = self.page,
+                    user_id               = str(self.user_id) if self.user_id else None,
+                    user_pattern_recorder = UserPatternRecorder(),
+                    site_url              = url,
+                )
+                await self._human_tracker.attach()
+            except Exception as _ht_err:
+                logger.warning(f"HumanFillTracker: Could not attach: {_ht_err}")
+            # ────────────────────────────────────────────────────────────────
+
             # Initialize and run the state machine
             self.state_machine = StateMachine(initial_state='start', page=self.page)
             self._register_states()  # Register states AFTER creating the state machine
@@ -2331,6 +2374,8 @@ Return ONLY a JSON object:
                 if result.get('requires_human'):
                     logger.warning(f"👤 {len(result['requires_human'])} fields require human input")
                     state.context['human_intervention_reason'] = f"Fields requiring input: {[f['field'] for f in result['requires_human']]}"
+                    # Store the full list so HumanFillTracker can tag them as 'human_fill'
+                    state.context['requires_human_fields'] = result['requires_human']
                     return 'human_intervention'
 
                 # Other failure
@@ -3051,43 +3096,25 @@ IMPORTANT:
 
     async def _state_human_intervention(self, state: ApplicationState) -> Optional[str]:
         """Pauses execution and waits for human input."""
-        reason = state.context.get('human_intervention_reason', 'No reason provided.')
+        reason     = state.context.get('human_intervention_reason', 'No reason provided.')
         action_seq = state.context.get('action_sequence', [])
-        
+
+        # Note: HumanFillTracker is already running on this tab — it was attached
+        # right after the page loaded in process_link().  No setup needed here.
+
         logger.critical("="*80)
         print("\n" + "="*50)
         print("📋 HUMAN INTERVENTION REQUIRED")
         print(f"   Reason: {reason}")
-        print(f"   Action sequence: {' -> '.join(action_seq[-10:])}")  # Show last 10 actions
+        print(f"   Action sequence: {' -> '.join(action_seq[-10:])}")
         print("   Please complete the required action in the browser.")
         print("   Press Enter in this terminal when you are ready to continue.")
         print("="*50 + "\n")
-        
-        # Update job status and log the intervention need
+
         self._update_job_and_session_status('intervention', f"🚨 Human intervention required: {reason}")
-        
-        # CRITICAL: Register VNC session IMMEDIATELY before any blocking operations
-        # This ensures the user can connect via VNC even if the subsequent steps (like saving state) hang or take time.
-        if self.vnc_mode and self.vnc_coordinator:
-            try:
-                from components.vnc import vnc_session_manager as vsm
-                vnc_info = self.get_vnc_session_info()
-                if vnc_info and self.job_id:
-                     # Register/Update session info
-                     vsm.sessions[self.job_id] = {
-                        'session_id': self.job_id,
-                        'user_id': self.user_id,
-                        'job_url': self.page.url,
-                        'vnc_port': self.vnc_port,
-                        'status': 'intervention', # Special status for intervention
-                        'created_at': time.time()
-                    }
-                     logger.info(f"✅ Registered VNC session {self.job_id} for intervention (PRE-FREEZE)")
-            except Exception as vnc_reg_err:
-                logger.warning(f"Failed to register VNC session for intervention: {vnc_reg_err}")
 
         try:
-            # SAVE ACTION RECORDER before human intervention
+            # Save action recorder before handing over
             if self.session_manager and self.current_session and self.action_recorder:
                 try:
                     logger.info("🎬 Saving action recorder before human intervention...")
@@ -3099,88 +3126,82 @@ IMPORTANT:
                 except Exception as recorder_error:
                     logger.error(f"Failed to save action recorder: {recorder_error}")
 
-            # FREEZE SESSION before waiting for human intervention
+            # Freeze session before handing over
             if self.session_manager and self.current_session:
                 try:
                     completion_tracker = None
                     if hasattr(self.form_filler, 'completion_tracker'):
                         completion_tracker = self.form_filler.completion_tracker
 
-                    # Use wait_for to prevent hanging indefinitely
                     success = await asyncio.wait_for(
                         self.session_manager.freeze_session(
                             self.current_session.session_id,
                             self.page,
                             completion_tracker
                         ),
-                        timeout=15.0 # 15 second timeout for freeze
+                        timeout=15.0
                     )
-                    
+
                     if success:
                         logger.info(f"Session {self.current_session.session_id} frozen before human intervention")
-                        self._log_to_jobs("info", f"💾 Session saved before human review!")
-                        # Mark that session was already frozen to avoid double-freezing
+                        self._log_to_jobs("info", "💾 Session saved before human review!")
                         self._session_already_frozen = True
                     else:
-                        logger.warning(f"Failed to freeze session {self.current_session.session_id} before intervention")
+                        logger.warning(f"Failed to freeze session {self.current_session.session_id}")
                 except asyncio.TimeoutError:
                     logger.error("TIMEOUT freezing session before intervention - proceeding anyway")
                 except Exception as freeze_error:
                     logger.error(f"Error freezing session before intervention: {freeze_error}")
-            
-            # Notify the frontend about the intervention need
+
+            # Notify frontend
             await self._notify_intervention_needed(reason, action_seq)
-            
-            # Keep browser open for human intervention
+
             logger.info("💾 Session state saved! Browser will stay open for manual completion.")
             self._log_to_jobs("info", "✅ Session saved! Browser is open for you to complete the application manually.")
-
             logger.info("👤 Browser staying open for human intervention")
             self._log_to_jobs("info", "👤 Please complete the application manually. The browser will stay open.")
 
-            # Set flag to keep browser open
+            # Keep browser alive
             self.keep_browser_open_for_human = True
 
-            # Mark session as ready for manual completion
             if self.session_manager and self.current_session:
                 self.session_manager.update_session(
-                    self.current_session.session_id, 
+                    self.current_session.session_id,
                     status="needs_attention"
                 )
-            
-            # VNC MODE: In VNC mode, don't wait - return immediately so batch processing can continue
-            if self.vnc_mode:
-                logger.info("🖥️ VNC mode: Ending state machine for user intervention")
-                logger.info("   Browser will stay alive for user to complete manually")
-                self._log_to_jobs("info", "✅ Ready for review! Click 'Review & Submit' to access browser.")
-                # Return None to end state machine, agent will return vnc_info to API
-                return None
 
-            # Check if we should wait for user input in debug mode
-            elif self.debug:
-                logger.info("🔍 --debug flag detected: waiting for user to complete manual steps...")
+            # Debug mode: block on Enter so agent can continue afterward
+            if self.debug:
+                logger.info("🔍 --debug flag: waiting for user to complete manual steps...")
                 self._log_to_jobs("info", "🐛 Debug mode: Complete manual steps, then press Enter to continue")
-
-                # Wait for user input in debug mode
                 try:
                     await asyncio.get_event_loop().run_in_executor(
                         None,
                         input,
                         "Press Enter when you have completed the manual steps and want to continue..."
                     )
-                    logger.info("👤 User indicated manual completion finished")
+                    logger.info("👤 User confirmed manual completion — continuing...")
                     self._log_to_jobs("info", "✅ User confirmed manual completion - continuing...")
-                    return 'success'  # Continue to success state
+
+                    # Optional immediate tracker flush on Enter
+                    if hasattr(self, '_human_tracker') and self._human_tracker:
+                        try:
+                            await self._human_tracker.flush_now()
+                        except Exception as _te:
+                            logger.warning(f"HumanFillTracker: Flush error: {_te}")
+
+                    return 'success'
                 except KeyboardInterrupt:
                     logger.info("👤 User interrupted - ending process")
                     return None
-            else:
-                # Don't continue with state machine - let user resume manually
-                return None  # This will end the state machine
+
+            # Normal mode: end state machine, browser stays open,
+            # tracker debounce saves everything automatically
+            return None
+
         except Exception as e:
             logger.error(f"Error in human intervention state: {e}")
             logger.warning("Continuing automatically after intervention error...")
-            # Continue with the next state instead of failing completely
             return 'ai_guided_navigation'
     
     async def _notify_intervention_needed(self, reason: str, action_sequence: list):
