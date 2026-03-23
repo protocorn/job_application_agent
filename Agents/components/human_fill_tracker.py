@@ -381,8 +381,14 @@ class HumanFillTracker:
         # expose_function persists across navigations on the same Page object.
         try:
             await self.page.expose_function(self._callback_name, self._on_field_changed)
-        except Exception:
-            pass  # already registered
+        except Exception as _ef_err:
+            # Only truly silent when it's the "already registered" case.
+            err_msg = str(_ef_err).lower()
+            if "already" not in err_msg and "exist" not in err_msg:
+                logger.warning(
+                    f"HumanFillTracker: expose_function failed "
+                    f"(callback='{self._callback_name}'): {_ef_err}"
+                )
 
         # The init script wraps the tracker in DOMContentLoaded so it's safe
         # to use even when add_init_script fires before document.body exists.

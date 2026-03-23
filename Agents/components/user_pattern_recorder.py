@@ -11,10 +11,19 @@ Key differences from PatternRecorder:
   - Tracks source: 'human_fill' vs 'human_correction'
   - Optional site_domain scoping
   - Confidence formula weights human fills higher than AI fills
+
+Production mode
+---------------
+In the production Launchway CLI package there is no local PostgreSQL.
+UserPatternRecorder detects this automatically and routes all writes
+through the Launchway API (POST /api/cli/user-field-overrides) using
+the auth token stored in ~/.launchway/session.json.
 """
 
+import json
 import re
-from typing import Optional
+from pathlib import Path
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from loguru import logger
 from sqlalchemy import create_engine, text
@@ -39,10 +48,29 @@ class UserPatternRecorder:
     INITIAL_CONFIDENCE_HUMAN_FILL       = 0.95
     INITIAL_CONFIDENCE_HUMAN_CORRECTION = 0.90
 
+    # Where the Launchway CLI stores the auth token
+    _SESSION_FILE = Path.home() / ".launchway" / "session.json"
+
     def __init__(self):
+        self._api_client = None   # lazy-loaded when DB is unavailable
         self._init_database()
 
+    def _is_production(self) -> bool:
+        """
+        Returns True when running inside the production Launchway CLI package.
+        In dev, RUN_MODE=Development is set in .env.
+        In production the CLI never sets RUN_MODE, so it remains unset.
+        """
+        return os.getenv("RUN_MODE", "").strip().lower() != "development"
+
     def _init_database(self):
+        if self._is_production():
+            # Production: no local PostgreSQL — all writes go through the API.
+            self.engine = None
+            self.SessionLocal = None
+            logger.debug("UserPatternRecorder: production mode — using API routing")
+            return
+
         try:
             DB_HOST     = os.getenv('DB_HOST', 'localhost')
             DB_PORT     = os.getenv('DB_PORT', '5432')
@@ -61,9 +89,57 @@ class UserPatternRecorder:
             logger.info("UserPatternRecorder: Database connection initialized")
 
         except Exception as e:
-            logger.error(f"UserPatternRecorder: Failed to initialize database: {e}")
+            logger.warning(
+                f"UserPatternRecorder: DB init failed ({e}). "
+                "Will route writes through the Launchway API."
+            )
             self.engine = None
             self.SessionLocal = None
+
+    # ---------------------------------------------------------------------- #
+    #  API fallback (production / no-DB mode)                                 #
+    # ---------------------------------------------------------------------- #
+
+    def _get_api_client(self):
+        """
+        Lazily create a LaunchwayClient from the CLI session token.
+        Returns None if no valid session is found.
+        """
+        if self._api_client is not None:
+            return self._api_client
+        try:
+            if not self._SESSION_FILE.exists():
+                return None
+            session_data = json.loads(self._SESSION_FILE.read_text(encoding="utf-8"))
+            token = session_data.get("token")
+            if not token:
+                return None
+            # Import LaunchwayClient from the launchway package (always available in prod)
+            from launchway.api_client import LaunchwayClient
+            self._api_client = LaunchwayClient(token=token)
+            logger.debug("UserPatternRecorder: API client initialised from session token")
+            return self._api_client
+        except Exception as e:
+            logger.debug(f"UserPatternRecorder: Could not load API client: {e}")
+            return None
+
+    def _record_via_api(self, payload: dict) -> bool:
+        """Send a single override to the Launchway API."""
+        client = self._get_api_client()
+        if client is None:
+            logger.warning("UserPatternRecorder: No API client available, override lost")
+            return False
+        try:
+            result = client.save_user_field_overrides([payload])
+            saved = result.get("saved", 0)
+            if saved > 0:
+                logger.info(
+                    f"UserPatternRecorder (API): saved '{payload.get('field_label_raw', '')}'"
+                )
+            return saved > 0
+        except Exception as e:
+            logger.error(f"UserPatternRecorder: API save failed: {e}")
+            return False
 
     # ---------------------------------------------------------------------- #
     #  Public API                                                              #
@@ -149,8 +225,26 @@ class UserPatternRecorder:
         success: bool,
     ) -> bool:
         if not self.engine or not self.SessionLocal:
-            logger.warning("UserPatternRecorder: Database not initialized, skipping")
-            return False
+            # Production / no-DB mode: route through the Launchway API
+            if not user_id:
+                logger.warning("UserPatternRecorder: user_id required, skipping")
+                return False
+            payload = {
+                "field_label_normalized": self._normalize_label(field_label),
+                "field_label_raw":        field_label,
+                "field_value_cached":     field_value,
+                "field_category":         field_category,
+                "source":                 source,
+                "was_ai_attempted":       was_ai_attempted,
+                "confidence_score":       (
+                    self.INITIAL_CONFIDENCE_HUMAN_FILL
+                    if source == "human_fill"
+                    else self.INITIAL_CONFIDENCE_HUMAN_CORRECTION
+                ),
+                "site_domain":    site_domain,
+                "profile_field":  profile_field,
+            }
+            return self._record_via_api(payload)
 
         if not user_id:
             logger.warning("UserPatternRecorder: user_id is required, skipping")

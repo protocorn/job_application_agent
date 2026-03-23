@@ -296,6 +296,24 @@ class LaunchwayClient:
             logger.error(f"Failed to fetch applied job URLs: {e}")
             return set()
 
+    def save_user_field_overrides(self, overrides: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Batch-upsert human-captured field overrides to the server.
+        Called by UserPatternRecorder when there is no local DB connection.
+
+        Each override dict must contain at minimum:
+            field_label_normalized, field_label_raw, field_value_cached,
+            field_category, source, was_ai_attempted, confidence_score
+        Optional: site_domain, profile_field
+        """
+        if not overrides:
+            return {"saved": 0, "skipped": 0}
+        try:
+            return self._post("/api/cli/user-field-overrides", {"overrides": overrides})
+        except LaunchwayAPIError as e:
+            logger.error(f"Failed to save user field overrides: {e}")
+            return {"saved": 0, "skipped": 0, "error": str(e)}
+
     # ── account ─────────────────────────────────────────────────────────────
 
     def change_password(self, current_password: str, new_password: str) -> Dict[str, Any]:

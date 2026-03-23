@@ -2961,6 +2961,112 @@ def cli_record_application():
         return jsonify({"error": "Failed to record application"}), 500
 
 
+@app.route("/api/cli/user-field-overrides", methods=['POST'])
+@require_auth
+def cli_save_user_field_overrides():
+    """
+    Batch-upsert user field overrides captured by the HumanFillTracker.
+    CLI only — the agent has no direct DB access in production.
+
+    Body: { "overrides": [ { field_label_normalized, field_label_raw,
+              field_value_cached, field_category, source, was_ai_attempted,
+              confidence_score, site_domain, profile_field (optional) }, … ] }
+    """
+    try:
+        from database_config import SessionLocal
+        from sqlalchemy import text
+
+        user_id = request.current_user['id']
+        data     = request.get_json() or {}
+        overrides = data.get("overrides", [])
+
+        if not overrides:
+            return jsonify({"saved": 0, "skipped": 0}), 200
+
+        db = SessionLocal()
+        saved = 0
+        skipped = 0
+        try:
+            for entry in overrides:
+                label_norm  = (entry.get("field_label_normalized") or "").strip()
+                label_raw   = (entry.get("field_label_raw") or "").strip()
+                value       = (entry.get("field_value_cached") or "").strip()
+                category    = entry.get("field_category", "text_input")
+                source      = entry.get("source", "human_fill")
+                was_ai      = bool(entry.get("was_ai_attempted", True))
+                confidence  = float(entry.get("confidence_score", 0.95))
+                site_domain = entry.get("site_domain") or None
+                profile_fld = entry.get("profile_field") or None
+
+                if not label_norm or not value:
+                    skipped += 1
+                    continue
+
+                existing = db.execute(text("""
+                    SELECT id, success_count, failure_count, occurrence_count
+                    FROM user_field_overrides
+                    WHERE user_id = :uid
+                      AND field_label_normalized = :label
+                      AND (site_domain = :domain OR (site_domain IS NULL AND :domain IS NULL))
+                """), {"uid": str(user_id), "label": label_norm, "domain": site_domain}).first()
+
+                if existing:
+                    row_id   = existing[0]
+                    new_succ = (existing[1] or 0) + 1
+                    new_fail = (existing[2] or 0)
+                    new_occ  = (existing[3] or 0) + 1
+                    total    = new_succ + new_fail
+                    new_conf = round(min(0.99, (new_succ / total) + min(0.05, new_occ / 200)), 2) if total > 0 else confidence
+                    db.execute(text("""
+                        UPDATE user_field_overrides
+                        SET field_value_cached = :value,
+                            field_category     = :cat,
+                            profile_field      = COALESCE(:pf, profile_field),
+                            source             = :source,
+                            occurrence_count   = :occ,
+                            success_count      = :succ,
+                            failure_count      = :fail,
+                            confidence_score   = :conf,
+                            last_seen          = NOW()
+                        WHERE id = :id
+                    """), {"id": row_id, "value": value, "cat": category,
+                           "pf": profile_fld, "source": source,
+                           "occ": new_occ, "succ": new_succ, "fail": new_fail, "conf": new_conf})
+                else:
+                    db.execute(text("""
+                        INSERT INTO user_field_overrides
+                        (user_id, field_label_normalized, field_label_raw,
+                         profile_field, field_value_cached, field_category,
+                         source, was_ai_attempted, confidence_score,
+                         occurrence_count, success_count, failure_count,
+                         site_domain, created_at, last_seen)
+                        VALUES
+                        (:uid, :label, :label_raw,
+                         :pf, :value, :cat,
+                         :source, :was_ai, :conf,
+                         1, 1, 0,
+                         :domain, NOW(), NOW())
+                    """), {"uid": str(user_id), "label": label_norm, "label_raw": label_raw,
+                           "pf": profile_fld, "value": value, "cat": category,
+                           "source": source, "was_ai": was_ai, "conf": confidence,
+                           "domain": site_domain})
+                saved += 1
+
+            db.commit()
+            logging.info(f"CLI user-field-overrides: saved={saved} skipped={skipped} user={user_id}")
+            return jsonify({"saved": saved, "skipped": skipped}), 201
+
+        except Exception as inner_e:
+            db.rollback()
+            raise inner_e
+        finally:
+            db.close()
+
+    except Exception as e:
+        logging.error(f"Error saving user field overrides: {e}")
+        return jsonify({"error": "Failed to save overrides"}), 500
+
+
 @app.route("/api/cli/agent-key", methods=['GET'])
 @require_auth
 def get_cli_agent_key():
