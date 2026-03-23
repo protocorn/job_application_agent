@@ -760,7 +760,10 @@ def health_check():
     return jsonify({
         "status": "healthy",
         "timestamp": time.time(),
-        "sentry_enabled": SENTRY_ENABLED
+        "sentry_enabled": SENTRY_ENABLED,
+        # Bump this whenever old CLI versions must be blocked.
+        # Read from env so it can be changed without a redeploy.
+        "min_cli_version": os.getenv("MIN_CLI_VERSION", "0.2.43"),
     }), 200
 
 

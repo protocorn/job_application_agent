@@ -326,6 +326,46 @@ def _configure_logging():
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
+def _check_min_version() -> None:
+    """
+    Fetch the minimum required CLI version from the backend health endpoint
+    and exit with a clear upgrade message if the installed version is too old.
+
+    Skipped if the backend is unreachable (no internet, server down) so the
+    check never blocks offline/dev usage unnecessarily.
+    """
+    try:
+        from importlib.metadata import version as pkg_version
+        from packaging.version import Version
+        import requests
+
+        installed = pkg_version("launchway")
+        resp = requests.get(
+            f"{os.getenv('LAUNCHWAY_BACKEND_URL', 'https://jobapplicationagent-production.up.railway.app')}/api/health",
+            timeout=5,
+        )
+        if resp.status_code != 200:
+            return  # server unreachable — don't block
+
+        min_ver = resp.json().get("min_cli_version", "0.0.0")
+
+        if Version(installed) < Version(min_ver):
+            print(
+                f"\n{'='*60}\n"
+                f"  Launchway v{installed} is no longer supported.\n"
+                f"  Please upgrade to v{min_ver} or later:\n\n"
+                f"    pip install --upgrade launchway\n\n"
+                f"  Then re-run: launchway\n"
+                f"{'='*60}\n"
+            )
+            sys.exit(1)
+
+    except SystemExit:
+        raise
+    except Exception:
+        pass  # version check is best-effort; never block on failure
+
+
 def main():
     """Package entry point - invoked by `launchway` command."""
     # Handle --version / -V before any heavyweight setup
@@ -345,10 +385,13 @@ def main():
     from launchway.config import ensure_env_loaded, run_first_time_setup
     ensure_env_loaded()
 
-    # 3. First-run setup wizard (AI Engine choice)
+    # 3. Block users on unsupported old versions
+    _check_min_version()
+
+    # 4. First-run setup wizard (AI Engine choice)
     run_first_time_setup()
 
-    # 4. Ensure Playwright browser binaries are installed
+    # 5. Ensure Playwright browser binaries are installed
     from launchway.postinstall import ensure_browsers
     ensure_browsers()
 
