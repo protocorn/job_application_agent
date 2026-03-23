@@ -151,12 +151,45 @@ _TRACKER_JS = r"""
         return 'text_input';
     }
 
+    // Return the visible label text for the checkbox option itself
+    // (not the group question — that comes from extractGroupLabel/extractLabel).
+    // Priority: <label for=id> → aria-label → aria-labelledby → parent <label>
+    function checkboxOptionLabel(el) {
+        if (el.id) {
+            var lbl = document.querySelector('label[for="' + el.id + '"]');
+            if (lbl && lbl.innerText.trim()) return lbl.innerText.trim();
+        }
+        var ariaLabel = el.getAttribute('aria-label');
+        if (ariaLabel && ariaLabel.trim()) return ariaLabel.trim();
+        var lblId = el.getAttribute('aria-labelledby');
+        if (lblId) {
+            var lblEl = document.getElementById(lblId);
+            if (lblEl && lblEl.innerText.trim()) return lblEl.innerText.trim();
+        }
+        var parent = el.parentElement;
+        if (parent) {
+            if (parent.tagName.toLowerCase() === 'label' && parent.innerText.trim())
+                return parent.innerText.trim();
+            var sibLbl = parent.querySelector('label');
+            if (sibLbl && sibLbl !== el && sibLbl.innerText.trim())
+                return sibLbl.innerText.trim();
+        }
+        return null;
+    }
+
     function currentValue(el) {
         var tag = el.tagName.toLowerCase();
         if (tag === 'select') {
             return el.options[el.selectedIndex] ? el.options[el.selectedIndex].text : '';
         }
-        if (el.type === 'checkbox') return el.checked ? 'true' : 'false';
+        if (el.type === 'checkbox') {
+            // Unchecked → nothing to record; let the '' guard in handleChange drop it.
+            if (!el.checked) return '';
+            // Return the semantic label of the selected option so we store
+            // e.g. "Yes" / "I agree" instead of the opaque boolean "true".
+            // If we cannot determine the label, return '' → capture is skipped.
+            return checkboxOptionLabel(el) || '';
+        }
         if (el.type === 'radio') {
             var group = document.querySelectorAll(
                 'input[type=radio][name="' + el.name + '"]'

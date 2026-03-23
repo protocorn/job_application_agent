@@ -763,7 +763,7 @@ def health_check():
         "sentry_enabled": SENTRY_ENABLED,
         # Bump this whenever old CLI versions must be blocked.
         # Read from env so it can be changed without a redeploy.
-        "min_cli_version": os.getenv("MIN_CLI_VERSION", "0.2.43"),
+        "min_cli_version": os.getenv("MIN_CLI_VERSION", "0.2.46"),
     }), 200
 
 
@@ -2218,6 +2218,61 @@ def get_beta_status():
     except Exception as e:
         logging.error(f"Error in get beta status endpoint: {e}")
         return jsonify({"error": "Failed to get beta access status"}), 500
+
+@app.route("/api/beta/request", methods=['POST'])
+@require_auth
+def submit_beta_request():
+    """Allow an existing authenticated user to (re-)submit a beta access request."""
+    try:
+        from database_config import SessionLocal, User
+        from datetime import datetime
+
+        data = request.get_json() or {}
+        reason = (data.get('reason') or '').strip()
+        survey_consent = bool(data.get('survey_consent'))
+
+        if len(reason) < 20:
+            return jsonify({"error": "Please provide at least 20 characters for your reason.", "error_code": "validation_failed"}), 400
+        if not survey_consent:
+            return jsonify({"error": "Please agree to the weekly survey.", "error_code": "validation_failed"}), 400
+
+        user_id = request.current_user['id']
+
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+
+            if user.beta_access_approved:
+                return jsonify({"error": "You already have beta access.", "error_code": "already_approved"}), 400
+
+            if user.beta_access_requested:
+                return jsonify({"error": "You already have a pending beta request.", "error_code": "already_pending"}), 400
+
+            consent_note = "[Survey consent given]" if survey_consent else ""
+            stored_reason = f"{reason}\n\n{consent_note}".strip()
+
+            user.beta_access_requested = True
+            user.beta_request_date = datetime.utcnow()
+            user.beta_request_reason = stored_reason
+
+            db.commit()
+
+            logging.info(f"Beta re-request submitted by user {user_id}: {user.email}")
+
+            return jsonify({
+                "success": True,
+                "message": "Beta access request submitted successfully."
+            }), 200
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logging.error(f"Error in submit beta request endpoint: {e}")
+        return jsonify({"error": "Failed to submit beta request"}), 500
+
 
 @app.route("/api/admin/beta/requests", methods=['GET'])
 @require_auth

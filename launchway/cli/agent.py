@@ -328,33 +328,60 @@ def _configure_logging():
 
 def _check_min_version() -> None:
     """
-    Fetch the minimum required CLI version from the backend health endpoint
-    and exit with a clear upgrade message if the installed version is too old.
+    Check the installed CLI version against the minimum required version.
 
-    Skipped if the backend is unreachable (no internet, server down) so the
-    check never blocks offline/dev usage unnecessarily.
+    Two-source strategy so the check is reliable even if one source is down:
+      1. Backend /api/health  → authoritative min_cli_version set by the team
+      2. PyPI JSON API        → fallback; uses latest published version as min
+
+    If BOTH sources are unreachable (true offline / network outage) the check
+    is silently skipped so users are never blocked without a network.
     """
     try:
         from importlib.metadata import version as pkg_version
         from packaging.version import Version
         import requests
 
-        installed = pkg_version("launchway")
-        resp = requests.get(
-            f"{os.getenv('LAUNCHWAY_BACKEND_URL', 'https://jobapplicationagent-production.up.railway.app')}/api/health",
-            timeout=5,
-        )
-        if resp.status_code != 200:
-            return  # server unreachable — don't block
+        try:
+            installed = pkg_version("launchway")
+        except Exception:
+            return  # can't determine installed version — skip
 
-        min_ver = resp.json().get("min_cli_version", "0.0.0")
+        min_ver: str | None = None
+
+        # ── Source 1: backend health endpoint ────────────────────────────────
+        try:
+            backend_url = os.getenv(
+                "LAUNCHWAY_BACKEND_URL",
+                "https://jobapplicationagent-production.up.railway.app",
+            )
+            resp = requests.get(f"{backend_url}/api/health", timeout=5)
+            if resp.status_code == 200:
+                min_ver = resp.json().get("min_cli_version")
+        except Exception:
+            pass  # network/parse error — try PyPI fallback
+
+        # ── Source 2: PyPI JSON API (fallback) ────────────────────────────────
+        if not min_ver:
+            try:
+                pypi = requests.get(
+                    "https://pypi.org/pypi/launchway/json", timeout=5
+                )
+                if pypi.status_code == 200:
+                    min_ver = pypi.json()["info"]["version"]
+            except Exception:
+                pass  # both sources unreachable — skip check
+
+        if not min_ver:
+            return  # truly offline — don't block
 
         if Version(installed) < Version(min_ver):
             print(
                 f"\n{'='*60}\n"
-                f"  Launchway v{installed} is no longer supported.\n"
-                f"  Please upgrade to v{min_ver} or later:\n\n"
-                f"    pip install --upgrade launchway\n\n"
+                f"  ⚠  Launchway v{installed} is out of date.\n"
+                f"  The minimum required version is v{min_ver}.\n\n"
+                f"  Please upgrade now:\n\n"
+                f"      pip install --upgrade launchway\n\n"
                 f"  Then re-run: launchway\n"
                 f"{'='*60}\n"
             )
@@ -363,7 +390,7 @@ def _check_min_version() -> None:
     except SystemExit:
         raise
     except Exception:
-        pass  # version check is best-effort; never block on failure
+        pass  # version check is best-effort; never block on unexpected error
 
 
 def main():
