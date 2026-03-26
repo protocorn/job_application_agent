@@ -390,6 +390,8 @@ class ContinuousApplyMixin:
             self.pause()
             return
 
+        self._show_auto_apply_profile_warning_if_needed()
+
         if not self._ensure_resume_ready_for_auto_apply():
             self.pause()
             return

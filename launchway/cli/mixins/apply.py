@@ -16,6 +16,73 @@ logger = logging.getLogger(__name__)
 class ApplyMixin:
 
     @staticmethod
+    def _profile_value_filled(value) -> bool:
+        """Return True when a profile field has meaningful user-provided content."""
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return bool(value.strip())
+        if isinstance(value, (list, tuple, set, dict)):
+            return len(value) > 0
+        return bool(value)
+
+    def _has_resume_uploaded(self, profile: dict) -> bool:
+        """Detect whether the user has any usable resume source configured."""
+        if not profile:
+            return False
+        resume_url = profile.get("resume_url")
+        resume_text = profile.get("resume_text")
+        source_type = profile.get("resume_source_type", "")
+        if self._profile_value_filled(resume_url):
+            return True
+        return self._profile_value_filled(resume_text) and source_type in ("pdf", "docx")
+
+    def _profile_completion_percent(self, profile: dict) -> int:
+        """
+        Estimate profile completeness from core fields used by auto-apply.
+        This is intentionally simple and conservative.
+        """
+        if not profile:
+            return 0
+
+        checks = [
+            self._profile_value_filled(profile.get("first name")),
+            self._profile_value_filled(profile.get("last name")),
+            self._profile_value_filled(profile.get("email")),
+            self._profile_value_filled(profile.get("phone")),
+            self._profile_value_filled(profile.get("city")),
+            self._profile_value_filled(profile.get("state")),
+            self._profile_value_filled(profile.get("country")),
+            self._profile_value_filled(profile.get("linkedin")),
+            self._profile_value_filled(profile.get("summary")),
+            self._profile_value_filled(profile.get("skills")),
+            self._profile_value_filled(profile.get("education")),
+            self._profile_value_filled(
+                profile.get("work experience") or profile.get("work_experience")
+            ),
+            self._profile_value_filled(profile.get("projects")),
+            self._profile_value_filled(profile.get("preferred location")),
+            self._profile_value_filled(profile.get("visa status")),
+        ]
+        return int((sum(1 for ok in checks if ok) / len(checks)) * 100)
+
+    def _show_auto_apply_profile_warning_if_needed(self) -> None:
+        """
+        Show readiness warning only when profile is <50% complete AND resume missing.
+        """
+        profile = self.current_profile or {}
+        completion_pct = self._profile_completion_percent(profile)
+        has_resume = self._has_resume_uploaded(profile)
+        if completion_pct >= 50 or has_resume:
+            return
+
+        print()
+        self.print_warning("⚠ Auto-apply readiness warning")
+        self.print_warning("Your profile is not filled to a sufficient level (<50%).")
+        self.print_warning("No resume is uploaded (Google Doc URL or PDF/DOCX).")
+        self.print_info("Update your profile before running auto-apply for better results.\n")
+
+    @staticmethod
     def _is_unknown_job_value(value: str) -> bool:
         v = (value or "").strip().lower()
         return v in {"", "unknown", "unknown company", "unknown position", "n/a", "na"}
@@ -88,6 +155,8 @@ Job description snippet:
         if not self._ensure_agents_bootstrapped():
             self.pause()
             return
+
+        self._show_auto_apply_profile_warning_if_needed()
 
         if not self._ensure_resume_ready_for_auto_apply():
             self.pause()

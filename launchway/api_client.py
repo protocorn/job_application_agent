@@ -333,6 +333,22 @@ class LaunchwayClient:
             logger.error(f"Failed to save user field overrides: {e}")
             return {"saved": 0, "skipped": 0, "error": str(e)}
 
+    def save_field_label_patterns(self, patterns: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Batch-upsert global field-label patterns learned by local agents.
+
+        Each pattern dict should include:
+            field_label_normalized, field_label_raw, profile_field,
+            field_category, success (optional)
+        """
+        if not patterns:
+            return {"saved": 0, "skipped": 0}
+        try:
+            return self._post("/api/cli/field-label-patterns", {"patterns": patterns})
+        except LaunchwayAPIError as e:
+            logger.error(f"Failed to save field label patterns: {e}")
+            return {"saved": 0, "skipped": 0, "error": str(e)}
+
     # ── account ─────────────────────────────────────────────────────────────
 
     def change_password(self, current_password: str, new_password: str) -> Dict[str, Any]:

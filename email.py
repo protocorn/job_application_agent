@@ -22,6 +22,8 @@ from dotenv import load_dotenv
 
 TEMPLATE_1_SUBJECT = "You’ve completed step 1, here’s step 2 (Launchway)"
 TEMPLATE_1_SETUP_LINK = "https://www.launchway.app/download"
+TEMPLATE_2_SUBJECT = "Verify your email to continue (Launchway)"
+TEMPLATE_2_VERIFY_LINK = "https://www.launchway.app/login"
 
 
 def parse_email_list(raw_value: str) -> list[str]:
@@ -53,22 +55,27 @@ def name_from_email(email: str) -> str:
 
 
 def choose_template(template_arg: str | None) -> str:
-    """Select the template to send. For now only template 1 is available."""
+    """Select the template to send."""
     if template_arg:
         normalized = str(template_arg).strip().lower()
         if normalized in {"1", "option1", "template1", "step2"}:
             return "template1"
-        raise ValueError("Unsupported template. Use 1 for now.")
+        if normalized in {"2", "option2", "template2", "verify"}:
+            return "template2"
+        raise ValueError("Unsupported template. Use 1 or 2.")
 
     print("\nChoose email template:\n")
     print("1) Step 1 done. Here's step 2.")
+    print("2) Signed up but not verified email reminder.")
     print("")
 
     while True:
         selected = input("Enter option number: ").strip().lower()
         if selected in {"1", "option1", "template1", "step2"}:
             return "template1"
-        print("Invalid option. Please type 1.")
+        if selected in {"2", "option2", "template2", "verify"}:
+            return "template2"
+        print("Invalid option. Please type 1 or 2.")
 
 
 def build_template_1_html(name: str, setup_link: str) -> str:
@@ -300,6 +307,198 @@ Sahil, Founder, Launchway
 """
 
 
+def build_template_2_html(name: str, verify_link: str) -> str:
+    return f"""
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Launchway - Verify Email</title>
+    <style>
+      body {{
+        margin: 0;
+        padding: 0;
+        background: #ffffff;
+        color: #1f2937;
+        font-family: Inter, "Segoe UI", Arial, sans-serif;
+      }}
+      .container {{
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 40px 16px;
+      }}
+      .brand-row {{
+        padding-bottom: 18px;
+      }}
+      .brand-logo {{
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        vertical-align: middle;
+      }}
+      .brand-text {{
+        display: inline-block;
+        margin-left: 10px;
+        vertical-align: middle;
+        color: #111827;
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1;
+      }}
+      .brand-way {{
+        color: #06b6d4;
+        font-weight: 400;
+      }}
+      .heading {{
+        margin: 0 0 24px 0;
+        color: #111827;
+        font-size: 26px;
+        line-height: 1.3;
+        font-weight: 600;
+      }}
+      .copy {{
+        padding: 0 0 16px 0;
+        font-size: 16px;
+        line-height: 1.7;
+        color: #1f2937;
+      }}
+      .bullet-copy {{
+        padding: 0 0 20px 22px;
+        font-size: 16px;
+        line-height: 1.8;
+        color: #1f2937;
+      }}
+      .cta-link {{
+        display: inline-block;
+        background: #06b6d4;
+        color: #ffffff;
+        text-decoration: none;
+        font-size: 15px;
+        font-weight: 600;
+        padding: 12px 20px;
+        border-radius: 6px;
+      }}
+    </style>
+  </head>
+  <body>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#ffffff;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="600" cellspacing="0" cellpadding="0" class="container" style="width:100%;">
+            <tr class="brand-row">
+              <td>
+                <img
+                  src="https://www.launchway.app/assets/launchwaylogo.png"
+                  alt="Launchway Logo"
+                  class="brand-logo"
+                />
+                <span class="brand-text">Launch<span class="brand-way">way</span></span>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <h1 class="heading">
+                  Quick reminder: please verify your email
+                </h1>
+              </td>
+            </tr>
+            <tr>
+              <td class="copy">
+                Hey {name},
+              </td>
+            </tr>
+            <tr>
+              <td class="copy">
+                Thanks again for signing up for Launchway.
+              </td>
+            </tr>
+            <tr>
+              <td class="copy">
+                You have been granted beta access.
+                The only step left to get started is email verification.
+              </td>
+            </tr>
+            <tr>
+              <td class="copy" style="padding-bottom:10px;">
+                Once verified, you can continue with:
+              </td>
+            </tr>
+            <tr>
+              <td class="bullet-copy">
+                - resume tailoring for real job posts<br />
+                - relevant job search and role discovery<br />
+                - assisted job apply workflows<br />
+                - dashboard, profile, and CLI setup
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:6px 0 28px 0;">
+                <a href="{verify_link}" class="cta-link" style="color:#ffffff !important; text-decoration:none !important;">
+                  Verify Email
+                </a>
+              </td>
+            </tr>
+            <tr>
+              <td class="copy">
+                If your earlier verification link expired, sign in and request a fresh verification email.
+              </td>
+            </tr>
+            <tr>
+              <td class="copy" style="padding-bottom:22px;">
+                You will receive the next email soon with step-by-step setup guidance.
+              </td>
+            </tr>
+            <tr>
+              <td class="copy" style="padding-bottom:22px;">
+                If you get stuck, reply with: <strong>I got stuck at ___</strong>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0; font-size:16px; line-height:1.7; color:#1f2937;">
+                Sahil, Founder, Launchway
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+    """.strip()
+
+
+def build_template_2_text(name: str, verify_link: str) -> str:
+    return f"""Subject: {TEMPLATE_2_SUBJECT}
+
+Hey {name},
+
+Thanks again for signing up for Launchway.
+
+You have been granted beta access.
+The only step left to get started is email verification.
+
+Once verified, you can continue with:
+- resume tailoring for real job posts
+- relevant job search and role discovery
+- assisted job apply workflows
+- dashboard, profile, and CLI setup
+
+Verify here:
+{verify_link}
+
+If your earlier verification link expired, sign in and request a fresh verification email.
+
+You will receive the next email soon with step-by-step setup guidance.
+
+If you get stuck, reply with:
+I got stuck at ___
+
+Sahil, Founder, Launchway
+"""
+
+
 def send_resend_email(
     *,
     resend_api_key: str,
@@ -339,6 +538,13 @@ def iter_payloads(template_key: str, emails: Iterable[str]):
                 "html": build_template_1_html(recipient_name, TEMPLATE_1_SETUP_LINK),
                 "text": build_template_1_text(recipient_name, TEMPLATE_1_SETUP_LINK),
             }
+        if template_key == "template2":
+            yield {
+                "to_email": email,
+                "subject": TEMPLATE_2_SUBJECT,
+                "html": build_template_2_html(recipient_name, TEMPLATE_2_VERIFY_LINK),
+                "text": build_template_2_text(recipient_name, TEMPLATE_2_VERIFY_LINK),
+            }
 
 
 def main() -> int:
@@ -354,7 +560,7 @@ def main() -> int:
     parser.add_argument(
         "--template",
         default=None,
-        help="Template id. Leave empty to choose interactively. (Only: 1)",
+        help="Template id. Leave empty to choose interactively. (Supported: 1, 2)",
     )
     parser.add_argument(
         "--dry-run",

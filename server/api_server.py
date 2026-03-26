@@ -7,6 +7,7 @@ import html
 from google import genai
 from googleapiclient.discovery import build
 import json
+import re
 from flask_cors import CORS
 from typing import Dict, Any
 import logging
@@ -3046,14 +3047,17 @@ def cli_save_user_field_overrides():
         skipped = 0
         try:
             for entry in overrides:
+                raw_label = (entry.get("field_label_raw") or "").strip()
                 label_norm  = (entry.get("field_label_normalized") or "").strip()
+                if not label_norm and raw_label:
+                    label_norm = re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\s]", "", raw_label.lower())).strip()
                 label_raw   = (entry.get("field_label_raw") or "").strip()
                 value       = (entry.get("field_value_cached") or "").strip()
                 category    = entry.get("field_category", "text_input")
                 source      = entry.get("source", "human_fill")
                 was_ai      = bool(entry.get("was_ai_attempted", True))
                 confidence  = float(entry.get("confidence_score", 0.95))
-                site_domain = entry.get("site_domain") or None
+                site_domain = (entry.get("site_domain") or "").strip().lower() or None
                 profile_fld = entry.get("profile_field") or None
 
                 if not label_norm or not value:
@@ -3064,8 +3068,8 @@ def cli_save_user_field_overrides():
                     SELECT id, success_count, failure_count, occurrence_count
                     FROM user_field_overrides
                     WHERE user_id = :uid
-                      AND field_label_normalized = :label
-                      AND (site_domain = :domain OR (site_domain IS NULL AND :domain IS NULL))
+                      AND LOWER(field_label_normalized) = LOWER(:label)
+                      AND LOWER(COALESCE(site_domain, '')) = LOWER(COALESCE(:domain, ''))
                 """), {"uid": str(user_id), "label": label_norm, "domain": site_domain}).first()
 
                 if existing:
@@ -3123,6 +3127,161 @@ def cli_save_user_field_overrides():
     except Exception as e:
         logging.error(f"Error saving user field overrides: {e}")
         return jsonify({"error": "Failed to save overrides"}), 500
+
+
+@app.route("/api/cli/field-label-patterns", methods=['POST'])
+@require_auth
+def cli_save_field_label_patterns():
+    """
+    Batch-upsert global field label patterns learned by local agents.
+
+    Body:
+      {
+        "patterns": [
+          {
+            "field_label_normalized": "...",
+            "field_label_raw": "...",
+            "profile_field": "first_name",
+            "field_category": "text_input",
+            "success": true
+          }
+        ]
+      }
+    """
+    try:
+        from database_config import SessionLocal
+        from sqlalchemy import text
+
+        user_id = request.current_user['id']
+        data = request.get_json() or {}
+        patterns = data.get("patterns", [])
+        if not patterns:
+            return jsonify({"saved": 0, "skipped": 0}), 200
+
+        def _normalize_label(value: str) -> str:
+            norm = (value or "").strip().lower()
+            norm = re.sub(r"[^a-z0-9\s]", "", norm)
+            norm = re.sub(r"\s+", " ", norm).strip()
+            return norm
+
+        def _normalize_profile_field(value: str) -> str:
+            pf = (value or "").strip().lower()
+            pf = pf.replace("-", "_").replace(" ", "_").replace("/", "_")
+            pf = re.sub(r"_+", "_", pf)
+            pf = re.sub(r"\.\d+$", "", pf)
+            aliases = {
+                "first name": "first_name",
+                "last name": "last_name",
+                "zip": "zip_code",
+                "postal": "postal_code",
+                "require_sponsorship": "sponsorship_required",
+                "disability": "disability_status",
+                "preferred_location": "preferred_locations",
+            }
+            return aliases.get(pf, pf)
+
+        valid_global_fields = {
+            "first_name", "last_name", "full_name", "middle_name", "preferred_name",
+            "email", "phone", "mobile",
+            "address", "address_line_1", "address_line_2",
+            "city", "state", "country", "zip_code", "postal_code",
+            "linkedin", "github", "portfolio", "website", "twitter",
+            "visa_status", "work_authorization", "sponsorship_required", "require_sponsorship",
+            "veteran_status", "disability_status",
+            "gender", "gender_identity",
+            "race", "ethnicity", "race_ethnicity", "nationality", "pronouns",
+            "willing_to_relocate", "remote_preference", "preferred_locations", "start_date",
+            "notice_period", "salary_range",
+            "highest_education", "degree", "major", "gpa",
+            "years_of_experience", "current_title", "current_company",
+            "cover_letter", "hear_about_us", "referral_source",
+        }
+
+        db = SessionLocal()
+        saved = 0
+        skipped = 0
+        try:
+            for entry in patterns:
+                label_raw = (entry.get("field_label_raw") or "").strip()
+                label_norm = _normalize_label(entry.get("field_label_normalized") or label_raw)
+                profile_field = _normalize_profile_field(entry.get("profile_field") or "")
+                field_category = (entry.get("field_category") or "text_input").strip()
+                success = bool(entry.get("success", True))
+
+                if not label_norm or not profile_field:
+                    skipped += 1
+                    continue
+                if "[" in profile_field or "(" in profile_field or "." in profile_field:
+                    skipped += 1
+                    continue
+                if profile_field not in valid_global_fields:
+                    skipped += 1
+                    continue
+
+                existing = db.execute(text("""
+                    SELECT id, success_count, failure_count, occurrence_count
+                    FROM field_label_patterns
+                    WHERE LOWER(field_label_normalized) = LOWER(:label)
+                      AND LOWER(profile_field) = LOWER(:profile_field)
+                """), {"label": label_norm, "profile_field": profile_field}).first()
+
+                if existing:
+                    row_id = existing[0]
+                    new_succ = (existing[1] or 0) + (1 if success else 0)
+                    new_fail = (existing[2] or 0) + (0 if success else 1)
+                    new_occ = (existing[3] or 0) + 1
+                    total = new_succ + new_fail
+                    new_conf = round(min(0.99, (new_succ / total) + min(0.1, new_occ / 100)), 2) if total > 0 else 0.0
+                    db.execute(text("""
+                        UPDATE field_label_patterns
+                        SET occurrence_count = :occ,
+                            success_count = :succ,
+                            failure_count = :fail,
+                            confidence_score = :conf,
+                            last_seen = NOW()
+                        WHERE id = :id
+                    """), {
+                        "id": row_id,
+                        "occ": new_occ,
+                        "succ": new_succ,
+                        "fail": new_fail,
+                        "conf": new_conf,
+                    })
+                else:
+                    init_conf = 0.85 if success else 0.0
+                    db.execute(text("""
+                        INSERT INTO field_label_patterns
+                        (field_label_normalized, field_label_raw, profile_field, field_category,
+                         confidence_score, occurrence_count, success_count, failure_count,
+                         created_by_user_id, source)
+                        VALUES
+                        (:label_norm, :label_raw, :profile_field, :category,
+                         :confidence, 1, :success_count, :failure_count,
+                         :user_id, 'gemini_ai')
+                    """), {
+                        "label_norm": label_norm,
+                        "label_raw": label_raw or label_norm,
+                        "profile_field": profile_field,
+                        "category": field_category,
+                        "confidence": init_conf,
+                        "success_count": 1 if success else 0,
+                        "failure_count": 0 if success else 1,
+                        "user_id": str(user_id),
+                    })
+                saved += 1
+
+            db.commit()
+            logging.info(f"CLI field-label-patterns: saved={saved} skipped={skipped} user={user_id}")
+            return jsonify({"saved": saved, "skipped": skipped}), 201
+
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+    except Exception as e:
+        logging.error(f"Error saving field label patterns: {e}")
+        return jsonify({"error": "Failed to save field label patterns"}), 500
 
 
 @app.route("/api/cli/agent-key", methods=['GET'])

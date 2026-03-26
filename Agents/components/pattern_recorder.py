@@ -9,6 +9,8 @@ Privacy: Never records actual field values, only labels and profile field mappin
 import re
 from typing import Optional
 from datetime import datetime
+import json
+from pathlib import Path
 from loguru import logger
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
@@ -73,14 +75,14 @@ class PatternRecorder:
         'linkedin', 'github', 'portfolio', 'website', 'twitter',
 
         # Work authorization / demographics (EEO fields)
-        'visa_status', 'work_authorization', 'sponsorship_required',
+        'visa_status', 'work_authorization', 'sponsorship_required', 'require_sponsorship',
         'veteran_status', 'disability_status',
         'gender', 'gender_identity',
         'race', 'ethnicity', 'race_ethnicity', 'nationality',
         'pronouns',
 
         # Preferences
-        'willing_to_relocate', 'remote_preference', 'start_date',
+        'willing_to_relocate', 'remote_preference', 'preferred_locations', 'start_date',
         'notice_period', 'salary_range',
 
         # Education summary (non-indexed)
@@ -95,14 +97,25 @@ class PatternRecorder:
 
     # Initial confidence for new patterns
     INITIAL_CONFIDENCE = 0.85
+    _SESSION_FILE = Path.home() / ".launchway" / "session.json"
 
     def __init__(self):
         """Initialize recorder with database connection."""
+        self._api_client = None
         self._init_database()
         self._compile_exclusion_patterns()
 
+    def _is_production(self) -> bool:
+        """Production CLI has no direct DB access; route writes via API."""
+        return os.getenv("RUN_MODE", "").strip().lower() != "development"
+
     def _init_database(self):
         """Initialize database connection."""
+        if self._is_production():
+            self.engine = None
+            self.SessionLocal = None
+            logger.debug("PatternRecorder: production mode — using API routing")
+            return
         try:
             DB_HOST = os.getenv('DB_HOST', 'localhost')
             DB_PORT = os.getenv('DB_PORT', '5432')
@@ -121,6 +134,36 @@ class PatternRecorder:
             logger.error(f"PatternRecorder: Failed to initialize database: {e}")
             self.engine = None
             self.SessionLocal = None
+
+    def _get_api_client(self):
+        """Create LaunchwayClient from ~/.launchway/session.json token."""
+        if self._api_client is not None:
+            return self._api_client
+        try:
+            if not self._SESSION_FILE.exists():
+                return None
+            session_data = json.loads(self._SESSION_FILE.read_text(encoding="utf-8"))
+            token = session_data.get("token")
+            if not token:
+                return None
+            from launchway.api_client import LaunchwayClient
+            self._api_client = LaunchwayClient(token=token)
+            return self._api_client
+        except Exception as e:
+            logger.debug(f"PatternRecorder: Could not load API client: {e}")
+            return None
+
+    def _record_via_api(self, payload: dict) -> bool:
+        client = self._get_api_client()
+        if client is None:
+            logger.warning("PatternRecorder: No API client available, pattern not recorded")
+            return False
+        try:
+            result = client.save_field_label_patterns([payload])
+            return result.get("saved", 0) > 0
+        except Exception as e:
+            logger.error(f"PatternRecorder: API save failed: {e}")
+            return False
 
     def _compile_exclusion_patterns(self):
         """Compile regex patterns for faster matching."""
@@ -150,9 +193,7 @@ class PatternRecorder:
         Returns:
             True if pattern was recorded, False if skipped or failed
         """
-        if not self.engine or not self.SessionLocal:
-            logger.warning("PatternRecorder: Database not initialized, skipping recording")
-            return False
+        normalized_profile_field = self._normalize_profile_field(profile_field)
 
         # Privacy check: Skip sensitive fields
         if not self._should_record(field_label):
@@ -163,12 +204,22 @@ class PatternRecorder:
             return False
 
         # Global field validity check: reject user-specific / dynamic profile paths
-        if not self._is_valid_global_field(profile_field):
+        if not self._is_valid_global_field(normalized_profile_field):
             logger.debug(
                 f"PatternRecorder: Skipping user-specific profile_field '{profile_field}' "
                 f"for label '{field_label}' — not a valid global field"
             )
             return False
+
+        if not self.engine or not self.SessionLocal:
+            payload = {
+                "field_label_normalized": self._normalize_label(field_label),
+                "field_label_raw": field_label,
+                "profile_field": normalized_profile_field,
+                "field_category": field_category,
+                "success": bool(success),
+            }
+            return self._record_via_api(payload)
 
         # Normalize label
         normalized_label = self._normalize_label(field_label)
@@ -180,11 +231,11 @@ class PatternRecorder:
             existing = session.execute(text("""
                 SELECT id, success_count, failure_count, occurrence_count
                 FROM field_label_patterns
-                WHERE field_label_normalized = :label
-                  AND profile_field = :profile_field
+                WHERE LOWER(field_label_normalized) = LOWER(:label)
+                  AND LOWER(profile_field) = LOWER(:profile_field)
             """), {
                 'label': normalized_label,
-                'profile_field': profile_field
+                'profile_field': normalized_profile_field
             }).first()
 
             if existing:
@@ -220,7 +271,7 @@ class PatternRecorder:
                 session.close()
 
                 logger.info(
-                    f"PatternRecorder: Updated pattern '{field_label}' → {profile_field} "
+                    f"PatternRecorder: Updated pattern '{field_label}' → {normalized_profile_field} "
                     f"(confidence: {new_confidence:.2f}, occurrences: {new_occurrence_count}, "
                     f"success: {success})"
                 )
@@ -240,7 +291,7 @@ class PatternRecorder:
                 """), {
                     'label_norm': normalized_label,
                     'label_raw': field_label,
-                    'profile_field': profile_field,
+                    'profile_field': normalized_profile_field,
                     'category': field_category,
                     'confidence': initial_confidence,
                     'success_count': 1 if success else 0,
@@ -252,7 +303,7 @@ class PatternRecorder:
                 session.close()
 
                 logger.info(
-                    f"PatternRecorder: Created new pattern '{field_label}' → {profile_field} "
+                    f"PatternRecorder: Created new pattern '{field_label}' → {normalized_profile_field} "
                     f"(confidence: {initial_confidence:.2f}, success: {success})"
                 )
 
@@ -280,9 +331,7 @@ class PatternRecorder:
 
         See record_pattern() for parameter documentation.
         """
-        if not self.engine or not self.SessionLocal:
-            logger.warning("PatternRecorder: Database not initialized, skipping recording")
-            return False
+        normalized_profile_field = self._normalize_profile_field(profile_field)
 
         # Privacy check
         if not self._should_record(field_label):
@@ -293,12 +342,22 @@ class PatternRecorder:
             return False
 
         # Global field validity check
-        if not self._is_valid_global_field(profile_field):
+        if not self._is_valid_global_field(normalized_profile_field):
             logger.debug(
                 f"PatternRecorder: Skipping user-specific profile_field '{profile_field}' "
                 f"for label '{field_label}' — not a valid global field"
             )
             return False
+
+        if not self.engine or not self.SessionLocal:
+            payload = {
+                "field_label_normalized": self._normalize_label(field_label),
+                "field_label_raw": field_label,
+                "profile_field": normalized_profile_field,
+                "field_category": field_category,
+                "success": bool(success),
+            }
+            return self._record_via_api(payload)
 
         normalized_label = self._normalize_label(field_label)
 
@@ -309,11 +368,11 @@ class PatternRecorder:
             existing = session.execute(text("""
                 SELECT id, success_count, failure_count, occurrence_count
                 FROM field_label_patterns
-                WHERE field_label_normalized = :label
-                  AND profile_field = :profile_field
+                WHERE LOWER(field_label_normalized) = LOWER(:label)
+                  AND LOWER(profile_field) = LOWER(:profile_field)
             """), {
                 'label': normalized_label,
-                'profile_field': profile_field
+                'profile_field': normalized_profile_field
             }).first()
 
             if existing:
@@ -347,7 +406,7 @@ class PatternRecorder:
 
                 session.commit()
                 logger.info(
-                    f"PatternRecorder: Updated pattern (sync) '{field_label}' → {profile_field}"
+                    f"PatternRecorder: Updated pattern (sync) '{field_label}' → {normalized_profile_field}"
                 )
 
             else:
@@ -365,7 +424,7 @@ class PatternRecorder:
                 """), {
                     'label_norm': normalized_label,
                     'label_raw': field_label,
-                    'profile_field': profile_field,
+                    'profile_field': normalized_profile_field,
                     'category': field_category,
                     'confidence': initial_confidence,
                     'success_count': 1 if success else 0,
@@ -375,7 +434,7 @@ class PatternRecorder:
 
                 session.commit()
                 logger.info(
-                    f"PatternRecorder: Created new pattern (sync) '{field_label}' → {profile_field}"
+                    f"PatternRecorder: Created new pattern (sync) '{field_label}' → {normalized_profile_field}"
                 )
 
             session.close()
@@ -427,11 +486,34 @@ class PatternRecorder:
             return False
         if '(' in profile_field:        # embedded value: (August 2025)
             return False
-        if profile_field.count('.') > 0:  # any dotted path: obj.field
+        if profile_field.count('.') > 0:  # any dotted path other than list index normalized away
             return False
 
         # Whitelist check — must be a known universal field
         return profile_field.lower() in self.VALID_GLOBAL_PROFILE_FIELDS
+
+    def _normalize_profile_field(self, profile_field: str) -> str:
+        """
+        Canonicalize AI-provided profile_field names to stable global keys.
+        """
+        if not profile_field:
+            return ""
+
+        pf = str(profile_field).strip().lower()
+        pf = pf.replace("-", "_").replace(" ", "_").replace("/", "_")
+        pf = re.sub(r"_+", "_", pf)
+        pf = re.sub(r"\.\d+$", "", pf)  # allow preferred_locations.0 -> preferred_locations
+
+        aliases = {
+            "first name": "first_name",
+            "last name": "last_name",
+            "zip": "zip_code",
+            "postal": "postal_code",
+            "require_sponsorship": "sponsorship_required",
+            "disability": "disability_status",
+            "preferred_location": "preferred_locations",
+        }
+        return aliases.get(pf, pf)
 
     def _normalize_label(self, label: str) -> str:
         """

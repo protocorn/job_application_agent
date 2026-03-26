@@ -224,6 +224,8 @@ class UserPatternRecorder:
         site_domain: Optional[str],
         success: bool,
     ) -> bool:
+        normalized_site_domain = (site_domain or "").strip().lower() or None
+
         if not self.engine or not self.SessionLocal:
             # Production / no-DB mode: route through the Launchway API
             if not user_id:
@@ -241,7 +243,7 @@ class UserPatternRecorder:
                     if source == "human_fill"
                     else self.INITIAL_CONFIDENCE_HUMAN_CORRECTION
                 ),
-                "site_domain":    site_domain,
+                "site_domain":    normalized_site_domain,
                 "profile_field":  profile_field,
             }
             return self._record_via_api(payload)
@@ -265,12 +267,12 @@ class UserPatternRecorder:
                 SELECT id, success_count, failure_count, occurrence_count, confidence_score
                 FROM user_field_overrides
                 WHERE user_id = :user_id
-                  AND field_label_normalized = :label
-                  AND (site_domain = :site_domain OR (site_domain IS NULL AND :site_domain IS NULL))
+                  AND LOWER(field_label_normalized) = LOWER(:label)
+                  AND LOWER(COALESCE(site_domain, '')) = LOWER(COALESCE(:site_domain, ''))
             """), {
                 'user_id':     user_id,
                 'label':       normalized_label,
-                'site_domain': site_domain,
+                'site_domain': normalized_site_domain,
             }).first()
 
             if existing:
@@ -336,7 +338,7 @@ class UserPatternRecorder:
                     'confidence':       initial_confidence,
                     'success_count':    1 if success else 0,
                     'failure_count':    0 if success else 1,
-                    'site_domain':      site_domain,
+                    'site_domain':      normalized_site_domain,
                 })
 
                 logger.info(
