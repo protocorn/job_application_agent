@@ -3042,9 +3042,119 @@ def cli_save_user_field_overrides():
         if not overrides:
             return jsonify({"saved": 0, "skipped": 0}), 200
 
+        def _normalize_profile_field(value: str) -> str:
+            pf = (value or "").strip().lower()
+            pf = pf.replace("-", "_").replace(" ", "_").replace("/", "_")
+            pf = re.sub(r"_+", "_", pf)
+            pf = re.sub(r"\.\d+$", "", pf)
+            aliases = {
+                "firstname": "first_name",
+                "first_name": "first_name",
+                "lastname": "last_name",
+                "last_name": "last_name",
+                "middlename": "middle_name",
+                "middle_name": "middle_name",
+                "preferredname": "preferred_name",
+                "preferred_name": "preferred_name",
+                "email_address": "email",
+                "e_mail": "email",
+                "phone_number": "phone",
+                "mobile_number": "mobile",
+                "cell_phone": "mobile",
+                "zip": "zip_code",
+                "zipcode": "zip_code",
+                "zip_code": "zip_code",
+                "postal": "postal_code",
+                "postalcode": "postal_code",
+                "post_code": "postal_code",
+                "linked_in": "linkedin",
+                "git_hub": "github",
+                "website_url": "website",
+                "portfolio_url": "portfolio",
+                "require_sponsorship": "sponsorship_required",
+                "sponsorship": "sponsorship_required",
+                "visa_sponsorship": "sponsorship_required",
+                "disability": "disability_status",
+                "disability_status": "disability_status",
+                "veteran": "veteran_status",
+                "veteran_status": "veteran_status",
+                "race_ethnicity": "race_ethnicity",
+                "authorized_to_work": "work_authorization",
+                "work_auth": "work_authorization",
+                "preferred_location": "preferred_locations",
+                "preferred_locations": "preferred_locations",
+                "relocate": "willing_to_relocate",
+                "willing_to_relocate": "willing_to_relocate",
+                "years_experience": "years_of_experience",
+                "yrs_experience": "years_of_experience",
+                "cover_letter_text": "cover_letter",
+            }
+            return aliases.get(pf, pf)
+
+        def _infer_profile_field_from_label(label_norm: str) -> str:
+            l = (label_norm or "").strip().lower()
+            if not l:
+                return ""
+            rules = [
+                ("first name", "first_name"),
+                ("last name", "last_name"),
+                ("full name", "full_name"),
+                ("middle name", "middle_name"),
+                ("preferred name", "preferred_name"),
+                ("email", "email"),
+                ("phone", "phone"),
+                ("mobile", "mobile"),
+                ("city", "city"),
+                ("state", "state"),
+                ("country", "country"),
+                ("zip", "zip_code"),
+                ("postal", "postal_code"),
+                ("linkedin", "linkedin"),
+                ("github", "github"),
+                ("portfolio", "portfolio"),
+                ("website", "website"),
+                ("veteran", "veteran_status"),
+                ("disability", "disability_status"),
+                ("gender", "gender"),
+                ("race", "race_ethnicity"),
+                ("ethnicity", "race_ethnicity"),
+                ("nationality", "nationality"),
+                ("visa", "visa_status"),
+                ("sponsorship", "sponsorship_required"),
+                ("work authorization", "work_authorization"),
+                ("authorized to work", "work_authorization"),
+                ("relocate", "willing_to_relocate"),
+                ("preferred location", "preferred_locations"),
+                ("location preference", "preferred_locations"),
+                ("years of experience", "years_of_experience"),
+                ("cover letter", "cover_letter"),
+            ]
+            for needle, mapped in rules:
+                if needle in l:
+                    return mapped
+            return ""
+
+        valid_global_fields = {
+            "first_name", "last_name", "full_name", "middle_name", "preferred_name",
+            "email", "phone", "mobile",
+            "address", "address_line_1", "address_line_2",
+            "city", "state", "country", "zip_code", "postal_code",
+            "linkedin", "github", "portfolio", "website", "twitter",
+            "visa_status", "work_authorization", "sponsorship_required", "require_sponsorship",
+            "veteran_status", "disability_status",
+            "gender", "gender_identity",
+            "race", "ethnicity", "race_ethnicity", "nationality", "pronouns",
+            "willing_to_relocate", "remote_preference", "preferred_locations", "start_date",
+            "notice_period", "salary_range",
+            "highest_education", "degree", "major", "gpa",
+            "years_of_experience", "current_title", "current_company",
+            "cover_letter", "hear_about_us", "referral_source",
+        }
+
         db = SessionLocal()
         saved = 0
         skipped = 0
+        promoted_patterns = 0
         try:
             for entry in overrides:
                 raw_label = (entry.get("field_label_raw") or "").strip()
@@ -3058,7 +3168,8 @@ def cli_save_user_field_overrides():
                 was_ai      = bool(entry.get("was_ai_attempted", True))
                 confidence  = float(entry.get("confidence_score", 0.95))
                 site_domain = (entry.get("site_domain") or "").strip().lower() or None
-                profile_fld = entry.get("profile_field") or None
+                profile_fld = (entry.get("profile_field") or "").strip() or None
+                profile_fld = _normalize_profile_field(profile_fld or _infer_profile_field_from_label(label_norm)) or None
 
                 if not label_norm or not value:
                     skipped += 1
@@ -3114,9 +3225,68 @@ def cli_save_user_field_overrides():
                            "domain": site_domain})
                 saved += 1
 
+                # Promote user overrides to global field_label_patterns when we
+                # know the stable profile_field. This keeps pattern learning active
+                # even when some clients don't post explicit pattern events.
+                if (
+                    profile_fld
+                    and profile_fld in valid_global_fields
+                    and "[" not in profile_fld
+                    and "(" not in profile_fld
+                    and "." not in profile_fld
+                ):
+                    p_existing = db.execute(text("""
+                        SELECT id, success_count, failure_count, occurrence_count
+                        FROM field_label_patterns
+                        WHERE LOWER(field_label_normalized) = LOWER(:label)
+                          AND LOWER(profile_field) = LOWER(:profile_field)
+                    """), {"label": label_norm, "profile_field": profile_fld}).first()
+                    if p_existing:
+                        p_row_id = p_existing[0]
+                        p_succ = (p_existing[1] or 0) + 1
+                        p_fail = (p_existing[2] or 0)
+                        p_occ = (p_existing[3] or 0) + 1
+                        p_total = p_succ + p_fail
+                        p_conf = round(min(0.99, (p_succ / p_total) + min(0.1, p_occ / 100)), 2) if p_total > 0 else 0.85
+                        db.execute(text("""
+                            UPDATE field_label_patterns
+                            SET occurrence_count = :occ,
+                                success_count = :succ,
+                                failure_count = :fail,
+                                confidence_score = :conf,
+                                last_seen = NOW()
+                            WHERE id = :id
+                        """), {
+                            "id": p_row_id,
+                            "occ": p_occ,
+                            "succ": p_succ,
+                            "fail": p_fail,
+                            "conf": p_conf,
+                        })
+                    else:
+                        db.execute(text("""
+                            INSERT INTO field_label_patterns
+                            (field_label_normalized, field_label_raw, profile_field, field_category,
+                             confidence_score, occurrence_count, success_count, failure_count,
+                             created_by_user_id, source)
+                            VALUES
+                            (:label_norm, :label_raw, :profile_field, :category,
+                             0.85, 1, 1, 0, :user_id, 'human_fill')
+                        """), {
+                            "label_norm": label_norm,
+                            "label_raw": label_raw or label_norm,
+                            "profile_field": profile_fld,
+                            "category": category,
+                            "user_id": str(user_id),
+                        })
+                    promoted_patterns += 1
+
             db.commit()
-            logging.info(f"CLI user-field-overrides: saved={saved} skipped={skipped} user={user_id}")
-            return jsonify({"saved": saved, "skipped": skipped}), 201
+            logging.info(
+                f"CLI user-field-overrides: saved={saved} skipped={skipped} "
+                f"promoted_patterns={promoted_patterns} user={user_id}"
+            )
+            return jsonify({"saved": saved, "skipped": skipped, "promoted_patterns": promoted_patterns}), 201
 
         except Exception as inner_e:
             db.rollback()
@@ -3170,13 +3340,50 @@ def cli_save_field_label_patterns():
             pf = re.sub(r"_+", "_", pf)
             pf = re.sub(r"\.\d+$", "", pf)
             aliases = {
-                "first name": "first_name",
-                "last name": "last_name",
+                "firstname": "first_name",
+                "first_name": "first_name",
+                "lastname": "last_name",
+                "last_name": "last_name",
+                "middlename": "middle_name",
+                "middle_name": "middle_name",
+                "preferredname": "preferred_name",
+                "preferred_name": "preferred_name",
+                "email_address": "email",
+                "e_mail": "email",
+                "phone_number": "phone",
+                "mobile_number": "mobile",
+                "cell_phone": "mobile",
                 "zip": "zip_code",
+                "zipcode": "zip_code",
+                "zip_code": "zip_code",
                 "postal": "postal_code",
+                "postalcode": "postal_code",
+                "post_code": "postal_code",
+                "linked_in": "linkedin",
+                "git_hub": "github",
+                "website_url": "website",
+                "portfolio_url": "portfolio",
                 "require_sponsorship": "sponsorship_required",
+                "sponsorship": "sponsorship_required",
+                "visa_sponsorship": "sponsorship_required",
                 "disability": "disability_status",
+                "disability_status": "disability_status",
+                "veteran": "veteran_status",
+                "veteran_status": "veteran_status",
+                "race_ethnicity": "race_ethnicity",
+                "authorized_to_work": "work_authorization",
+                "work_auth": "work_authorization",
                 "preferred_location": "preferred_locations",
+                "preferred_locations": "preferred_locations",
+                "relocate": "willing_to_relocate",
+                "willing_to_relocate": "willing_to_relocate",
+                "years_experience": "years_of_experience",
+                "yrs_experience": "years_of_experience",
+                "current_job_title": "current_title",
+                "current_employer": "current_company",
+                "cover_letter_text": "cover_letter",
+                "hear_about": "hear_about_us",
+                "referral": "referral_source",
             }
             return aliases.get(pf, pf)
 
