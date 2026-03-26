@@ -2,6 +2,6 @@
 Launchway - AI-powered job application automation CLI.
 """
 
-__version__ = "0.2.27"
+__version__ = "0.2.47"
 __author__ = "Launchway"
 __description__ = "Automate your job search: tailor resumes, find jobs, and apply autonomously."

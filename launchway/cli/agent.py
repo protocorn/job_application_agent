@@ -127,6 +127,8 @@ class CLIJobAgent(
         while self.running and self.current_user:
             self.clear_screen()
             self.print_header("LAUNCHWAY - JOB APPLICATION AGENT")
+            app_url = os.getenv("LAUNCHWAY_APP_URL", "https://www.launchway.app").rstrip("/")
+            docs_url = f"{app_url}/download"
 
             u = self.current_user
             print(f"  Logged in as: {Colors.OKGREEN}{u['first_name']} {u['last_name']}{Colors.ENDC}")
@@ -142,6 +144,9 @@ class CLIJobAgent(
             print(f"  {Colors.BOLD}8.{Colors.ENDC}  Settings")
             print(f"  {Colors.BOLD}9.{Colors.ENDC}  Logout")
             print(f"  {Colors.BOLD}10.{Colors.ENDC} Exit\n")
+            print("  Web links:")
+            print(f"    Main website (profile, credits, bug reports): {app_url}")
+            print(f"    Documentation: {docs_url}\n")
 
             choice = self.get_input("Select option (1-10): ").strip()
 

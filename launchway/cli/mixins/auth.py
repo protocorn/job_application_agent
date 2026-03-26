@@ -72,8 +72,31 @@ class AuthMixin:
             self.pause()
             return
 
+        print("  Beta access request is part of signup.\n")
+        beta_request_reason = self.get_input("Why do you want beta access? (min 20 chars): ").strip()
+        if len(beta_request_reason) < 20:
+            self.print_error("Please provide at least 20 characters for your beta access reason.")
+            self.pause()
+            return
+
+        survey_consent = self.get_input_yn(
+            "Do you agree to a brief weekly feedback survey? (y/n): ",
+            default=None,
+        )
+        if not survey_consent:
+            self.print_error("Survey consent is required for beta access.")
+            self.pause()
+            return
+
         try:
-            result = self.api.register(email, password, first_name, last_name)
+            result = self.api.register(
+                email,
+                password,
+                first_name,
+                last_name,
+                beta_request_reason=beta_request_reason,
+                survey_consent=True,
+            )
         except LaunchwayAPIError as e:
             self.print_error(str(e))
             self.pause()
@@ -86,6 +109,7 @@ class AuthMixin:
         print("  │  Next step: check your email to verify your       │")
         print("  │  account, then come back here and log in.         │")
         print("  │                                                   │")
+        print("  │  Your beta request is now pending review.         │")
         print("  │  Didn't receive the email? You can request a      │")
         print("  │  new one from the login screen.                   │")
         print("  └──────────────────────────────────────────────────┘\n")

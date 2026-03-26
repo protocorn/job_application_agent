@@ -419,24 +419,28 @@ The Launchway Team"""
                             <center>
                                 <div class="badge">BETA ACCESS APPROVED</div>
                             </center>
-                            <p>You now have access to our Resume Tailoring beta! Here's what's included:</p>
+                            <p>You now have access to all Launchway core features:</p>
                             <ul>
-                                <li><strong>✅ Tailor Resume</strong> - AI-powered resume customization for each job</li>
-                                <li><strong>✅ Manage Profile</strong> - Store your professional information</li>
-                                <li><strong>✅ Manage Credits</strong> - Track your usage and credits</li>
+                                <li><strong>✅ Tailor Resume</strong> - tailor your resume for each job posting</li>
+                                <li><strong>✅ Job Search</strong> - discover and filter relevant roles</li>
+                                <li><strong>✅ Auto Apply</strong> - get guided automation for applications</li>
+                                <li><strong>✅ Profile + Settings</strong> - manage resume, preferences, and integrations</li>
+                                <li><strong>✅ History + Credits</strong> - track usage and application activity</li>
                             </ul>
-                            <p><strong>Coming Soon:</strong></p>
-                            <ul>
-                                <li><strong>🔜 Search Jobs</strong> - Find opportunities across platforms</li>
-                                <li><strong>🔜 Batch Apply</strong> - Apply to multiple jobs at once</li>
-                                <li><strong>🔜 Dashboard</strong> - Track all your applications</li>
-                            </ul>
-                            <p>Ready to get started? Log in and create your first tailored resume!</p>
+                            <p><strong>How to get started:</strong></p>
+                            <ol>
+                                <li>Log in to your account</li>
+                                <li>Download and install the CLI</li>
+                                <li>Complete your profile and connect your resume</li>
+                                <li>Run your first resume tailoring on a real job post</li>
+                                <li>Start job search and assisted apply from the CLI</li>
+                            </ol>
+                            <p>Ready to begin? Log in and run your first end-to-end flow.</p>
                             <center>
                                 <a href="{self.frontend_url}/login" class="button">Get Started</a>
                             </center>
-                            <p>We'd love to hear your feedback as you explore the platform. Feel free to reach out with any questions or suggestions!</p>
-                            <p>Best regards,<br>The Launchway Team</p>
+                            <p>I'd love to hear your feedback as you explore the platform. Feel free to reach out with any questions or suggestions!</p>
+                            <p>Best regards,<br>Sahil, Founder, Launchway</p>
                         </div>
                         <div class="footer">
                             <p>This is an automated email. Please do not reply to this message.</p>
@@ -451,25 +455,29 @@ The Launchway Team"""
 
 Great news! Your beta access request has been approved!
 
-You now have access to our Resume Tailoring beta! Here's what's included:
+You now have access to all Launchway core features:
 
-✅ Tailor Resume - AI-powered resume customization for each job
-✅ Manage Profile - Store your professional information
-✅ Manage Credits - Track your usage and credits
+✅ Tailor Resume - tailor your resume for each job posting
+✅ Job Search - discover and filter relevant roles
+✅ Auto Apply - get guided automation for applications
+✅ Profile + Settings - manage resume, preferences, and integrations
+✅ History + Credits - track usage and application activity
 
-Coming Soon:
-🔜 Search Jobs - Find opportunities across platforms
-🔜 Batch Apply - Apply to multiple jobs at once
-🔜 Dashboard - Track all your applications
+How to get started:
+1) Log in to your account
+2) Download and install the CLI
+3) Complete your profile and connect your resume
+4) Run your first resume tailoring on a real job post
+5) Start job search and assisted apply from the CLI
 
-Ready to get started? Log in and create your first tailored resume!
+Ready to begin? Log in and run your first end-to-end flow.
 
 Visit: {self.frontend_url}/login
 
-We'd love to hear your feedback as you explore the platform!
+I'd love to hear your feedback as you explore the platform!
 
 Best regards,
-The Launchway Team
+Sahil, Founder, Launchway
             """
 
             # Prepare Resend API request
@@ -586,17 +594,17 @@ The Launchway Team
                         <div class="content">
                             <h2>Hi {first_name},</h2>
                             <p>Thank you for your interest in Launchway's Resume Tailoring beta!</p>
-                            <p>After reviewing your request, we're unable to approve your beta access at this time.</p>
+                            <p>After reviewing your request, beta access cannot be approved at this time.</p>
                             <div class="reason-box">
                                 <strong>Reason:</strong><br>
                                 {rejection_reason}
                             </div>
-                            <p>We appreciate your understanding and encourage you to apply again in the future as we expand our beta program.</p>
+                            <p>I appreciate your understanding and encourage you to apply again in the future as I expand my beta program.</p>
                             <p>If you have any questions or would like to discuss this further, please feel free to reach out.</p>
                             <center>
                                 <a href="{self.frontend_url}/beta-request" class="button">Request Access Again</a>
                             </center>
-                            <p>Best regards,<br>The Launchway Team</p>
+                            <p>Best regards,<br>Sahil, Founder, Launchway</p>
                         </div>
                         <div class="footer">
                             <p>This is an automated email. Please do not reply to this message.</p>
@@ -611,19 +619,19 @@ The Launchway Team
 
 Thank you for your interest in Launchway's Resume Tailoring beta!
 
-After reviewing your request, we're unable to approve your beta access at this time.
+After reviewing your request, beta access cannot be approved at this time.
 
 Reason:
 {rejection_reason}
 
-We appreciate your understanding and encourage you to apply again in the future as we expand our beta program.
+I appreciate your understanding and encourage you to apply again in the future as I expand my beta program.
 
 If you have any questions or would like to discuss this further, please feel free to reach out.
 
 You can request access again at: {self.frontend_url}/beta-request
 
 Best regards,
-The Launchway Team
+Sahil, Founder, Launchway
             """
 
             # Prepare Resend API request

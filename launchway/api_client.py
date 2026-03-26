@@ -157,19 +157,38 @@ class LaunchwayClient:
             self.token = data["token"]
         return data
 
-    def register(self, email: str, password: str, first_name: str, last_name: str) -> Dict[str, Any]:
+    def register(
+        self,
+        email: str,
+        password: str,
+        first_name: str,
+        last_name: str,
+        beta_request_reason: Optional[str] = None,
+        survey_consent: Optional[bool] = None,
+    ) -> Dict[str, Any]:
         """
         Register a new account.
 
         Returns dict with keys: success, message, user {...}
         Note: email verification may be required before login.
         """
-        return self._post("/api/auth/signup", {
+        # Beta signup policy: registration is only valid when users explicitly
+        # consent to the weekly survey and provide a meaningful reason.
+        reason = (beta_request_reason or "").strip()
+        if len(reason) < 20:
+            raise LaunchwayAPIError("Please provide at least 20 characters for your beta access reason.")
+        if survey_consent is not True:
+            raise LaunchwayAPIError("Survey consent is required to register for beta access.")
+
+        payload: Dict[str, Any] = {
             "email":      email,
             "password":   password,
             "first_name": first_name,
             "last_name":  last_name,
-        })
+            "beta_request_reason": reason,
+            "survey_consent": True,
+        }
+        return self._post("/api/auth/signup", payload)
 
     def resend_verification_email(self, email: str) -> Dict[str, Any]:
         """Request a new verification email for the given address."""
