@@ -109,7 +109,7 @@ class GoogleOAuthService:
                 client_id=CLIENT_ID,
                 client_secret=CLIENT_SECRET,
                 scopes=token_data.get('scope', '').split(),
-                expiry=datetime.now() + timedelta(seconds=token_data.get('expires_in', 3600))
+                expiry=datetime.utcnow() + timedelta(seconds=token_data.get('expires_in', 3600))
             )
 
             # Get user email from token info (no API call needed)
@@ -191,16 +191,26 @@ class GoogleOAuthService:
                 token_uri="https://oauth2.googleapis.com/token",
                 client_id=CLIENT_ID,
                 client_secret=CLIENT_SECRET,
-                scopes=SCOPES
+                scopes=SCOPES,
+                expiry=user.google_token_expiry,
             )
 
-            # Refresh if expired
-            if credentials.expired and credentials.refresh_token:
+            # Proactively refresh if token is expired, close to expiry, or has
+            # no reliable expiry metadata. This keeps long-running sessions from
+            # failing on first API call with stale access tokens.
+            should_refresh = (
+                not credentials.valid
+                or credentials.expiry is None
+                or credentials.expiry <= (datetime.utcnow() + timedelta(minutes=10))
+            )
+            if should_refresh and credentials.refresh_token:
                 try:
                     credentials.refresh(Request())
 
-                    # Update stored tokens
+                    # Update stored tokens (and rotated refresh token if provided)
                     user.google_access_token = GoogleOAuthService._encrypt_token(credentials.token)
+                    if credentials.refresh_token:
+                        user.google_refresh_token = GoogleOAuthService._encrypt_token(credentials.refresh_token)
                     user.google_token_expiry = credentials.expiry
                     db.commit()
 

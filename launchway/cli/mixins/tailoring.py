@@ -66,6 +66,51 @@ class TailoringMixin:
         source_type = self.current_profile.get('resume_source_type', '')
 
         if resume_url:
+            # If the resume source is Google Docs, require a live Google OAuth
+            # connection before running auto-apply workflows.
+            is_google_doc_resume = (
+                source_type == 'google_doc'
+                or ('docs.google.com' in str(resume_url).lower())
+            )
+            if is_google_doc_resume:
+                try:
+                    status = self.api.get_google_oauth_status()
+                except LaunchwayAPIError as e:
+                    self.print_error(f"Could not verify Google account connection: {e}")
+                    self.print_info("Please retry when backend connectivity is stable.")
+                    return False
+
+                if not status.get("is_connected", False):
+                    self.print_warning(
+                        "Your resume is a Google Doc, but your Google account is not connected "
+                        "or the token has expired."
+                    )
+                    self.print_info("You must reconnect Google before continuing.")
+                    if hasattr(self, "_ensure_google_connected"):
+                        connected = self._ensure_google_connected()
+                        if not connected:
+                            self.print_error(
+                                "Google account connection is required to continue with "
+                                "Google Docs resume auto-apply."
+                            )
+                            return False
+                        # Re-check status after reconnect flow
+                        try:
+                            status = self.api.get_google_oauth_status()
+                        except LaunchwayAPIError as e:
+                            self.print_error(f"Could not re-verify Google account: {e}")
+                            return False
+                        if not status.get("is_connected", False):
+                            self.print_error(
+                                "Google account is still not connected. Please connect it "
+                                "from Profile Management and try again."
+                            )
+                            return False
+                    else:
+                        self.print_error(
+                            "Google connection helper is unavailable in this CLI context."
+                        )
+                        return False
             return True
 
         if resume_text and source_type in ('pdf', 'docx'):
