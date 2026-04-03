@@ -1126,7 +1126,7 @@ def process_resume():
                 'resume_filename': '',      # clear previously uploaded filename
                 'resume_file_base64': '',   # clear previously uploaded file bytes
             }
-            ProfileService.create_or_update_profile(user_id, save_payload)
+            ProfileService.create_or_update_profile(user_id, save_payload, preserve_existing=True)
         except Exception as persist_err:
             logging.warning(f"Could not persist resume data: {persist_err}")
 
@@ -1235,7 +1235,7 @@ def upload_resume():
                 'resume_filename': original_filename,
                 'resume_file_base64': base64.b64encode(file_bytes).decode('utf-8'),
             }
-            ProfileService.create_or_update_profile(user_id, save_payload)
+            ProfileService.create_or_update_profile(user_id, save_payload, preserve_existing=True)
         except Exception as persist_err:
             logging.warning(f"Could not persist resume data: {persist_err}")
 

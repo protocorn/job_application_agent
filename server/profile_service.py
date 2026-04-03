@@ -18,9 +18,106 @@ class ProfileService:
         except (ValueError, AttributeError, TypeError) as e:
             raise ValueError(f"Invalid user ID format: {user_id}")
 
+    # ── Pool-merge helpers ────────────────────────────────────────────────────
+
     @staticmethod
-    def create_or_update_profile(user_id: str, profile_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Create or update user profile"""
+    def _is_empty_value(value: Any) -> bool:
+        """Return True if value is considered null/empty (None, '', [], or all-blank)."""
+        if value is None:
+            return True
+        if isinstance(value, str):
+            return value.strip() == ''
+        if isinstance(value, list):
+            if len(value) == 0:
+                return True
+            return all(
+                (isinstance(v, str) and v.strip() == '') or
+                (isinstance(v, dict) and all(ProfileService._is_empty_value(vv) for vv in v.values()))
+                for v in value
+            )
+        if isinstance(value, dict):
+            return all(ProfileService._is_empty_value(v) for v in value.values())
+        return False
+
+    @staticmethod
+    def _merge_list_of_dicts(existing: list, new_list: list, key_fields: list) -> list:
+        """Merge two lists of dicts.
+
+        Existing items are preserved (pool behaviour).  If an incoming item
+        matches an existing one on any of the key_fields (case-insensitive),
+        the existing entry is replaced with the fresh resume data.  Incoming
+        items that have no match are appended.
+        """
+        if not new_list:
+            return existing or []
+        if not existing:
+            return new_list
+
+        non_empty_existing = [
+            item for item in existing
+            if isinstance(item, dict) and any(not ProfileService._is_empty_value(v) for v in item.values())
+        ]
+        result = list(non_empty_existing)
+
+        for new_item in new_list:
+            if not isinstance(new_item, dict) or ProfileService._is_empty_value(new_item):
+                continue
+            match_idx = None
+            for i, ex_item in enumerate(result):
+                for key in key_fields:
+                    new_val = str(new_item.get(key, '')).strip().lower()
+                    ex_val = str(ex_item.get(key, '')).strip().lower()
+                    if new_val and ex_val and new_val == ex_val:
+                        match_idx = i
+                        break
+                if match_idx is not None:
+                    break
+            if match_idx is not None:
+                result[match_idx] = new_item
+            else:
+                result.append(new_item)
+
+        return result if result else new_list
+
+    @staticmethod
+    def _merge_skills(existing: dict, new_skills: dict) -> dict:
+        """Union each skill sub-list so manually-added skills are never lost."""
+        if not new_skills or not isinstance(new_skills, dict):
+            return existing or {}
+        if not existing or not isinstance(existing, dict):
+            return new_skills
+        result = dict(existing)
+        for key, new_items in new_skills.items():
+            if not isinstance(new_items, list) or not any(
+                isinstance(v, str) and v.strip() for v in new_items
+            ):
+                continue
+            existing_items = result.get(key, [])
+            seen = {v.strip().lower() for v in existing_items if isinstance(v, str) and v.strip()}
+            merged = list(existing_items)
+            for item in new_items:
+                if isinstance(item, str) and item.strip() and item.strip().lower() not in seen:
+                    merged.append(item)
+                    seen.add(item.strip().lower())
+            result[key] = merged
+        return result
+
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def create_or_update_profile(
+        user_id: str,
+        profile_data: Dict[str, Any],
+        preserve_existing: bool = False,
+    ) -> Dict[str, Any]:
+        """Create or update user profile.
+
+        Args:
+            preserve_existing: When True (used during resume processing) the
+                update never overwrites a non-empty DB value with null/empty,
+                and merges pool fields (projects / education / work_experience /
+                skills) so that manually-added entries are retained.
+        """
         db = SessionLocal()
         try:
             # Convert user_id to UUID
@@ -40,6 +137,30 @@ class ProfileService:
                     if hasattr(existing_profile, db_field):
                         # Convert empty strings to None for boolean fields
                         converted_value = ProfileService._convert_field_value(db_field, value)
+
+                        if preserve_existing:
+                            existing_value = getattr(existing_profile, db_field, None)
+
+                            # Never replace a real value with null/empty
+                            if ProfileService._is_empty_value(converted_value):
+                                continue
+
+                            # Pool fields: merge instead of replace
+                            if db_field == 'projects' and not ProfileService._is_empty_value(existing_value):
+                                converted_value = ProfileService._merge_list_of_dicts(
+                                    existing_value, converted_value, ['name']
+                                )
+                            elif db_field == 'education' and not ProfileService._is_empty_value(existing_value):
+                                converted_value = ProfileService._merge_list_of_dicts(
+                                    existing_value, converted_value, ['institution', 'degree']
+                                )
+                            elif db_field == 'work_experience' and not ProfileService._is_empty_value(existing_value):
+                                converted_value = ProfileService._merge_list_of_dicts(
+                                    existing_value, converted_value, ['company', 'title']
+                                )
+                            elif db_field == 'skills' and not ProfileService._is_empty_value(existing_value):
+                                converted_value = ProfileService._merge_skills(existing_value, converted_value)
+
                         setattr(existing_profile, db_field, converted_value)
 
                 db.commit()
