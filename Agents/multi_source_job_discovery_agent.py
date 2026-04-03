@@ -28,6 +28,9 @@ class MultiSourceJobDiscoveryAgent:
         self.profile_data = profile_data if profile_data is not None else self._load_profile_data()
         self.adapters = JobAPIFactory.get_all_adapters(proxy_manager=proxy_manager)
         self.gemini_client = self._initialize_gemini()
+        self._applied_cache_loaded = False
+        self._applied_urls_cache = set()
+        self._applied_company_titles_cache = set()
         logger.info(f"Initialized with {len(self.adapters)} job API adapters")
         if proxy_manager:
             stats = proxy_manager.get_stats()
@@ -226,7 +229,7 @@ class MultiSourceJobDiscoveryAgent:
             return city
 
         # Default to country
-        country = profile.get("country", "United States")
+        country = profile.get("country","")
         return country
 
     def search_all_sources(
@@ -614,40 +617,38 @@ Return the optimized parameters as JSON:
             return jobs
         
         try:
-            # Import here to avoid circular imports
-            from database_config import SessionLocal, JobApplication
-            from sqlalchemy import or_
-            
-            db = SessionLocal()
-            
-            # Get all jobs this user has applied to
-            applied_jobs = db.query(JobApplication).filter(
-                JobApplication.user_id == self.user_id
-            ).all()
-            
-            db.close()
-            
-            if not applied_jobs:
-                logger.info("No previous applications found for this user")
-                return jobs
-            
-            # Create a set of applied job identifiers
-            # We'll match on job_url (primary) and company+title (secondary)
-            applied_urls = set()
-            applied_company_titles = set()
-            
-            for app in applied_jobs:
-                if app.job_url:
-                    # Normalize URL (remove trailing slashes, query params, etc.)
-                    normalized_url = app.job_url.rstrip('/').split('?')[0].lower()
-                    applied_urls.add(normalized_url)
-                
-                # Also track company + title combinations
-                if app.company_name and app.job_title:
-                    company_title = f"{app.company_name.lower().strip()}|{app.job_title.lower().strip()}"
-                    applied_company_titles.add(company_title)
-            
-            logger.info(f"Found {len(applied_urls)} applied job URLs and {len(applied_company_titles)} company+title combinations")
+            if not self._applied_cache_loaded:
+                # Import here to avoid circular imports
+                from database_config import SessionLocal, JobApplication
+
+                db = SessionLocal()
+                try:
+                    applied_jobs = db.query(JobApplication).filter(
+                        JobApplication.user_id == self.user_id
+                    ).all()
+                finally:
+                    db.close()
+
+                self._applied_urls_cache = set()
+                self._applied_company_titles_cache = set()
+
+                for app in applied_jobs:
+                    if app.job_url:
+                        normalized_url = app.job_url.rstrip('/').split('?')[0].lower()
+                        self._applied_urls_cache.add(normalized_url)
+
+                    if app.company_name and app.job_title:
+                        company_title = f"{app.company_name.lower().strip()}|{app.job_title.lower().strip()}"
+                        self._applied_company_titles_cache.add(company_title)
+
+                self._applied_cache_loaded = True
+                if not applied_jobs:
+                    logger.info("No previous applications found for this user")
+                else:
+                    logger.info(
+                        f"Found {len(self._applied_urls_cache)} applied job URLs and "
+                        f"{len(self._applied_company_titles_cache)} company+title combinations"
+                    )
             
             # Filter out jobs that match
             filtered_jobs = []
@@ -660,12 +661,12 @@ Return the optimized parameters as JSON:
                 company_title = f"{company}|{title}"
                 
                 # Check if this job has been applied to
-                if job_url and job_url in applied_urls:
+                if job_url and job_url in self._applied_urls_cache:
                     filtered_count += 1
                     logger.debug(f"Filtered duplicate by URL: {job.get('title')} at {job.get('company')}")
                     continue
                 
-                if company and title and company_title in applied_company_titles:
+                if company and title and company_title in self._applied_company_titles_cache:
                     filtered_count += 1
                     logger.debug(f"Filtered duplicate by company+title: {title} at {company}")
                     continue

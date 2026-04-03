@@ -12,8 +12,7 @@ import uuid
 
 # OAuth Configuration
 SCOPES = [
-    'https://www.googleapis.com/auth/documents',
-    'https://www.googleapis.com/auth/drive',  # Full Drive access needed for resume tailoring
+    'https://www.googleapis.com/auth/drive.file',
     'https://www.googleapis.com/auth/userinfo.email',
     'openid'
 ]
@@ -282,6 +281,17 @@ class GoogleOAuthService:
             return {'success': False, 'error': 'Failed to disconnect Google account'}
         finally:
             db.close()
+
+    @staticmethod
+    def get_access_token(user_id: Union[str, uuid.UUID]) -> Optional[str]:
+        """
+        Return a valid (refreshed if needed) access token string for the user.
+        Returns None if the user has no connected Google account.
+        """
+        credentials = GoogleOAuthService.get_credentials(user_id)
+        if credentials is None:
+            return None
+        return credentials.token
 
     @staticmethod
     def is_connected(user_id: Union[str, uuid.UUID]) -> bool:

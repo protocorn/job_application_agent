@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any
 import logging
 import uuid
 from datetime import datetime, timedelta
+from profile_strength import score_profile_strength
 
 class ProfileService:
 
@@ -97,10 +98,12 @@ class ProfileService:
 
             # Convert database profile to frontend format
             profile_data = ProfileService._profile_to_dict(profile)
+            profile_strength = score_profile_strength(profile_data)
 
             return {
                 'success': True,
-                'profile': profile_data
+                'profile': profile_data,
+                'profile_strength': profile_strength,
             }
 
         except Exception as e:
@@ -211,7 +214,7 @@ class ProfileService:
             'other links': profile.other_links or [''],
             'education': profile.education or [{'degree': '', 'institution': '', 'graduation_year': '', 'gpa': '', 'relevant_courses': ['']}],
             'work experience': profile.work_experience or [{'title': '', 'company': '', 'start_date': '', 'end_date': '', 'description': '', 'achievements': ['']}],
-            'projects': profile.projects or [{'name': '', 'description': '', 'technologies': [''], 'github_url': '', 'live_url': '', 'features': ['']}],
+            'projects': profile.projects or [{'name': '', 'dates': '', 'description': '', 'technologies': [''], 'github_url': '', 'live_url': '', 'features': ['']}],
             'skills': profile.skills or {'technical': [''], 'programming_languages': [''], 'frameworks': [''], 'tools': [''], 'soft_skills': [''], 'languages': ['']},
             'summary': profile.summary or '',
             'disabilities': profile.disabilities or [],
@@ -256,10 +259,12 @@ class ProfileService:
                 'email': user.email,
                 'pending_email': user.pending_email or None
             })
+            profile_strength = score_profile_strength(profile_data)
 
             return {
                 'success': True,
-                'profile': profile_data
+                'profile': profile_data,
+                'profile_strength': profile_strength,
             }
 
         except Exception as e:
@@ -304,7 +309,7 @@ class ProfileService:
             'other links': [''],
             'education': [{'degree': '', 'institution': '', 'graduation_year': '', 'gpa': '', 'relevant_courses': ['']}],
             'work experience': [{'title': '', 'company': '', 'start_date': '', 'end_date': '', 'description': '', 'achievements': ['']}],
-            'projects': [{'name': '', 'description': '', 'technologies': [''], 'github_url': '', 'live_url': '', 'features': ['']}],
+            'projects': [{'name': '', 'dates': '', 'description': '', 'technologies': [''], 'github_url': '', 'live_url': '', 'features': ['']}],
             'skills': {'technical': [''], 'programming_languages': [''], 'frameworks': [''], 'tools': [''], 'soft_skills': [''], 'languages': ['']},
             'summary': '',
             'disabilities': [],

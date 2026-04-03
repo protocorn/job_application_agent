@@ -157,7 +157,7 @@ HIGH-RELEVANCE CONTENT (should be expanded):
         instructions += f"""
   {i}. Line {receiver['line_number']}: "{receiver['text_preview']}"
       Relevance: {receiver['relevance']}/100, Needs: {receiver['could_use_chars']} chars
-      Action: Add more detail from Mimikree data, elaborate on impact"""
+      Action: Add more detail from profile data, elaborate on impact"""
 
     instructions += f"""
 
@@ -165,7 +165,7 @@ STRATEGY:
 1. Shorten/condense the {len(donor_lines)} low-relevance items above
 2. Use the freed space to elaborate on the {len(receiver_lines)} high-relevance items
 3. Keep total visual lines the same - you're redistributing space intelligently
-4. Prioritize truthful expansion using Mimikree data only
+4. Prioritize truthful expansion using profile data only
 """
 
     return instructions
@@ -200,7 +200,7 @@ def generate_space_aware_prompt_additions(
 
 CONTENT REDISTRIBUTION RULES:
 - NEVER invent accomplishments or data
-- Only expand using truthful Mimikree data
+- Only expand using truthful profile data
 - Condense low-relevance items by removing filler words, not facts
 - When expanding, add context, methodology, or business impact
 - Maintain the same total page length by balancing expansions with condensing

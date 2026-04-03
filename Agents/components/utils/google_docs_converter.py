@@ -261,10 +261,6 @@ class GoogleDocsConverter:
                 logger.warning(f"Resume path does not exist: {resume_url_or_path}")
                 return resume_url_or_path
 
-        # It's a Google Docs URL - convert to PDF
-        print(f"  Converting Google Doc resume to PDF...")
-        logger.info(f"🔄 Detected Google Docs URL, converting to PDF...")
-
         # Determine output directory
         if resumes_dir is None:
             current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -281,6 +277,10 @@ class GoogleDocsConverter:
             print(f"  Resume PDF already cached: {output_filename}")
             logger.info(f"✅ PDF already exists: {output_path}")
             return output_path
+
+        # It's a Google Docs URL and not cached - convert to PDF
+        print(f"  Converting Google Doc resume to PDF...")
+        logger.info(f"🔄 Detected Google Docs URL, converting to PDF...")
 
         # Download the PDF
         if GoogleDocsConverter.download_as_pdf(resume_url_or_path, output_path, user_id=user_id):

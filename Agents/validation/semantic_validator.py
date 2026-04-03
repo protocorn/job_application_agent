@@ -8,7 +8,10 @@ and key facts. Prevents over-aggressive condensation that loses important inform
 import re
 import logging
 from typing import Dict, List, Optional, Tuple
-from gemini_compat import genai
+try:
+    from Agents.gemini_compat import genai
+except ImportError:
+    from gemini_compat import genai
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -272,7 +275,7 @@ REASONING: [brief explanation]"""
         Args:
             original_text: The original text
             expanded_text: The expanded version
-            source_data: Optional source data (e.g., Mimikree responses) to validate against
+            source_data: Optional source data (e.g., profile responses) to validate against
 
         Returns:
             Dict with:

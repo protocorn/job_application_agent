@@ -35,9 +35,7 @@ logger = logging.getLogger(__name__)
 # These are safe defaults that should always be set for production use.
 # They can be overridden by the user's ~/.launchway/.env or system env vars.
 
-_PRODUCTION_DEFAULTS = {
-    "MIMIKREE_BASE_URL": "https://www.mimikree.com",
-}
+_PRODUCTION_DEFAULTS = {}
 
 
 def _set_gemini_env(key_value: str) -> None:
@@ -58,7 +56,7 @@ def _apply_env_defaults():
     Set production defaults and restore server-provided keys on every bootstrap.
     Called on both cache-hit and cache-miss runs so env vars are always present.
     """
-    # Static production defaults (e.g. Mimikree URL)
+    # Static production defaults
     for key, default_value in _PRODUCTION_DEFAULTS.items():
         if not os.getenv(key):
             os.environ[key] = default_value
@@ -76,6 +74,7 @@ def _apply_env_defaults():
 
 _KEY_CACHE_PATH     = Path.home() / ".launchway" / ".rkey"
 _GEMINI_KEY_CACHE   = Path.home() / ".launchway" / ".gemini_key"
+_PERSISTENT_MODEL_CACHE = Path.home() / ".launchway" / ".model_cache"
 _KEY_MAX_AGE_SEC    = 24 * 3600   # refresh key every 24 hours
 _ENC_ROOT           = Path(__file__).parent / "encrypted_agents"
 _KEY_FINGERPRINT_FILE = _ENC_ROOT / "key_fingerprint.txt"
@@ -86,6 +85,8 @@ _tmp_dir: Optional[str] = None
 _bootstrap_diag: dict = {
     "source": "none",  # server|cache|none
     "loader_mode": "disk_decrypt",
+    "model_cache_mode": "none",  # symlink|copy_sync|none
+    "model_cache_path": "",
     "bundle_gemini_key": "",
     "effective_google_api_key": "",
     "effective_gemini_api_key": "",
@@ -247,6 +248,59 @@ def _save_gemini_key(key: str) -> None:
         pass
 
 
+def _prepare_runtime_model_cache(runtime_agents_root: Path) -> tuple[str, Optional[tuple[Path, Path]]]:
+    """
+    Make Agents/.model_cache persistent across CLI runs.
+
+    Returns:
+        (mode, sync_pair)
+        mode: "symlink" | "copy_sync" | "none"
+        sync_pair: (runtime_cache, persistent_cache) only for copy_sync mode.
+    """
+    persistent_cache = _PERSISTENT_MODEL_CACHE
+    runtime_cache = runtime_agents_root / ".model_cache"
+
+    try:
+        persistent_cache.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        logger.warning(f"Could not create persistent model cache dir: {e}")
+        return "none", None
+
+    # Preferred path: symlink runtime cache -> persistent cache.
+    try:
+        if runtime_cache.exists() or runtime_cache.is_symlink():
+            if runtime_cache.is_dir() and not runtime_cache.is_symlink():
+                shutil.rmtree(runtime_cache, ignore_errors=True)
+            else:
+                runtime_cache.unlink(missing_ok=True)
+        runtime_cache.symlink_to(persistent_cache, target_is_directory=True)
+        logger.debug(f"Model cache linked: {runtime_cache} -> {persistent_cache}")
+        return "symlink", None
+    except Exception as e:
+        logger.debug(f"Model cache symlink unavailable, using copy-sync mode: {e}")
+
+    # Fallback for restricted systems (no symlink rights):
+    # hydrate runtime cache from persistent storage, then sync back on exit.
+    try:
+        runtime_cache.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(persistent_cache, runtime_cache, dirs_exist_ok=True)
+        return "copy_sync", (runtime_cache, persistent_cache)
+    except Exception as e:
+        logger.warning(f"Could not prepare runtime model cache: {e}")
+        return "none", None
+
+
+def _sync_runtime_model_cache(runtime_cache: Path, persistent_cache: Path) -> None:
+    """Best-effort sync from per-run cache to persistent cache."""
+    try:
+        if runtime_cache.exists():
+            persistent_cache.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(runtime_cache, persistent_cache, dirs_exist_ok=True)
+            logger.debug("Synced runtime model cache to persistent cache")
+    except Exception as e:
+        logger.warning(f"Could not sync model cache: {e}")
+
+
 def _key_fingerprint(key_bytes: bytes) -> str:
     return hashlib.sha256(key_bytes).hexdigest()
 
@@ -337,12 +391,6 @@ def bootstrap_agents(api_client) -> bool:
                     _set_gemini_env(gemini_key)
                     logger.debug("Set Gemini API key env vars from server bundle (Launchway AI)")
 
-                # Mimikree production URL - overrides localhost default in agent code
-                mimikree_url = bundle.get("mimikree_url", "")
-                if mimikree_url and not os.getenv("MIMIKREE_BASE_URL"):
-                    os.environ["MIMIKREE_BASE_URL"] = mimikree_url
-                    logger.debug(f"Set MIMIKREE_BASE_URL={mimikree_url}")
-
         except Exception as e:
             logger.error(f"Failed to fetch runtime key from server: {e}")
             return False
@@ -379,6 +427,11 @@ def bootstrap_agents(api_client) -> bool:
     tmp_dir = Path(tempfile.mkdtemp(prefix="lw_agents_"))
     runtime_agents_root = tmp_dir / "Agents"
     runtime_agents_root.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("LAUNCHWAY_MODEL_CACHE_DIR", str(_PERSISTENT_MODEL_CACHE))
+
+    cache_mode, cache_sync_pair = _prepare_runtime_model_cache(runtime_agents_root)
+    _bootstrap_diag["model_cache_mode"] = cache_mode
+    _bootstrap_diag["model_cache_path"] = str(_PERSISTENT_MODEL_CACHE)
 
     _import_finder = _EncryptedAgentsFinder(
         enc_root=_ENC_ROOT,
@@ -503,6 +556,9 @@ engine = None
     # ── 9. Schedule temp dir cleanup on exit ─────────────────────────────────
 
     atexit.register(shutil.rmtree, tmp_dir, ignore_errors=True)
+    if cache_sync_pair:
+        # Register after cleanup so this runs first at exit (atexit is LIFO).
+        atexit.register(_sync_runtime_model_cache, cache_sync_pair[0], cache_sync_pair[1])
 
     # Capture final effective env values for diagnostics
     _bootstrap_diag["effective_google_api_key"] = os.getenv("GOOGLE_API_KEY", "")

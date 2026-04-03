@@ -49,14 +49,7 @@ GOOGLE_API_KEY=your_google_gemini_api_key
 GOOGLE_CLIENT_ID=your_google_oauth_client_id
 GOOGLE_CLIENT_SECRET=your_google_oauth_client_secret
 GOOGLE_REDIRECT_URI=https://yourdomain.com/api/oauth/callback
-
-# ============================================================
-# MIMIKREE INTEGRATION
-# ============================================================
-# Note: Mimikree credentials are now stored per-user in the database
-# Users connect their individual Mimikree accounts through the UI
-# Production URL:
-MIMIKREE_BASE_URL=https://www.mimikree.com
+GOOGLE_PICKER_API_KEY=your_google_picker_api_key
 
 # ============================================================
 # JOB QUEUE SETTINGS

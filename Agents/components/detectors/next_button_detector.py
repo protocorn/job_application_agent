@@ -12,7 +12,7 @@ class NextButtonDetector:
     # Patterns are anchored (^) to match the beginning of the text for accuracy.
     # The `|` character in the regex acts as an "OR".
     NEXT_PATTERNS_REGEX = re.compile(
-        r'^(next|continue|save and continue|next step)$', 
+        r'^(next|continue|save and continue|next step|proceed)$',
         re.IGNORECASE
     )
 
@@ -50,6 +50,8 @@ class NextButtonDetector:
                 'button#submit_app',
                 'input[type="submit"][value*="Next" i]',
                 'input[type="submit"][value*="Continue" i]',
+                '[role="button"][aria-label*="Next" i]',
+                '[role="button"][aria-label*="Continue" i]',
             ]
 
             for selector in greenhouse_selectors:

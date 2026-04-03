@@ -4,6 +4,8 @@ import uuid
 import re
 import json
 import unicodedata
+import inspect
+import importlib.util
 import requests
 from pathlib import Path
 from google import genai
@@ -16,31 +18,56 @@ from google.auth.exceptions import RefreshError
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-# Systematic tailoring imports
+def _load_systematic_tailoring_functions():
+    """
+    Load systematic tailoring from local checkout first, using direct file load
+    to avoid encrypted-bundle importer collisions.
+    """
+    module_dir = Path(__file__).resolve().parent
+    local_file = module_dir / "systematic_tailoring_complete.py"
+    if local_file.exists():
+        try:
+            local_agents_dir = str(module_dir)
+            if local_agents_dir not in os.sys.path:
+                os.sys.path.insert(0, local_agents_dir)
+            spec = importlib.util.spec_from_file_location(
+                "launchway_local_systematic_tailoring_complete",
+                str(local_file),
+            )
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                return mod.run_systematic_tailoring, mod.recover_from_overflow_if_needed, "local file"
+        except Exception:
+            pass
+
+    try:
+        from systematic_tailoring_complete import (
+            run_systematic_tailoring as _rst,
+            recover_from_overflow_if_needed as _rfi,
+        )
+        return _rst, _rfi, "legacy import"
+    except Exception:
+        from Agents.systematic_tailoring_complete import (
+            run_systematic_tailoring as _rst,
+            recover_from_overflow_if_needed as _rfi,
+        )
+        return _rst, _rfi, "Agents package"
+
+
 try:
-    from systematic_tailoring_complete import (
-        run_systematic_tailoring,
-        recover_from_overflow_if_needed
-    )
-    from mimikree_cache import get_cached_mimikree_data, cache_mimikree_data
+    run_systematic_tailoring, recover_from_overflow_if_needed, _st_source = _load_systematic_tailoring_functions()
     SYSTEMATIC_TAILORING_AVAILABLE = True
-    print("[INIT] Systematic tailoring modules loaded successfully")
-except ImportError as e:
+    print(f"[INIT] Systematic tailoring modules loaded successfully ({_st_source})")
+except Exception as e:
     print(f"[INIT] WARNING: Systematic tailoring not available: {e}")
     SYSTEMATIC_TAILORING_AVAILABLE = False
 
 dotenv.load_dotenv()
 
-# Mimikree API Configuration: use development URL (localhost:8080) unless in production
-if os.getenv("FLASK_ENV") == "production":
-    MIMIKREE_BASE_URL = os.getenv("MIMIKREE_BASE_URL", "https://www.mimikree.com")
-else:
-    MIMIKREE_BASE_URL = os.getenv("MIMIKREE_BASE_URL", "http://localhost:8080")
-
 # --- Google API Setup ---
 SCOPES = [
-    "https://www.googleapis.com/auth/documents",
-    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/drive.file",
 ]
 
 
@@ -88,7 +115,14 @@ def get_google_services(credentials=None):
                 "Place credentials.json in the project root or set GOOGLE_CLIENT_SECRET_PATH."
             )
         flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_path), SCOPES)
-        return flow.run_local_server(port=0)
+        try:
+            return flow.run_local_server(port=0)
+        except Exception as oauth_err:
+            print(f"[WARN] Local OAuth callback failed: {oauth_err}")
+            if hasattr(flow, "run_console"):
+                print("[INFO] Falling back to console-based OAuth...")
+                return flow.run_console()
+            raise
 
     # If no credentials provided, use token cache / OAuth flow
     if not creds:
@@ -560,10 +594,21 @@ JOB DESCRIPTION:
         )
 
         text = response.candidates[0].content.parts[0].text.strip()
+        # Strip any markdown code fences Gemini may wrap the JSON in
         if text.startswith('```'):
-            text = text.replace('```json', '').replace('```', '').strip()
+            text = re.sub(r'^```[a-z]*\n?', '', text)
+            text = re.sub(r'\n?```$', '', text.strip())
+            text = text.strip()
 
-        return json.loads(text)
+        # Attempt strict parse first; fall back to a lenient extractor
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            # Extract the first {...} block in case Gemini added explanation text
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            if match:
+                return json.loads(match.group(0))
+            raise
     except Exception as e:
         print(f"Warning: Keyword extraction failed ({e}), continuing without keywords")
         return {
@@ -1753,8 +1798,33 @@ JOB DESCRIPTION:
         # Return empty replacements on error
         return json.dumps({"replacements": [], "lines_added": 0, "lines_freed": 0, "net_lines": 0})
 
+def _load_profile_projects_for_tailoring(
+    user_id: Optional[str],
+    supplied_projects: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    """Load project data from Launchway profile for project swapping."""
+    if isinstance(supplied_projects, list):
+        return [p for p in supplied_projects if isinstance(p, dict) and p.get("name")]
+    if not user_id:
+        return []
+    try:
+        from database_config import SessionLocal, UserProfile
+        from uuid import UUID
+        db = SessionLocal()
+        try:
+            profile = db.query(UserProfile).filter(UserProfile.user_id == UUID(str(user_id))).first()
+            projects = (profile.projects if profile else None) or []
+            if isinstance(projects, list):
+                return [p for p in projects if isinstance(p, dict) and p.get("name")]
+            return []
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"[WARN] Could not load profile projects for tailoring: {e}")
+        return []
+
 def tailor_resume_and_return_url(original_resume_url, job_description, job_title, company,
-                                   credentials=None, mimikree_email=None, mimikree_password=None, user_full_name=None, user_id=None):
+                                   credentials=None, user_full_name=None, user_id=None, replace_projects_on_tailor: bool = False, profile_projects: Optional[List[Dict[str, Any]]] = None, **_legacy_kwargs):
     """Tailor resume and return publicly accessible Google Doc URL
 
     Args:
@@ -1763,10 +1833,9 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
         job_title: Job title
         company: Company name
         credentials: Optional Google OAuth2 Credentials object for user-specific access
-        mimikree_email: Optional Mimikree account email for profile integration
-        mimikree_password: Optional Mimikree account password for profile integration
         user_full_name: Optional user's full name for document naming
-        user_id: Optional user identifier for scoped cache isolation
+        user_id: Optional user identifier for profile-aware tailoring context
+        replace_projects_on_tailor: When True, allows project section swaps from profile projects
     """
     try:
         # Get Google Services (with user-specific credentials if provided)
@@ -1858,88 +1927,27 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
                     print(f"Warning: Keyword extraction failed, continuing without: {e}")
                     keywords = None
 
-                # Mimikree Integration (if credentials provided)
-                mimikree_data = None
-                mimikree_responses = {}
-                if mimikree_email and mimikree_password:
-                    print("\n" + "="*60)
-                    print("MIMIKREE PROFILE INTEGRATION")
-                    print("="*60)
-
+                supplied_projects = profile_projects if isinstance(profile_projects, list) else _legacy_kwargs.get("profile_projects")
+                profile_projects = _load_profile_projects_for_tailoring(
+                    user_id=user_id,
+                    supplied_projects=supplied_projects if isinstance(supplied_projects, list) else None,
+                )
+                profile_context_data = ""
+                if profile_projects:
+                    print(f"\n📌 Loaded {len(profile_projects)} project(s) from Launchway profile")
                     try:
-                        # Check cache first
-                        cached_data = None
-                        if SYSTEMATIC_TAILORING_AVAILABLE:
-                            cached_data = get_cached_mimikree_data(job_description, user_id=user_id)
-
-                        if cached_data:
-                            print("✅ Using cached Mimikree data")
-                            mimikree_data = cached_data.get('formatted_data', '')
-                            mimikree_responses = cached_data.get('responses', {})
-                        else:
-                            # Import Mimikree integration
-                            from mimikree_integration import MimikreeClient, generate_questions_from_resume_and_jd
-
-                            # Initialize client
-                            print("🔑 Authenticating with Mimikree...")
-                            client = MimikreeClient()
-
-                            if client.authenticate(mimikree_email, mimikree_password):
-                                print("✅ Mimikree authentication successful!")
-
-                                # Generate questions based on job description
-                                print("💬 Generating questions from job description...")
-                                questions = generate_questions_from_resume_and_jd(
-                                    original_resume_text_plain, 
-                                    job_description, 
-                                    max_questions=10
-                                )
-
-                                if questions:
-                                    print(f"📋 Generated {len(questions)} questions")
-                                    
-                                    # Query Mimikree chatbot
-                                    print("💬 Querying Mimikree chatbot for answers...")
-                                    response_data = client.ask_batch_questions(questions)
-
-                                    if response_data.get('success'):
-                                        # Extract successful question-answer pairs
-                                        mimikree_responses = client.extract_successful_answers(response_data)
-                                        
-                                        if mimikree_responses:
-                                            # Format for resume tailoring
-                                            formatted_parts = []
-                                            for q, a in mimikree_responses.items():
-                                                formatted_parts.append(f"Q: {q}\nA: {a}")
-                                            mimikree_data = "\n\n".join(formatted_parts)
-
-                                            # Cache for future use
-                                            if SYSTEMATIC_TAILORING_AVAILABLE:
-                                                cache_data = {
-                                                    'responses': mimikree_responses,
-                                                    'formatted_data': mimikree_data
-                                                }
-                                                cache_mimikree_data(job_description, cache_data, user_id=user_id)
-                                                print(f"💾 Cached Mimikree data for future runs")
-
-                                            print(f"✅ Mimikree integration complete!")
-                                        else:
-                                            print("⚠️ No successful responses from Mimikree chatbot")
-                                    else:
-                                        print(f"⚠️ Failed to get responses from Mimikree chatbot: {response_data.get('message', 'Unknown error')}")
-                                else:
-                                    print("⚠️ No questions generated from job description")
-                            else:
-                                print("⚠️ Mimikree authentication failed - proceeding without profile data")
-
-                    except Exception as e:
-                        print(f"⚠️ Mimikree integration failed: {e}")
-                        print("   Proceeding without Mimikree data")
-
-                    print("="*60)
-                else:
-                    print("\n⚠️ Mimikree credentials not provided - skipping profile integration")
-                    print("   To use Mimikree integration, provide mimikree_email and mimikree_password")
+                        profile_context_data = json.dumps(
+                            {
+                                "projects": profile_projects[:8],
+                                "project_swap_enabled": bool(replace_projects_on_tailor),
+                            },
+                            ensure_ascii=False,
+                        )
+                    except Exception:
+                        profile_context_data = ""
+                elif replace_projects_on_tailor:
+                    print("\n⚠️ Project swap requested, but no profile projects are available.")
+                    print("   Add projects in your Launchway profile to enable project replacements.")
 
                 # Annotate resume with metadata for AI guidance
                 print("\nAnnotating resume with formatting constraints...")
@@ -1990,19 +1998,29 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
             else:
                 print("📊 Mode: AGGRESSIVE (Full resume editing)")
             
-            systematic_results = run_systematic_tailoring(
+            systematic_kwargs = dict(
                 job_description=job_description,
                 job_keywords=keywords.get('prioritized_keywords', [])[:10] if keywords else [],
                 line_metadata=line_metadata if line_metadata else [],
                 resume_text=original_resume_text_plain,
-                mimikree_responses=mimikree_responses if 'mimikree_responses' in locals() else {},
-                mimikree_formatted_data=mimikree_data if 'mimikree_data' in locals() and mimikree_data else "",
-                conservative_mode=conservative_mode
+                profile_responses={},
+                profile_context_data=profile_context_data if 'profile_context_data' in locals() else "",
+                conservative_mode=conservative_mode,
+                profile_projects=profile_projects if 'profile_projects' in locals() else [],
+                enable_project_swaps=bool(replace_projects_on_tailor),
             )
+            try:
+                st_sig = inspect.signature(run_systematic_tailoring)
+                accepted = set(st_sig.parameters.keys())
+                systematic_kwargs = {k: v for k, v in systematic_kwargs.items() if k in accepted}
+            except Exception:
+                pass
+            systematic_results = run_systematic_tailoring(**systematic_kwargs)
 
             # Apply replacements
             if systematic_results['all_replacements']:
                 print(f"\n📝 Applying {len(systematic_results['all_replacements'])} replacements...")
+                _miss_count = 0
 
                 for repl in systematic_results['all_replacements']:
                     try:
@@ -2015,13 +2033,22 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
                                 'replaceText': repl['new_text']
                             }
                         }]
-                        docs_service.documents().batchUpdate(
+                        resp = docs_service.documents().batchUpdate(
                             documentId=copied_doc_id,
                             body={'requests': requests_list}
                         ).execute()
+                        # Check how many occurrences were actually replaced
+                        hits = (resp.get('replies') or [{}])[0].get('replaceAllText', {}).get('occurrencesChanged', None)
+                        if hits == 0:
+                            _miss_count += 1
+                            rtype = repl.get('type', 'unknown')
+                            preview = repl.get('old_text', '')[:60].replace('\n', '↵')
+                            print(f"      ⚠️  No match [{rtype}]: '{preview}'")
                     except Exception as e:
                         print(f"      ⚠️  Skipped: {str(e)[:50]}...")
 
+                if _miss_count:
+                    print(f"   ⚠️  {_miss_count} replacement(s) found no matching text in the doc (text may differ)")
                 print("✅ Replacements applied")
 
             # CRITICAL: Check page count - only run overflow recovery if needed
@@ -2242,7 +2269,13 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
             'sections_modified': {
                 'profile': any(r.get('type') == 'profile_rewrite' for r in systematic_results['all_replacements']),
                 'skills': any(r.get('type') in ['skills_reorg', 'skills_intelligent_update'] for r in systematic_results['all_replacements']),
-                'projects': any(r.get('type') in ['project_bullet_enhance'] for r in systematic_results['all_replacements'])
+                'projects': any(r.get('type') in [
+                    'project_bullet_enhance',
+                    'project_swap_title',
+                    'project_swap_date',
+                    'project_swap_link',
+                    'project_swap_body',
+                ] for r in systematic_results['all_replacements'])
             },
             'page_stats': {
                 'original_pages': original_page_count,

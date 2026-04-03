@@ -37,8 +37,6 @@ class ProductionDeployer:
             'GOOGLE_API_KEY',
             'GOOGLE_CLIENT_ID',
             'GOOGLE_CLIENT_SECRET',
-            'MIMIKREE_EMAIL',
-            'MIMIKREE_PASSWORD'
         ]
     
     def check_prerequisites(self):

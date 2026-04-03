@@ -452,8 +452,8 @@ class GenericFormFillerV2Enhanced:
                         print("  ✓ Resume uploaded successfully")
                         logger.info("✅ Resume uploaded successfully")
                     else:
-                        print("  [WARN] Resume upload: no file-upload control found on this page (will retry if a Resume field is detected)")
-                        logger.warning("⚠️ Resume upload attempt returned False - no matching upload control found on this page")
+                        print("  [WARN] Resume upload: no file-upload control found on this page")
+                        logger.warning("⚠️ Resume upload skipped - no matching upload control found on this page")
 
             # Step 1: Detect fields (NO option extraction - fill immediately!)
             all_fields = await self.interactor.get_all_form_fields(extract_options=False)
@@ -2174,8 +2174,11 @@ If everything looks correct, set approved=true with empty issues list.
                 r'\bnext\s+page\b',
             ]
 
-            # Find all buttons on the page
-            all_buttons = await self.page.locator('button, input[type="button"], input[type="submit"], a[role="button"]').all()
+            # Find all clickable button-like controls on the page.
+            # Include generic role=button because many ATS UIs use div/span wrappers.
+            all_buttons = await self.page.locator(
+                'button, input[type="button"], input[type="submit"], a[role="button"], [role="button"]'
+            ).all()
 
             logger.debug(f"Found {len(all_buttons)} total buttons on the page")
             found_buttons = []  # Track all visible buttons for debugging
@@ -2186,11 +2189,33 @@ If everything looks correct, set approved=true with empty issues list.
                     if not await button.is_visible():
                         continue
 
-                    # Get button text/label
+                    # Skip disabled controls early
+                    is_enabled = await button.is_enabled()
+                    if not is_enabled:
+                        continue
+                    aria_disabled = (await button.get_attribute('aria-disabled') or "").lower().strip()
+                    if aria_disabled == "true":
+                        continue
+
+                    # Collect multiple text sources. Many ATS controls are input[type=submit]
+                    # where visible text lives in value/title/data-* attrs, not textContent.
                     button_text = await button.text_content() or ""
+                    try:
+                        if not button_text.strip():
+                            button_text = await button.inner_text() or ""
+                    except Exception:
+                        pass
                     aria_label = await button.get_attribute('aria-label') or ""
+                    value_attr = await button.get_attribute('value') or ""
+                    title_attr = await button.get_attribute('title') or ""
+                    data_automation = await button.get_attribute('data-automation-id') or ""
+                    data_testid = await button.get_attribute('data-testid') or ""
                     button_type = await button.get_attribute('type') or ""
-                    combined_text = f"{button_text} {aria_label}".lower().strip()
+
+                    combined_text = (
+                        f"{button_text} {aria_label} {value_attr} {title_attr} "
+                        f"{data_automation} {data_testid} {button_type}"
+                    ).lower().strip()
 
                     if not combined_text:
                         continue
@@ -2213,8 +2238,15 @@ If everything looks correct, set approved=true with empty issues list.
                     if is_next:
                         logger.info(f"✅ Found Next/Continue button: '{combined_text}'")
 
-                        # Click the button
-                        await button.click(timeout=5000)
+                        # Click the button with a small fallback chain
+                        await button.scroll_into_view_if_needed(timeout=1500)
+                        try:
+                            await button.click(timeout=5000)
+                        except Exception:
+                            try:
+                                await button.dispatch_event('click')
+                            except Exception:
+                                await button.click(force=True, timeout=5000)
                         logger.info(f"🎯 Clicked Next/Continue button successfully")
 
                         # Wait for page to load

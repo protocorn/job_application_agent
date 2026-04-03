@@ -10,36 +10,43 @@ from typing import Dict, List, Any, Tuple, Optional
 from google import genai
 from google.api_core import retry
 import os
-from gemini_rate_limiter import generate_content_with_retry
-from validation.semantic_validator import SemanticValidator
+try:
+    from Agents.gemini_rate_limiter import generate_content_with_retry
+except ImportError:
+    from gemini_rate_limiter import generate_content_with_retry
+
+try:
+    from Agents.validation.semantic_validator import SemanticValidator
+except ImportError:
+    from validation.semantic_validator import SemanticValidator
 
 
 # ============================================================
 # HELPER FUNCTIONS
 # ============================================================
 
-def extract_relevant_mimikree_context(mimikree_data: str, keywords: List[str], max_length: int = 800) -> str:
+def extract_relevant_profile_context(profile_context_text: str, keywords: List[str], max_length: int = 800) -> str:
     """
-    Intelligently extract relevant portions of Mimikree data based on keywords.
+    Intelligently extract relevant portions of profile context based on keywords.
 
     Instead of blindly slicing, find paragraphs/sentences that mention the keywords.
 
     Args:
-        mimikree_data: Full Mimikree response data
+        profile_context_text: Full profile context text
         keywords: List of keywords to look for
         max_length: Maximum character length to return
 
     Returns:
-        Most relevant excerpts from Mimikree data
+        Most relevant excerpts from profile context
     """
-    if not mimikree_data or not isinstance(mimikree_data, str):
+    if not profile_context_text or not isinstance(profile_context_text, str):
         return ""
 
     if not keywords:
-        return mimikree_data[:max_length]
+        return profile_context_text[:max_length]
 
     # Split into paragraphs (by double newline) or sentences
-    paragraphs = re.split(r'\n\n+', mimikree_data)
+    paragraphs = re.split(r'\n\n+', profile_context_text)
 
     # Score each paragraph by keyword matches
     scored_paragraphs = []
@@ -82,7 +89,7 @@ def extract_relevant_mimikree_context(mimikree_data: str, keywords: List[str], m
             result.append(para[:remaining] + "...")
             break
 
-    return "\n\n".join(result) if result else mimikree_data[:max_length]
+    return "\n\n".join(result) if result else profile_context_text[:max_length]
 
 
 def clean_gemini_response(text: str) -> str:
@@ -185,14 +192,14 @@ def clean_gemini_response(text: str) -> str:
 # ============================================================
 
 class KeywordValidatorComplete:
-    """Complete implementation of keyword validation with Mimikree."""
+    """Complete implementation of keyword validation with profile context."""
 
-    def __init__(self, mimikree_responses: Dict[str, str]):
+    def __init__(self, profile_responses: Dict[str, str]):
         """
         Args:
-            mimikree_responses: Dict of question -> response from Mimikree
+            profile_responses: Dict of question -> response from profile context
         """
-        self.mimikree_responses = mimikree_responses
+        self.profile_responses = profile_responses
 
         # Initialize Gemini client for keyword analysis
         api_key = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
@@ -222,18 +229,18 @@ class KeywordValidatorComplete:
         print("PHASE 1: KEYWORD VALIDATION & SKILL FEASIBILITY")
         print("="*60)
 
-        # Analyze keywords from both Mimikree AND resume text
-        has_mimikree = bool(self.mimikree_responses)
-        print(f"\n📋 Analyzing {len(job_keywords)} keywords from {'Mimikree responses + resume' if has_mimikree else 'resume text'}...")
+        # Analyze keywords from profile context AND resume text
+        has_profile_data = bool(self.profile_responses)
+        print(f"\n📋 Analyzing {len(job_keywords)} keywords from {'profile context + resume' if has_profile_data else 'resume text'}...")
 
         keyword_evidence = {}
         feasible = []
         missing = []
 
-        # Prepare Mimikree context for Gemini analysis (if available)
-        mimikree_context = "\n\n".join([
+        # Prepare profile context for Gemini analysis (if available)
+        profile_context = "\n\n".join([
             f"Q: {question}\nA: {response}"
-            for question, response in self.mimikree_responses.items()
+            for question, response in self.profile_responses.items()
         ])
 
         # Use Gemini to intelligently analyze keywords in batches
@@ -243,10 +250,10 @@ class KeywordValidatorComplete:
         for i in range(0, len(job_keywords), batch_size):
             batch = job_keywords[i:i+batch_size]
 
-            # Build prompt based on whether Mimikree data is available
-            if has_mimikree:
-                candidate_profile_section = f"""**Candidate's Professional Profile (from Mimikree):**
-{mimikree_context}
+            # Build prompt based on whether profile context is available
+            if has_profile_data:
+                candidate_profile_section = f"""**Candidate's Professional Profile:**
+{profile_context}
 
 **Candidate's Resume:**
 {resume_text}"""
@@ -254,7 +261,7 @@ class KeywordValidatorComplete:
                 candidate_profile_section = f"""**Candidate's Resume:**
 {resume_text}
 
-Note: Mimikree profile integration not available. Analyzing resume content only."""
+Note: No additional profile context available. Analyzing resume content only."""
 
             prompt = f"""You are an expert HR analyst evaluating whether a candidate has genuine experience with specific skills/keywords.
 
@@ -343,7 +350,7 @@ Return ONLY valid JSON, no markdown formatting, no extra text."""
                                 print(f"   ✓ {keyword}: Evidence found ({confidence} confidence)")
                             else:
                                 missing.append(keyword)
-                                print(f"   ✗ {keyword}: No evidence in Mimikree responses")
+                                print(f"   ✗ {keyword}: No evidence in profile context")
                         else:
                             # Keyword not in Gemini response
                             missing.append(keyword)
@@ -411,6 +418,127 @@ Return ONLY valid JSON, no markdown formatting, no extra text."""
         }
 
 
+def _looks_like_project_date_line(text: str) -> bool:
+    """Heuristic: non-bullet line that looks like a date range or period."""
+    t = text.strip()
+    if not t or len(t) > 200:
+        return False
+    tl = t.lower()
+    if "http://" in tl or "https://" in tl or "www." in tl:
+        return False
+    if re.search(r"\b(19|20)\d{2}\b", t):
+        return True
+    if re.search(
+        r"\b(january|february|march|april|may|june|july|august|september|october|november|december|"
+        r"jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*[\s.\-/]+(\d{4}|\d{1,2})",
+        t,
+        re.I,
+    ):
+        return True
+    if re.search(r"\d{1,2}[\s\-/]\d{4}", t) or re.search(r"\d{4}[\s\-/]\d{1,2}", t):
+        return True
+    if re.search(r"\b(present|current|ongoing)\b", tl) and len(t) < 80:
+        return True
+    return False
+
+
+def _looks_like_project_link_line(text: str) -> bool:
+    """Heuristic: line that is mostly URLs or repo links."""
+    t = text.strip()
+    if not t or len(t) > 600:
+        return False
+    tl = t.lower()
+    if "http://" in tl or "https://" in tl or "www." in tl:
+        return True
+    if "github.com" in tl or "gitlab.com" in tl or "bitbucket.org" in tl:
+        return True
+    if re.search(r"\b[a-z0-9][a-z0-9.-]+\.(com|io|dev|ai|app|org|net)(/|\s|$)", tl):
+        return True
+    return False
+
+
+def _fit_bullet_texts_to_slots(texts: List[str], n: int) -> List[str]:
+    """Map profile bullet strings to n resume lines; merge overflow into the last slot."""
+    if n <= 0:
+        return []
+    if not texts:
+        return [""] * n
+    if len(texts) == n:
+        return list(texts)
+    if len(texts) < n:
+        return texts + [""] * (n - len(texts))
+    if n == 1:
+        return [" ".join(texts)]
+    return texts[: n - 1] + [" ".join(texts[n - 1 :])]
+
+
+def _build_swap_bullet_texts(candidate: Dict[str, Any]) -> List[str]:
+    """Description lines + feature lines; fallback to technologies."""
+    parts: List[str] = []
+    desc = str(candidate.get("description") or "").strip()
+    if desc:
+        for line in desc.split("\n"):
+            s = line.strip()
+            if s:
+                parts.append(s)
+    for f in candidate.get("features") or []:
+        s = str(f).strip()
+        if s:
+            parts.append(s)
+    if not parts:
+        tech = ", ".join(str(t).strip() for t in (candidate.get("technologies") or []) if str(t).strip())
+        if tech:
+            parts.append(f"Technologies: {tech}.")
+    return parts
+
+
+def _profile_link_urls(candidate: Dict[str, Any]) -> List[str]:
+    out: List[str] = []
+    for key in ("github_url", "live_url"):
+        u = str(candidate.get(key) or "").strip()
+        if u:
+            out.append(u)
+    return out
+
+
+def _profile_has_swap_content(candidate: Dict[str, Any]) -> bool:
+    """Profile project must have a name and enough material to replace a resume block."""
+    name = str(candidate.get("name") or "").strip()
+    if not name:
+        return False
+    if str(candidate.get("description") or "").strip():
+        return True
+    if any(str(f).strip() for f in (candidate.get("features") or [])):
+        return True
+    if any(str(t).strip() for t in (candidate.get("technologies") or [])):
+        return True
+    if _profile_link_urls(candidate):
+        return True
+    if str(candidate.get("dates") or candidate.get("date_range") or "").strip():
+        return True
+    return False
+
+
+def _link_line_replacements(
+    old_lines: List[Dict[str, Any]], new_urls: List[str]
+) -> List[Dict[str, Any]]:
+    if not old_lines:
+        return []
+    reps: List[Dict[str, Any]] = []
+    if not new_urls:
+        for ol in old_lines:
+            reps.append({"old_text": ol["text"], "new_text": "", "type": "project_swap_link"})
+        return reps
+    if len(old_lines) == 1:
+        return [{"old_text": old_lines[0]["text"], "new_text": " · ".join(new_urls), "type": "project_swap_link"}]
+    for i, ol in enumerate(old_lines):
+        if i < len(new_urls):
+            reps.append({"old_text": ol["text"], "new_text": new_urls[i], "type": "project_swap_link"})
+        else:
+            reps.append({"old_text": ol["text"], "new_text": "", "type": "project_swap_link"})
+    return reps
+
+
 # ============================================================
 # PHASE 2: SYSTEMATIC EDITING IMPLEMENTATION
 # ============================================================
@@ -430,9 +558,11 @@ class SystematicEditorComplete:
         self,
         line_metadata: List[Dict[str, Any]],
         validation_results: Dict[str, Any],
-        mimikree_data: str,
+        profile_context_data: str,
         job_description: str,
-        conservative_mode: bool = True
+        conservative_mode: bool = True,
+        profile_projects: Optional[List[Dict[str, Any]]] = None,
+        enable_project_swaps: bool = False,
     ) -> Dict[str, Any]:
         """
         Execute systematic section-wise editing.
@@ -514,19 +644,25 @@ class SystematicEditorComplete:
 
             if section_type == 'profile':
                 replacements = self._edit_profile_section(
-                    section, validation_results, mimikree_data, conservative_mode
+                    section, validation_results, profile_context_data, conservative_mode
                 )
             elif section_type == 'experience':
                 replacements = self._edit_experience_section(
-                    section, validation_results, mimikree_data, space_plan
+                    section, validation_results, profile_context_data, space_plan
                 )
             elif section_type == 'projects':
                 replacements = self._edit_projects_section(
-                    section, validation_results, mimikree_data, space_plan, conservative_mode
+                    section,
+                    validation_results,
+                    profile_context_data,
+                    space_plan,
+                    conservative_mode,
+                    profile_projects=profile_projects or [],
+                    enable_project_swaps=enable_project_swaps,
                 )
             elif section_type == 'skills':
                 replacements = self._edit_skills_section(
-                    section, validation_results, mimikree_data, conservative_mode
+                    section, validation_results, profile_context_data, conservative_mode
                 )
             else:
                 replacements = []
@@ -626,7 +762,7 @@ class SystematicEditorComplete:
         self,
         section: Dict[str, Any],
         validation: Dict[str, Any],
-        mimikree_data: str,
+        profile_context_data: str,
         conservative_mode: bool = True
     ) -> List[Dict[str, Any]]:
         """Edit profile/summary section with feasible keywords.
@@ -656,17 +792,17 @@ class SystematicEditorComplete:
                 print(f"      📝 Profile missing {keywords_missing} keywords - will rewrite")
 
         # Use Gemini to rewrite with feasible keywords
-        # Intelligently extract relevant Mimikree context
-        mimikree_context = extract_relevant_mimikree_context(
-            mimikree_data,
+        # Intelligently extract relevant profile context
+        profile_context = extract_relevant_profile_context(
+            profile_context_data,
             validation['feasible_keywords'][:7],
             max_length=500
         )
         
         # Prepare background section (avoid backslash in f-string)
         background_section = ""
-        if mimikree_context:
-            background_section = f"CANDIDATE'S BACKGROUND (use for context):\n{mimikree_context}\n"
+        if profile_context:
+            background_section = f"CANDIDATE'S BACKGROUND (use for context):\n{profile_context}\n"
 
         prompt = f"""You are a professional resume writer. Rewrite this resume profile to sound natural, engaging, and professional while incorporating SPECIFIC skills (not vague terms).
 
@@ -748,7 +884,7 @@ Use plain text only. Do NOT use markdown symbols like *, **, #, _, or backticks.
         self,
         section: Dict[str, Any],
         validation: Dict[str, Any],
-        mimikree_data: str,
+        profile_context_data: str,
         space_plan: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """Edit experience section with space borrowing."""
@@ -894,20 +1030,20 @@ If cannot be condensed to {target_visual_lines} line(s) while keeping key info, 
             if char_available < 20:
                 continue  # Not enough space to expand meaningfully
 
-            # Intelligently extract relevant Mimikree context for this bullet
+            # Intelligently extract relevant profile context for this bullet
             # Look for paragraphs mentioning the keywords we're trying to add
-            mimikree_context = extract_relevant_mimikree_context(
-                mimikree_data,
+            profile_context = extract_relevant_profile_context(
+                profile_context_data,
                 validation['feasible_keywords'][:5],
                 max_length=800
             )
             
             # Prepare background section (avoid backslash in f-string)
             background_info = ""
-            if mimikree_context:
-                background_info = f"BACKGROUND INFO:\n{mimikree_context}\n"
+            if profile_context:
+                background_info = f"BACKGROUND INFO:\n{profile_context}\n"
 
-            prompt = f"""Expand this resume bullet with more specific details{' from the background info' if mimikree_context else ''}:
+            prompt = f"""Expand this resume bullet with more specific details{' from the background info' if profile_context else ''}:
 
 ORIGINAL BULLET:
 {bullet['text']}
@@ -946,7 +1082,7 @@ CRITICAL OUTPUT FORMAT:
                         validation_result = self.semantic_validator.validate_expansion(
                             original_text=bullet['text'],
                             expanded_text=expanded,
-                            source_data=mimikree_context if mimikree_context else None
+                            source_data=profile_context if profile_context else None
                         )
 
                         if validation_result['is_valid']:
@@ -982,9 +1118,11 @@ CRITICAL OUTPUT FORMAT:
         self,
         section: Dict[str, Any],
         validation: Dict[str, Any],
-        mimikree_data: str,
+        profile_context_data: str,
         space_plan: Dict[str, Any],
-        conservative_mode: bool = True
+        conservative_mode: bool = True,
+        profile_projects: Optional[List[Dict[str, Any]]] = None,
+        enable_project_swaps: bool = False,
     ) -> List[Dict[str, Any]]:
         """Edit projects section.
         
@@ -1009,23 +1147,77 @@ CRITICAL OUTPUT FORMAT:
             projects_with_relevance.append((project, relevance))
             print(f"      • {project['title_text'][:50]}... (relevance: {relevance:.0f}/100)")
 
-        if conservative_mode:
+        if conservative_mode and not enable_project_swaps:
             # Conservative mode: Only flag low-relevance projects
             low_relevance_projects = [(p, r) for p, r in projects_with_relevance if r < 20]
             
             if low_relevance_projects:
                 print(f"      ⚠️  Found {len(low_relevance_projects)} low-relevance project(s) (< 20/100)")
-                print(f"      💡 Suggestion: Consider replacing with more relevant projects from your experience")
-                # Note: Actual replacement would need new project content from Mimikree
-                # For now, we just identify but don't replace
+                print(f"      💡 Suggestion: Enable project swaps to replace them from profile projects")
             else:
                 print(f"      ✅ All projects are relevant (>= 20/100) - no changes needed")
             
-            # In conservative mode, we don't modify project bullets
+            # In conservative mode, we don't modify project bullets unless swaps are enabled.
             return replacements
+
+        swapped_title_keys: set = set()
+
+        if enable_project_swaps:
+            low_relevance_projects = [(p, r) for p, r in projects_with_relevance if r < 20]
+            # Preserve visual (top-to-bottom) resume order so the best candidate
+            # lands in the most prominent (topmost) slot rather than a random slot.
+            # Do NOT sort by score here.
+            candidate_projects = profile_projects or []
+            if low_relevance_projects and candidate_projects:
+                used_names = {p['title_text'].strip().lower() for p, _ in projects_with_relevance}
+                feasible_candidates = []
+                for candidate in candidate_projects:
+                    name = str(candidate.get('name') or '').strip()
+                    if not name or not _profile_has_swap_content(candidate):
+                        continue
+                    if name.lower() in used_names:
+                        continue
+                    desc = str(candidate.get('description') or '').strip()
+                    dates = str(candidate.get('dates') or candidate.get('date_range') or '').strip()
+                    text_blob = (
+                        f"{name} {desc} {dates} "
+                        f"{' '.join(candidate.get('technologies') or [])} "
+                        f"{' '.join(str(f) for f in (candidate.get('features') or []))}"
+                    ).lower()
+                    score = sum(
+                        1 for kw in validation['feasible_keywords'][:10]
+                        if kw.lower() in text_blob
+                    )
+                    feasible_candidates.append((candidate, score))
+                # Best-scoring candidate goes first so it lands in the topmost slot
+                feasible_candidates.sort(key=lambda item: item[1], reverse=True)
+
+                used_candidate_names: set = set()
+                swap_n = 0
+                for replace_project, _rel in low_relevance_projects:
+                    candidate = None
+                    for cand, _score in feasible_candidates:
+                        cn = str(cand.get("name") or "").strip().lower()
+                        if not cn or cn in used_names or cn in used_candidate_names:
+                            continue
+                        candidate = cand
+                        break
+                    if candidate is None:
+                        break
+                    used_candidate_names.add(str(candidate.get("name") or "").strip().lower())
+                    field_repls = self._collect_project_swap_replacements(replace_project, candidate)
+                    print(f"         ↔ Swap: '{replace_project['title_text'][:40]}' → '{str(candidate.get('name',''))[:40]}'")
+                    replacements.extend(field_repls)
+                    swapped_title_keys.add(replace_project["title_text"].strip().lower())
+                    swap_n += 1
+
+                if swap_n > 0:
+                    print(f"      🔁 Prepared {swap_n} full project swap(s) from profile (field-wise)")
 
         # Aggressive mode: Enhance project bullets with keywords
         for project, relevance in projects_with_relevance:
+            if project['title_text'].strip().lower() in swapped_title_keys:
+                continue
             # For each project bullet, enhance with keywords
             for bullet in project['description_bullets']:
                 # Check if bullet needs keyword injection
@@ -1082,16 +1274,67 @@ CRITICAL OUTPUT FORMAT:
 
         return replacements
 
+    def _collect_project_swap_replacements(
+        self,
+        replace_project: Dict[str, Any],
+        candidate: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """One replaceAllText per field so Google Docs keeps each line's formatting."""
+        reps: List[Dict[str, Any]] = []
+        new_title = str(candidate.get("name") or "").strip()
+        reps.append(
+            {
+                "old_text": replace_project["title_line"]["text"],
+                "new_text": new_title,
+                "type": "project_swap_title",
+            }
+        )
+
+        new_date = str(candidate.get("dates") or candidate.get("date_range") or "").strip()
+        date_line = replace_project.get("date_line")
+        if date_line is not None:
+            reps.append(
+                {
+                    "old_text": date_line["text"],
+                    "new_text": new_date,
+                    "type": "project_swap_date",
+                }
+            )
+
+        reps.extend(
+            _link_line_replacements(
+                replace_project.get("link_lines") or [],
+                _profile_link_urls(candidate),
+            )
+        )
+
+        plain = replace_project.get("plain_lines") or []
+        bullets = replace_project.get("description_bullets") or []
+        content_lines = plain + bullets
+        slot_count = len(content_lines)
+        if slot_count > 0:
+            new_texts = _fit_bullet_texts_to_slots(_build_swap_bullet_texts(candidate), slot_count)
+            for line, nt in zip(content_lines, new_texts):
+                reps.append(
+                    {
+                        "old_text": line["text"],
+                        "new_text": nt,
+                        "type": "project_swap_body",
+                    }
+                )
+
+        return reps
+
     def _edit_skills_section(
         self,
         section: Dict[str, Any],
         validation: Dict[str, Any],
-        mimikree_data: str,
+        profile_context_data: str,
         conservative_mode: bool = True
     ) -> List[Dict[str, Any]]:
-        """Edit skills section intelligently based on Mimikree evidence.
+        """Edit skills section intelligently based on profile evidence.
 
-        Uses Mimikree data to determine which skills can be added (with evidence)
+        Uses profile context to determine which skills can be added (with evidence)
         and which low-relevance skills can be removed.
         """
         replacements = []
@@ -1099,48 +1342,47 @@ CRITICAL OUTPUT FORMAT:
         if not section['lines']:
             return replacements
 
-        # Skills are usually in one or two lines
-        skills_text = ' '.join([line['text'] for line in section['lines']])
+        skill_lines = section['lines']
+        num_lines = len(skill_lines)
+        # Build a labelled view so Gemini knows the exact line structure
+        numbered_original = '\n'.join(
+            f"Line {i+1}: {l['text']}" for i, l in enumerate(skill_lines)
+        )
 
-        print(f"      📝 Intelligently updating skills based on job requirements and Mimikree evidence")
+        print(f"      📝 Intelligently updating skills based on job requirements and profile evidence")
 
-        # Use Gemini to intelligently modify skills
+        # Use Gemini to intelligently modify skills — one output line per input line
         prompt = f"""Optimize this skills section for a job application using evidence from the candidate's profile.
 
-ORIGINAL SKILLS:
-{skills_text}
+ORIGINAL SKILLS ({num_lines} line(s)):
+{numbered_original}
 
 JOB REQUIREMENTS (priority skills needed):
 {', '.join(validation['feasible_keywords'][:15])}
 
-CANDIDATE'S EXPERIENCE (Mimikree profile - use this to determine what skills can be added):
-{mimikree_data[:2000]}
+CANDIDATE'S EXPERIENCE (Profile context - use this to determine what skills can be added):
+{profile_context_data[:2000]}
 
 YOUR TASK:
-1. **ANALYZE**: Which job-required skills are missing from the original skills list but ARE supported by Mimikree evidence?
-2. **ADD**: Add those missing skills if there's clear evidence in Mimikree
+1. **ANALYZE**: Which job-required skills are missing from the original skills list but ARE supported by profile evidence?
+2. **ADD**: Add those missing skills if there's clear evidence in profile context
 3. **REMOVE**: Remove low-relevance skills (skills not mentioned in job requirements and taking up space)
 4. **REORGANIZE**: Prioritize job-relevant skills first
 
 RULES:
-- ONLY add skills you find CLEAR EVIDENCE for in Mimikree data
+- ONLY add skills you find CLEAR EVIDENCE for in profile context
 - Prioritize SPECIFIC skills over vague terms (e.g., "LangChain" > "AI")
-- Keep approximately the same line length (or slightly shorter if removing irrelevant skills)
-- Maintain the same format (comma-separated or pipes)
-- If a job keyword appears in Mimikree but isn't in skills, ADD it
+- Keep approximately the same line length per line (or slightly shorter if removing irrelevant skills)
+- Maintain the same format (comma-separated or pipes) as the original
+- If a job keyword appears in profile context but isn't in skills, ADD it
 - If a current skill is unrelated to job and taking space, REMOVE it
 
-EXAMPLE LOGIC:
-- Job needs "LangChain" → Found in Mimikree → NOT in skills → ADD it
-- Job needs "Machine Learning" → Already have "PyTorch, TensorFlow" → DON'T add vague term
-- Current has "PHP" → Job doesn't mention it → Job focuses on Python → REMOVE "PHP" to make space
-- Current has "React" → Job mentions "React" → KEEP and prioritize
-
 CRITICAL OUTPUT FORMAT:
-- Return ONLY the optimized skills text
-- NO explanations, NO metadata, NO reasoning
-- Just the skills list that goes directly into the resume
-- Use plain text only. Do NOT include markdown symbols like *, **, #, _, or backticks"""
+- Return EXACTLY {num_lines} line(s) of text, one line per original skills line, separated by newlines
+- NO "Line 1:", NO labels, NO numbering, NO explanations
+- Each output line replaces the corresponding original line directly
+- Use plain text only. Do NOT include markdown symbols like *, **, #, _, or backticks
+- If you have fewer categories than lines, leave the extra lines as empty strings"""
 
         try:
             response = generate_content_with_retry(
@@ -1149,13 +1391,19 @@ CRITICAL OUTPUT FORMAT:
                 contents=prompt
             )
 
-            new_skills = clean_gemini_response(response.text)
+            # Split BEFORE clean_gemini_response because that function joins lines with spaces
+            raw_lines = response.text.strip().split('\n')
+            new_skill_parts = [clean_gemini_response(p).strip() for p in raw_lines]
+            # Trim/pad to exactly num_lines
+            while len(new_skill_parts) < num_lines:
+                new_skill_parts.append('')
+            new_skill_parts = new_skill_parts[:num_lines]
 
-            # Replace first skills line
-            if section['lines']:
+            # Replace every original skill line with its new counterpart
+            for i, line in enumerate(skill_lines):
                 replacements.append({
-                    'old_text': section['lines'][0]['text'],
-                    'new_text': new_skills,
+                    'old_text': line['text'],
+                    'new_text': new_skill_parts[i],
                     'type': 'skills_intelligent_update'
                 })
         except Exception as e:
@@ -1168,32 +1416,67 @@ CRITICAL OUTPUT FORMAT:
         return replacements
 
     def _parse_projects(self, lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Parse project entries from lines."""
-        projects = []
+        """Parse project entries: title, optional date, links, plain lines, then bullets."""
+        projects: List[Dict[str, Any]] = []
         i = 0
 
         while i < len(lines):
             line = lines[i]
 
-            # Project title is usually non-bullet, bold, or has certain patterns
-            if line.get('bullet_level', 0) == 0 and len(line['text']) < 200:
-                project = {
-                    'title_text': line['text'],
-                    'title_line': line,
-                    'description_bullets': []
-                }
-
-                # Collect bullets for this project
+            if line.get('bullet_level', 0) != 0:
                 i += 1
-                while i < len(lines) and lines[i].get('bullet_level', 0) > 0:
-                    project['description_bullets'].append(lines[i])
-                    i += 1
-
-                if project['description_bullets']:  # Only add if has bullets
-                    projects.append(project)
+                continue
+            if len(line['text']) >= 200:
+                i += 1
+                continue
+            if not line['text'].strip():
+                i += 1
                 continue
 
+            project: Dict[str, Any] = {
+                'title_text': line['text'],
+                'title_line': line,
+                'date_line': None,
+                'link_lines': [],
+                'plain_lines': [],
+                'description_bullets': [],
+            }
             i += 1
+
+            while i < len(lines) and lines[i].get('bullet_level', 0) == 0:
+                if len(lines[i]['text']) >= 200:
+                    break
+                raw = lines[i]['text']
+                t = raw.strip()
+                if not t:
+                    i += 1
+                    continue
+                if not project['date_line'] and _looks_like_project_date_line(raw):
+                    project['date_line'] = lines[i]
+                    i += 1
+                    continue
+                if _looks_like_project_link_line(raw):
+                    project['link_lines'].append(lines[i])
+                    i += 1
+                    continue
+                if len(t) < 400:
+                    project['plain_lines'].append(lines[i])
+                    i += 1
+                    continue
+                break
+
+            while i < len(lines) and lines[i].get('bullet_level', 0) > 0:
+                project['description_bullets'].append(lines[i])
+                i += 1
+
+            has_content = bool(
+                project['description_bullets']
+                or project['plain_lines']
+                or project['link_lines']
+                or project['date_line']
+            )
+            if has_content:
+                projects.append(project)
 
         return projects
 
@@ -1202,23 +1485,37 @@ CRITICAL OUTPUT FORMAT:
         project: Dict[str, Any],
         keywords: List[str]
     ) -> float:
-        """Calculate project relevance score."""
-        score = 0
+        """Calculate project relevance score from title, date, links, plain lines, and bullets."""
+        score = 0.0
 
-        # Check title
         title_lower = project['title_text'].lower()
         for keyword in keywords:
             if keyword.lower() in title_lower:
-                score += 15  # Title mentions are worth more
+                score += 15
 
-        # Check description bullets
+        dl = project.get('date_line')
+        if dl:
+            for keyword in keywords:
+                if keyword.lower() in dl['text'].lower():
+                    score += 5
+
+        for link in project.get('link_lines') or []:
+            for keyword in keywords:
+                if keyword.lower() in link['text'].lower():
+                    score += 5
+
+        for pl in project.get('plain_lines') or []:
+            for keyword in keywords:
+                if keyword.lower() in pl['text'].lower():
+                    score += 5
+
         for bullet in project['description_bullets']:
             text_lower = bullet['text'].lower()
             for keyword in keywords:
                 if keyword.lower() in text_lower:
                     score += 5
 
-        return min(100, score)  # Cap at 100
+        return min(100, score)
 
 
 # ============================================================
@@ -1668,10 +1965,12 @@ def run_systematic_tailoring(
     job_keywords: List[str],
     line_metadata: List[Dict[str, Any]],
     resume_text: str,
-    mimikree_responses: Dict[str, str],
-    mimikree_formatted_data: str,
+    profile_responses: Dict[str, str],
+    profile_context_data: str,
     skip_space_borrowing: bool = False,
-    conservative_mode: bool = True
+    conservative_mode: bool = True,
+    profile_projects: Optional[List[Dict[str, Any]]] = None,
+    enable_project_swaps: bool = False,
 ) -> Dict[str, Any]:
     """
     Main entry point for systematic tailoring.
@@ -1681,8 +1980,8 @@ def run_systematic_tailoring(
         job_keywords: Extracted prioritized keywords
         line_metadata: Document structure from extract_document_structure
         resume_text: Plain text of current resume
-        mimikree_responses: Dict of Mimikree question -> response
-        mimikree_formatted_data: Formatted Mimikree data string
+        profile_responses: Dict of profile question -> response
+        profile_context_data: Formatted profile context string
         skip_space_borrowing: If True, only runs Phase 1 (keyword validation/replacement) without Phase 2 (space borrowing)
         conservative_mode: If True, only edits Profile → Skills → Projects (strategic changes only)
                           If False, edits everything including experience bullets (aggressive)
@@ -1703,7 +2002,7 @@ def run_systematic_tailoring(
     # PHASE 1: KEYWORD VALIDATION
     # ============================================================
 
-    validator = KeywordValidatorComplete(mimikree_responses)
+    validator = KeywordValidatorComplete(profile_responses)
     phase1_results = validator.execute_phase_1(job_keywords, resume_text)
 
     if not phase1_results['should_proceed']:
@@ -1727,9 +2026,11 @@ def run_systematic_tailoring(
         phase2_results = editor.execute_phase_2(
             line_metadata,
             phase1_results,
-            mimikree_formatted_data,
+            profile_context_data,
             job_description,
-            conservative_mode
+            conservative_mode,
+            profile_projects=profile_projects or [],
+            enable_project_swaps=enable_project_swaps,
         )
         all_replacements = phase2_results['replacements']
     else:

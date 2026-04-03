@@ -339,8 +339,8 @@ class ProfileMixin:
         print()
 
         print("  How would you like to provide your resume?\n")
-        print("  1. Google Docs URL   (enables resume tailoring ✅)")
-        print("  2. Upload PDF / DOCX (tailoring disabled ⚠️ )")
+        print("  1. Google Drive Picker  (enables resume tailoring ✅)")
+        print("  2. Upload PDF / DOCX   (tailoring disabled ⚠️ )")
         print("  3. Cancel\n")
 
         choice = input("  Choose [1/2/3]: ").strip()
@@ -418,48 +418,57 @@ class ProfileMixin:
 
     def _update_resume_google_doc(self):
         self.clear_screen()
-        self.print_header("RESUME - GOOGLE DOCS URL")
-        print("  Paste the sharing link of your Google Doc resume.\n")
+        self.print_header("RESUME - GOOGLE DRIVE")
+        print("  Select your Google Doc resume using the Drive Picker.\n")
 
-        # Offer Google OAuth connection before asking for the URL
-        self._ensure_google_connected()
-
-        print()
-        url = _ask("Google Docs URL (or blank to cancel)")
-        if not url:
-            self.print_warning("No changes made.")
-            self.pause()
-            return
-        if 'docs.google.com' not in url:
-            self.print_warning("That doesn't look like a Google Docs URL. Please try again.")
+        # Make sure Google account is connected first
+        connected = self._ensure_google_connected()
+        if not connected:
+            self.print_warning("Google account is required to select a Google Doc resume.")
             self.pause()
             return
 
-        print("\n  Extracting and processing your resume...", end="", flush=True)
+        # Open the Picker page in the user's browser
+        import webbrowser
+        token = getattr(self.api, 'token', None)
+        if not token:
+            self.print_error("Could not retrieve auth token. Please log in again.")
+            self.pause()
+            return
+
+        base_url = getattr(self.api, 'base_url', '').rstrip('/')
+        picker_url = f"{base_url}/pick-resume?token={token}"
+
+        print(f"\n  {Colors.OKCYAN}Opening Google Drive Picker in your browser...{Colors.ENDC}")
+        print("  Select your resume Google Doc, then return here and press Enter.\n")
+        print(f"  If the browser does not open automatically, visit:\n  {picker_url}\n")
+
         try:
-            result = self.api.process_resume_url(url)
-            print(" done.\n")
-            if result.get("success"):
-                self.print_success("Resume processed and profile populated.")
-                msg = result.get("message", "")
-                if msg:
-                    self.print_info(msg)
-            else:
-                self.print_error(result.get("error") or "Failed to process resume.")
-        except Exception as e:
-            print(" failed.\n")
-            self.print_error(f"Could not process resume: {e}")
-            self.print_info("The URL has been saved - you can retry processing from this menu.")
-            # Still save the URL so the user doesn't lose it
-            self._save_profile_changes({"resume_url": url, "resume_source_type": "google_doc"})
-            self.pause()
-            return
-
-        # Refresh local profile cache
-        try:
-            self.current_profile = self.api.get_profile()
+            webbrowser.open(picker_url)
         except Exception:
             pass
+
+        self.get_input("  Press Enter after selecting your file in the browser: ")
+
+        # Check that a resume was actually stored
+        print("\n  Checking profile...", end="", flush=True)
+        try:
+            self.current_profile = self.api.get_profile()
+            print(" done.\n")
+            url = (self.current_profile or {}).get('resume_url', '')
+            source = (self.current_profile or {}).get('resume_source_type', '')
+            if url and source == 'google_doc':
+                self.print_success("Resume selected and profile populated.")
+                self.print_info(f"Resume: {url[:80]}")
+            else:
+                self.print_warning(
+                    "No Google Doc resume found in your profile after the Picker flow.\n"
+                    "  Please try again or check the browser page for errors."
+                )
+        except Exception as e:
+            print(" failed.\n")
+            self.print_error(f"Could not verify profile: {e}")
+
         self.pause()
 
     def _update_resume_file(self):

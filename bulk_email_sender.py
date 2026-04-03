@@ -2,7 +2,7 @@
 Bulk personalized email sender for Launchway templates.
 
 Example (PowerShell):
-python .\\email.py --emails "email1@gmail.com email2@gmail.com" --template 1
+python .\bulk_email_sender.py --emails "email1@gmail.com email2@gmail.com" --template 1
 """
 from __future__ import annotations
 
@@ -11,10 +11,6 @@ import os
 import re
 import sys
 from typing import Iterable
-
-# Keep this filename (`email.py`) without shadowing stdlib `email` package.
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path = [p for p in sys.path if os.path.abspath(p or ".") != SCRIPT_DIR]
 
 import requests
 from dotenv import load_dotenv

@@ -59,10 +59,6 @@ class CLIJobAgent(
         self.current_profile: Optional[Dict[str, Any]] = None
         self.running: bool = True
 
-        # Session-scoped Mimikree credentials (cleared on logout)
-        self._session_mimikree_email: Optional[str]    = None
-        self._session_mimikree_password: Optional[str] = None
-
         # Flags for incomplete-application handling
         self._should_open_incomplete: bool  = False
         self._incomplete_report_file: Optional[str] = None
@@ -89,6 +85,29 @@ class CLIJobAgent(
         if not self.current_user:
             self.print_error("You must be logged in to use this feature.")
             return False
+
+        # Development override: use local plaintext Agents sources directly.
+        # This is useful when validating local fixes before encrypted bundles are rebuilt.
+        if os.getenv("LAUNCHWAY_USE_LOCAL_AGENTS", "").strip().lower() in {"1", "true", "yes", "y"}:
+            local_root = (
+                os.getenv("LAUNCHWAY_LOCAL_AGENTS_ROOT", "").strip()
+                or os.getcwd()
+            )
+            agents_dir = os.path.join(local_root, "Agents")
+            if not os.path.isdir(agents_dir):
+                self.print_error(
+                    f"Local Agents override enabled, but Agents folder was not found at: {agents_dir}"
+                )
+                return False
+
+            if local_root not in sys.path:
+                sys.path.insert(0, local_root)
+            if agents_dir not in sys.path:
+                sys.path.insert(0, agents_dir)
+
+            self._agents_bootstrapped = True
+            self.print_success(f"✓ Using local Agents source from: {agents_dir}")
+            return True
 
         # Fast path: already bootstrapped by a previous call in this process
         from launchway.agent_bootstrap import (

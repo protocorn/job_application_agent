@@ -11,6 +11,7 @@ import logging
 import requests
 from typing import Dict, List, Any, Optional
 from datetime import datetime
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -618,6 +619,336 @@ class GoogleJobsAdapter(JobAPIAdapter):
             return "mid"
 
 
+class GoogleCustomSearchAdapter(JobAPIAdapter):
+    """Google Programmable Search (Custom Search JSON API) adapter."""
+
+    def __init__(self):
+        super().__init__()
+        self.api_name = "GoogleCustomSearch"
+        # Dedicated CSE key first, then fallback to generic Google API key.
+        self.api_key = os.getenv("GOOGLE_CUSTOM_SEARCH_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        self.cx = (
+            os.getenv("GOOGLE_CUSTOM_SEARCH_CX")
+            or os.getenv("GOOGLE_CSE_CX")
+            or os.getenv("CUSTOM_SEARCH_ENGINE_ID")
+        )
+        self.base_url = "https://customsearch.googleapis.com/customsearch/v1"
+        self.daily_cap = max(1, int(os.getenv("LAUNCHWAY_GOOGLE_CSE_DAILY_CAP", "100")))
+        default_usage_file = Path.home() / ".launchway" / "google_cse_usage.json"
+        self.usage_file = Path(
+            os.getenv("LAUNCHWAY_GOOGLE_CSE_USAGE_FILE", str(default_usage_file))
+        )
+        self._gemini_client = None
+        self._gemini_init_attempted = False
+
+    def _today_key(self) -> str:
+        return datetime.utcnow().strftime("%Y-%m-%d")
+
+    def _load_usage(self) -> Dict[str, Any]:
+        try:
+            if not self.usage_file.exists():
+                return {}
+            return json.loads(self.usage_file.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.warning(f"Google CSE usage file read failed: {e}")
+            return {}
+
+    def _save_usage(self, payload: Dict[str, Any]) -> None:
+        try:
+            self.usage_file.parent.mkdir(parents=True, exist_ok=True)
+            self.usage_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"Google CSE usage file write failed: {e}")
+
+    def _remaining_calls_today(self) -> int:
+        usage = self._load_usage()
+        today = self._today_key()
+        used = int(usage.get(today, 0) or 0)
+        return max(0, self.daily_cap - used)
+
+    def _consume_call(self) -> None:
+        usage = self._load_usage()
+        today = self._today_key()
+        usage[today] = int(usage.get(today, 0) or 0) + 1
+        self._save_usage(usage)
+
+    def _get_gemini_client(self):
+        if self._gemini_init_attempted:
+            return self._gemini_client
+        self._gemini_init_attempted = True
+        try:
+            from google import genai
+            api_key = os.getenv("GOOGLE_API_KEY")
+            if not api_key:
+                logger.info("GoogleCustomSearch: GOOGLE_API_KEY missing, skipping Gemini query generation.")
+                return None
+            self._gemini_client = genai.Client(api_key=api_key)
+            return self._gemini_client
+        except Exception as e:
+            logger.warning(f"GoogleCustomSearch: Gemini client init failed: {e}")
+            self._gemini_client = None
+            return None
+
+    def _build_fallback_queries(self, params: Dict[str, Any]) -> List[str]:
+        """
+        Build ATS-focused Google CSE queries that prioritize job-detail pages.
+        This intentionally avoids broad board-domain queries that often return
+        generic careers hubs.
+        """
+        keywords = str(params.get("keywords") or params.get("query")).strip()
+        location = str(params.get("location")).strip()
+        remote = bool(params.get("remote")) or bool(params.get("remote_only"))
+
+        # Use a deterministic set of ATS-focused query templates.
+        queries = [
+            f"\"{keywords}\" \"{location}\" (site:jobs.lever.co OR site:boards.greenhouse.io) -careers",
+            f"\"{keywords}\" \"new grad\" (site:myworkdayjobs.com OR site:jobs.ashbyhq.com OR site:smartrecruiters.com) -careers",
+            f"\"{keywords}\" \"remote\" (site:jobs.jobvite.com OR site:boards.greenhouse.io) -careers",
+        ]
+
+        # If user did not request remote, still keep remote template for recall,
+        # but rank location/new-grad style results first.
+        if remote:
+            queries = [queries[2], queries[0], queries[1]]
+
+        # De-duplicate while preserving order.
+        seen = set()
+        deduped = []
+        for q in queries:
+            key = q.strip().lower()
+            if key and key not in seen:
+                deduped.append(q)
+                seen.add(key)
+        return deduped
+
+    def _build_queries_with_gemini(self, params: Dict[str, Any]) -> List[str]:
+        client = self._get_gemini_client()
+        if not client:
+            return []
+
+        keywords = str(params.get("keywords") or params.get("query")).strip()
+        location = str(params.get("location")).strip()
+        remote = bool(params.get("remote")) or bool(params.get("remote_only"))
+
+        ats_domains = [
+            "jobs.lever.co",
+            "boards.greenhouse.io",
+            "myworkdayjobs.com",
+            "jobs.ashbyhq.com",
+            "smartrecruiters.com",
+            "jobs.jobvite.com",
+        ]
+        prompt = f"""
+Generate 3 high-quality Google Custom Search queries for job discovery.
+
+Target role keywords: "{keywords}"
+Target location: "{location}"
+Remote preferred: {remote}
+
+Hard requirements:
+1) Queries must prioritize specific job detail pages (not generic careers hubs).
+2) Use only these ATS domains where relevant: {", ".join(ats_domains)}.
+3) Include -careers in every query.
+4) Keep each query compact and operator-friendly for Google CSE.
+5) Return ONLY JSON with this schema:
+{{
+  "queries": ["query1", "query2", "query3"]
+}}
+"""
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config={
+                    "response_mime_type": "application/json",
+                    "response_schema": {
+                        "type": "object",
+                        "properties": {
+                            "queries": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "minItems": 1,
+                                "maxItems": 5,
+                            }
+                        },
+                        "required": ["queries"],
+                    },
+                },
+            )
+            payload = json.loads(response.text or "{}")
+            raw_queries = payload.get("queries") or []
+            cleaned = []
+            seen = set()
+            for q in raw_queries:
+                if not isinstance(q, str):
+                    continue
+                nq = q.strip()
+                if not nq:
+                    continue
+                if "-careers" not in nq:
+                    nq += " -careers"
+                key = nq.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                cleaned.append(nq)
+            if cleaned:
+                logger.info(f"GoogleCustomSearch: Using {len(cleaned)} Gemini-generated queries.")
+            return cleaned[:5]
+        except Exception as e:
+            logger.warning(f"GoogleCustomSearch: Gemini query generation failed: {e}")
+            return []
+
+    def _build_search_queries(self, params: Dict[str, Any]) -> List[str]:
+        queries = self._build_queries_with_gemini(params)
+        if queries:
+            return queries
+        logger.info("GoogleCustomSearch: Falling back to deterministic query templates.")
+        return self._build_fallback_queries(params)
+
+    def _infer_company_from_url(self, url: str) -> str:
+        try:
+            parsed = urllib.parse.urlparse(url)
+            host = (parsed.netloc or "").lower().replace("www.", "")
+            if not host:
+                return "Unknown Company"
+            return host.split(":")[0]
+        except Exception:
+            return "Unknown Company"
+
+    def _looks_like_job(self, url: str, title: str, snippet: str) -> bool:
+        text = f"{url} {title} {snippet}".lower()
+        job_markers = (
+            "/jobs/", "/job/", "/positions/", "/openings/", "/requisition/",
+            "/job-details/", "opening", "apply now", "vacancy"
+        )
+        # Filter obvious careers hub/listing pages.
+        hub_markers = ("/careers", "/careers/", "/jobs?", "/jobs#", "/jobs$")
+        if "/careers" in url.lower():
+            return False
+        if any(m in text for m in hub_markers):
+            return False
+        return any(marker in text for marker in job_markers)
+
+    def _infer_experience_level(self, title: str) -> str:
+        t = (title or "").lower()
+        if any(x in t for x in ("senior", "sr.", "staff", "principal", "lead")):
+            return "senior"
+        if any(x in t for x in ("junior", "jr.", "entry", "new grad", "graduate")):
+            return "entry"
+        if any(x in t for x in ("director", "vp", "head", "chief")):
+            return "executive"
+        return "mid"
+
+    def normalize_job(self, raw_job: Dict[str, Any]) -> Dict[str, Any]:
+        title = raw_job.get("title", "") or ""
+        snippet = raw_job.get("snippet", "") or ""
+        url = raw_job.get("link", "") or ""
+        text = f"{title} {snippet}".lower()
+        return {
+            "title": title,
+            "company": self._infer_company_from_url(url),
+            "location": "",
+            "salary": "",
+            "description": snippet,
+            "requirements": "",
+            "job_url": url,
+            "posted_date": "",
+            "job_type": "full-time",
+            "experience_level": self._infer_experience_level(title),
+            "is_remote": "remote" in text or "work from home" in text,
+            "salary_min": None,
+            "salary_max": None,
+            "salary_currency": "USD",
+            "source": "Google Custom Search",
+        }
+
+    def search_jobs(self, query_params: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            if not self.api_key or not self.cx:
+                logger.info("Google Custom Search not configured (missing key or cx)")
+                return {"data": [], "count": 0, "source": self.api_name}
+
+            remaining_calls = self._remaining_calls_today()
+            if remaining_calls <= 0:
+                logger.warning(
+                    f"Google Custom Search daily cap reached ({self.daily_cap}/{self.daily_cap})."
+                )
+                return {"data": [], "count": 0, "source": self.api_name}
+
+            requested = int(query_params.get("results_wanted", query_params.get("limit", 20)) or 20)
+            requested = max(1, min(requested, 100))
+            queries = self._build_search_queries(query_params)
+            date_restrict = None
+            hours_old = query_params.get("hours_old")
+            if isinstance(hours_old, int) and hours_old > 0:
+                days = max(1, (hours_old + 23) // 24)
+                date_restrict = f"d{days}"
+
+            jobs: List[Dict[str, Any]] = []
+            for query in queries:
+                if len(jobs) >= requested:
+                    break
+                start = 1
+                while len(jobs) < requested and start <= 91:
+                    remaining_calls = self._remaining_calls_today()
+                    if remaining_calls <= 0:
+                        logger.warning("Google Custom Search quota exhausted for today.")
+                        break
+
+                    page_size = min(10, requested - len(jobs))
+                    params = {
+                        "key": self.api_key,
+                        "cx": self.cx,
+                        "q": query,
+                        "num": page_size,
+                        "start": start,
+                        "safe": "off",
+                    }
+                    if date_restrict:
+                        params["dateRestrict"] = date_restrict
+
+                    response = requests.get(self.base_url, params=params, timeout=20)
+                    self._consume_call()
+
+                    if response.status_code != 200:
+                        logger.warning(
+                            f"Google Custom Search request failed ({response.status_code}): {response.text[:180]}"
+                        )
+                        break
+
+                    payload = response.json()
+                    items = payload.get("items", []) or []
+                    if not items:
+                        break
+
+                    normalized_batch: List[Dict[str, Any]] = []
+                    for item in items:
+                        title = str(item.get("title", "") or "")
+                        snippet = str(item.get("snippet", "") or "")
+                        url = str(item.get("link", "") or "")
+                        if not url:
+                            continue
+                        if not self._looks_like_job(url, title, snippet):
+                            continue
+                        normalized_batch.append(self.normalize_job(item))
+
+                    jobs.extend(normalized_batch)
+                    if "nextPage" not in (payload.get("queries") or {}):
+                        break
+                    start += 10
+
+            logger.info(
+                f"Google Custom Search: Found {len(jobs)} likely job results "
+                f"(remaining calls today: {self._remaining_calls_today()}/{self.daily_cap})"
+            )
+            return {"data": jobs, "count": len(jobs), "source": self.api_name}
+
+        except Exception as e:
+            logger.error(f"Google Custom Search API error: {e}")
+            return {"data": [], "count": 0, "source": self.api_name}
+
+
 class TheMuseAdapter(JobAPIAdapter):
     """The Muse API Adapter - Focus on company culture and detailed job descriptions"""
 
@@ -1087,7 +1418,7 @@ class JobAPIFactory:
 
     @staticmethod
     def get_all_adapters(proxy_manager=None) -> List[JobAPIAdapter]:
-        """Get all available adapters - JobSpy only."""
+        """Get all available adapters."""
         try:
             from jobspy_adapter import JobSpyAdapter
         except ImportError as e:
@@ -1100,7 +1431,16 @@ class JobAPIFactory:
                 "Try running: pip install --upgrade python-jobspy"
             ) from e
         try:
-            return [JobSpyAdapter(proxy_manager=proxy_manager)]
+            adapters: List[JobAPIAdapter] = [JobSpyAdapter(proxy_manager=proxy_manager)]
+            custom_search = GoogleCustomSearchAdapter()
+            if custom_search.api_key and custom_search.cx:
+                adapters.append(custom_search)
+                logger.info(
+                    f"Google Custom Search adapter enabled (daily cap: {custom_search.daily_cap} calls)"
+                )
+            else:
+                logger.info("Google Custom Search adapter disabled (set GOOGLE_CUSTOM_SEARCH_API_KEY and GOOGLE_CUSTOM_SEARCH_CX)")
+            return adapters
         except Exception as e:
             logger.error(f"JobSpyAdapter initialisation failed: {e}", exc_info=True)
             raise RuntimeError(f"Job search is unavailable: JobSpy initialisation failed ({e}).") from e
@@ -1123,6 +1463,8 @@ class JobAPIFactory:
             "adzuna": AdzunaAdapter(),
             "activejobsdb": ActiveJobsDBAdapter(),
             "googlejobs": GoogleJobsAdapter(),
+            "googlecustomsearch": GoogleCustomSearchAdapter(),
+            "google_cse": GoogleCustomSearchAdapter(),
             "themuse": TheMuseAdapter(),
             "theirstack": TheirStackAdapter()
         }

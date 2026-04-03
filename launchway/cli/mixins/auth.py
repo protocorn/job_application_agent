@@ -398,8 +398,6 @@ class AuthMixin:
         clear_session()
         self.current_user    = None
         self.current_profile = None
-        self._session_mimikree_email    = None
-        self._session_mimikree_password = None
         self.api.token = None
         self.print_success("Logged out successfully!")
         self.pause()

@@ -23,7 +23,6 @@
     "job_discovery": true,
     "auto_apply": true,
     "application_tracking": true,
-    "mimikree_integration": false,
     "vnc_mode": false
   },
   "display": {

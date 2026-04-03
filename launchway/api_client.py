@@ -364,14 +364,6 @@ class LaunchwayClient:
         """Return full account info including application count."""
         return self._get("/api/account/info")
 
-    # ── mimikree ────────────────────────────────────────────────────────────
-
-    def get_mimikree_status(self) -> Dict[str, Any]:
-        return self._get("/api/mimikree/status")
-
-    def connect_mimikree(self, email: str, password: str) -> Dict[str, Any]:
-        return self._post("/api/mimikree/connect", {"email": email, "password": password})
-
     def extract_resume_keywords(self, resume_text: str = None) -> Dict[str, Any]:
         """
         Ask the server to extract structured keywords from the user's resume
@@ -482,7 +474,7 @@ class LaunchwayClient:
         """
         Fetch the agent runtime bundle from the server.
         Returns a dict with at minimum:
-          { "key": "<fernet key>", "gemini_key": "...", "mimikree_url": "..." }
+          { "key": "<fernet key>", "gemini_key": "..." }
         """
         return self._get("/api/cli/agent-key")
 
@@ -523,6 +515,8 @@ class LaunchwayClient:
         job_title: str = "Position",
         company: str = "Company",
         resume_url: str = None,
+        replace_projects_on_tailor: bool = False,
+        skip_profile_gate: bool = False,
     ) -> Dict[str, Any]:
         """
         Submit an async resume-tailoring job to the server queue.
@@ -534,6 +528,8 @@ class LaunchwayClient:
             "job_description": job_description,
             "job_title": job_title,
             "company_name": company,
+            "replace_projects_on_tailor": bool(replace_projects_on_tailor),
+            "skip_profile_gate": bool(skip_profile_gate),
         }
         if resume_url:
             body["resume_url"] = resume_url
@@ -545,6 +541,7 @@ class LaunchwayClient:
         self,
         job_url: str,
         tailor_resume: bool = False,
+        replace_projects_on_tailor: bool = False,
     ) -> Dict[str, Any]:
         """
         Submit a job application to the server queue.
@@ -555,6 +552,7 @@ class LaunchwayClient:
         return self._post("/api/cli/apply", {
             "job_url": job_url,
             "tailor_resume": tailor_resume,
+            "replace_projects_on_tailor": bool(replace_projects_on_tailor),
         })
 
     # ── job queue status / management ───────────────────────────────────────
@@ -605,17 +603,7 @@ class LaunchwayClient:
                 )
             time.sleep(interval)
 
-    def get_mimikree_credentials(self) -> Tuple[Optional[str], Optional[str]]:
-        """
-        Fetch the decrypted Mimikree credentials stored for the current user.
-        Used by the local resume tailoring agent.
-
-        Returns (email, password) tuple, or (None, None) if not connected.
-        """
-        try:
-            data = self._get("/api/mimikree/credentials")
-            return data.get("email"), data.get("password")
-        except LaunchwayAPIError as e:
-            if e.status_code in (404, 400):
-                return None, None
-            raise
+    def get_profile_strength(self) -> Dict[str, Any]:
+        """Return profile-strength payload exposed by /api/profile."""
+        data = self._get("/api/profile")
+        return data.get("profile_strength", {})

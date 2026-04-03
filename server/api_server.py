@@ -41,7 +41,7 @@ from security_manager import security_manager, require_secure_headers, validate_
 from database_optimizer import setup_database_optimizations, get_database_health
 from backup_manager import backup_manager, run_full_backup, schedule_backups
 from job_handlers import submit_job_with_validation
-from mimikree_service import mimikree_service
+from profile_strength import score_profile_strength
 from bug_bounty import (
     SEVERITY_REWARD_MAP,
     normalize_severity,
@@ -819,6 +819,7 @@ def get_profile():
 
         if result['success']:
             profile = dict(result.get('profile') or {})
+            profile_strength = result.get("profile_strength") or score_profile_strength(profile)
             source_type = profile.get("resume_source_type", "google_doc")
 
             # Normalize resume fields by source type to avoid leaking stale/sensitive payloads.
@@ -833,6 +834,7 @@ def get_profile():
                 "resumeData": profile,
                 "resume_url": profile.get("resume_url", ""),
                 "resume_source_type": source_type,
+                "profile_strength": profile_strength,
                 "success": True,
                 "message": "Profile fetched successfully",
                 "error": None
@@ -1853,7 +1855,20 @@ def tailor_resume():
         # Determine current resume source mode from saved profile
         profile_result = ProfileService.get_profile(user_id)
         profile_data = profile_result.get('profile') if profile_result.get('success') else {}
+        profile_strength = profile_result.get('profile_strength') or score_profile_strength(profile_data)
         resume_source_type = (profile_data or {}).get('resume_source_type', 'google_doc')
+        skip_profile_gate = bool(data.get('skip_profile_gate', False))
+
+        if not profile_strength.get("gating_passed", False) and not skip_profile_gate:
+            return jsonify({
+                "error": "Profile strength is too low for reliable tailoring.",
+                "success": False,
+                "profile_strength": profile_strength,
+                "hints": profile_strength.get("hints", []),
+                "nudges": profile_strength.get("nudges", []),
+                "can_override": True,
+                "override_field": "skip_profile_gate",
+            }), 412
 
         credentials = None
         credentials_dict = None
@@ -1907,7 +1922,10 @@ def tailor_resume():
             'company': data.get('company_name', 'Unknown Company'),
             'credentials': credentials_dict,
             'user_full_name': user_full_name,
-            'latex_main_tex_path': (profile_data or {}).get('latex_main_tex_path')
+            'latex_main_tex_path': (profile_data or {}).get('latex_main_tex_path'),
+            'replace_projects_on_tailor': bool(data.get('replace_projects_on_tailor', False)),
+            'skip_profile_gate': skip_profile_gate,
+            'profile_strength': profile_strength,
         }
 
         # Submit job to queue
@@ -3513,7 +3531,6 @@ def get_cli_agent_key():
         "runtime_key_configured": True,
         "gemini_key": gemini_key,
         "shared_gemini_configured": shared_gemini_configured,
-        "mimikree_url": os.getenv("MIMIKREE_BASE_URL", "https://www.mimikree.com"),
     }), 200
 
 
@@ -3564,6 +3581,7 @@ def cli_submit_apply():
             'job_url': job_url,
             'resume_url': resume_url,
             'use_tailored': tailor_resume_flag,
+            'replace_projects_on_tailor': bool(data.get("replace_projects_on_tailor", False)),
         }
 
         result = submit_job_with_validation(
@@ -3622,11 +3640,10 @@ def export_user_data():
                     "beta_approved_date": user.beta_approved_date.isoformat() if user.beta_approved_date else None,
                     "beta_request_reason": user.beta_request_reason,
                     "google_oauth_connected": bool(user.google_refresh_token),
-                    "google_account_email": user.google_account_email,
-                    "mimikree_connected": user.mimikree_is_connected,
-                    "mimikree_email": user.mimikree_email if user.mimikree_is_connected else None
+                    "google_account_email": user.google_account_email
                 },
                 "profile_data": profile_data.get('profile') if profile_data.get('success') else {},
+                "profile_strength": profile_data.get('profile_strength') if profile_data.get('success') else None,
                 "export_metadata": {
                     "export_date": datetime.utcnow().isoformat(),
                     "export_format": "JSON",
@@ -3889,126 +3906,230 @@ def oauth_disconnect():
         logging.error(f"Error disconnecting Google account: {e}")
         return jsonify({"error": "Failed to disconnect Google account"}), 500
 
-# ============================================================
-# MIMIKREE CONNECTION ENDPOINTS
-# ============================================================
-
-@app.route("/api/mimikree/status", methods=['GET'])
+@app.route("/api/oauth/access-token", methods=['GET'])
 @require_auth
-def get_mimikree_status():
-    """Get user's Mimikree connection status"""
-    try:
-        user_id = request.current_user['id']
-        result = mimikree_service.get_user_mimikree_status(user_id)
-        
-        if result['success']:
-            return jsonify(result), 200
-        else:
-            return jsonify(result), 400
-            
-    except Exception as e:
-        logging.error(f"Error getting Mimikree status: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/api/mimikree/connect", methods=['POST'])
-@require_auth
-@rate_limit('api_requests_per_user_per_minute')
-@validate_input
-def connect_mimikree():
-    """Connect user's Mimikree account"""
-    try:
-        user_id = request.current_user['id']
-        data = request.json
-        
-        if not data:
-            return jsonify({"error": "No data provided"}), 400
-        
-        email = data.get('email', '').strip()
-        password = data.get('password', '')
-        
-        if not email or not password:
-            return jsonify({"error": "Email and password are required"}), 400
-        
-        # Validate email format
-        import re
-        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-        if not re.match(email_pattern, email):
-            return jsonify({"error": "Invalid email format"}), 400
-        
-        # Connect Mimikree account
-        result = mimikree_service.connect_user_mimikree(user_id, email, password)
-        
-        if result['success']:
-            return jsonify(result), 200
-        else:
-            return jsonify(result), 400
-            
-    except Exception as e:
-        logging.error(f"Error connecting Mimikree: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/api/mimikree/disconnect", methods=['POST'])
-@require_auth
-def disconnect_mimikree():
-    """Disconnect user's Mimikree account"""
-    try:
-        user_id = request.current_user['id']
-        result = mimikree_service.disconnect_user_mimikree(user_id)
-        
-        if result['success']:
-            return jsonify(result), 200
-        else:
-            return jsonify(result), 400
-            
-    except Exception as e:
-        logging.error(f"Error disconnecting Mimikree: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/api/mimikree/credentials", methods=['GET'])
-@require_auth
-def get_mimikree_credentials():
+def oauth_access_token():
     """
-    Return the decrypted Mimikree credentials for the current user.
-
-    Used exclusively by the CLI so the local resume-tailoring agent can
-    authenticate against the (separate) Mimikree server.  The credentials
-    are transmitted over HTTPS only, and only to the authenticated owner.
+    Return the user's current Google OAuth access token (refreshed if needed).
+    Used by the frontend Google Picker to authenticate requests.
     """
     try:
         user_id = request.current_user['id']
-        status  = mimikree_service.get_user_mimikree_status(user_id)
-        if not status.get('success') or not status.get('is_connected'):
-            return jsonify({"error": "Mimikree is not connected"}), 404
-
-        creds = mimikree_service.get_user_mimikree_credentials(user_id)
-        if not creds or not creds[0]:
-            return jsonify({"error": "Mimikree credentials not found"}), 404
-
-        email, password = creds
-        return jsonify({"success": True, "email": email, "password": password}), 200
-
+        access_token = GoogleOAuthService.get_access_token(user_id)
+        if not access_token:
+            return jsonify({"error": "Google account not connected"}), 403
+        return jsonify({"access_token": access_token}), 200
     except Exception as e:
-        logging.error(f"Error fetching Mimikree credentials: {e}")
-        return jsonify({"error": str(e)}), 500
+        logging.error(f"Error fetching access token: {e}")
+        return jsonify({"error": "Failed to retrieve access token"}), 500
 
 
-@app.route("/api/mimikree/test", methods=['POST'])
-@require_auth
-@rate_limit('api_requests_per_user_per_minute')
-def test_mimikree_connection():
-    """Test user's Mimikree connection"""
-    try:
-        user_id = request.current_user['id']
-        result = mimikree_service.test_user_connection(user_id)
-        
-        if result['success']:
-            return jsonify(result), 200
-        else:
-            return jsonify(result), 400
-            
-    except Exception as e:
-        logging.error(f"Error testing Mimikree connection: {e}")
-        return jsonify({"error": str(e)}), 500
+@app.route("/api/oauth/picker-config", methods=['GET'])
+def oauth_picker_config():
+    """
+    Return the Google OAuth client ID and Picker API key for the frontend.
+    Both values are safe to expose client-side.
+    """
+    return jsonify({
+        "client_id": os.getenv("GOOGLE_CLIENT_ID", ""),
+        "api_key": os.getenv("GOOGLE_PICKER_API_KEY", ""),
+    }), 200
+
+
+@app.route("/pick-resume", methods=['GET'])
+def pick_resume_page():
+    """
+    Minimal browser page served to CLI users so they can select their Google Doc
+    resume via the Picker API without needing the full React frontend.
+
+    Flow:
+      1. CLI opens this URL with ?token=<jwt>
+      2. Page authenticates, fetches the user's Google access token from the API
+      3. Google Picker opens pre-filtered to Google Docs
+      4. On selection, page POSTs to /api/process-resume then shows Done
+    """
+    jwt_token = request.args.get("token", "")
+    backend_url = request.host_url.rstrip("/")
+
+    picker_api_key = os.getenv("GOOGLE_PICKER_API_KEY", "")
+    google_client_id = os.getenv("GOOGLE_CLIENT_ID", "")
+
+    page_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Select Resume — Launchway</title>
+  <style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }}
+    .card {{
+      background: #1a1d2e;
+      border: 1px solid #2d3148;
+      border-radius: 16px;
+      padding: 48px 40px;
+      max-width: 480px;
+      width: 90%;
+      text-align: center;
+    }}
+    .logo {{ font-size: 28px; font-weight: 700; color: #6c63ff; margin-bottom: 8px; }}
+    h1 {{ font-size: 20px; font-weight: 600; margin-bottom: 8px; }}
+    p {{ color: #94a3b8; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }}
+    button {{
+      background: #6c63ff;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 28px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      width: 100%;
+    }}
+    button:hover {{ background: #574fd6; }}
+    button:disabled {{ background: #3d3d5c; cursor: not-allowed; }}
+    .status {{
+      margin-top: 20px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      display: none;
+    }}
+    .status.success {{ background: #0d2e1a; color: #4ade80; border: 1px solid #166534; display: block; }}
+    .status.error   {{ background: #2e0d0d; color: #f87171; border: 1px solid #991b1b; display: block; }}
+    .status.info    {{ background: #0d1a2e; color: #60a5fa; border: 1px solid #1e40af; display: block; }}
+    .filename {{ font-weight: 600; color: #a78bfa; word-break: break-all; }}
+    .return-hint {{ margin-top: 16px; font-size: 13px; color: #64748b; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">Launchway</div>
+    <h1>Select Your Resume</h1>
+    <p>Click the button below to pick your Google Doc resume from Drive. Once selected, Launchway will process it automatically.</p>
+    <button id="pick-btn" onclick="openPicker()">
+      Open Google Drive Picker
+    </button>
+    <div id="status" class="status"></div>
+    <p id="return-hint" class="return-hint" style="display:none">
+      ✓ Done! Switch back to your terminal and press <strong>Enter</strong> to continue.
+    </p>
+  </div>
+
+  <script src="https://apis.google.com/js/api.js"></script>
+  <script>
+    const JWT_TOKEN   = {json.dumps(jwt_token)};
+    const BACKEND_URL = {json.dumps(backend_url)};
+    const API_KEY     = {json.dumps(picker_api_key)};
+    const CLIENT_ID   = {json.dumps(google_client_id)};
+
+    let pickerApiLoaded = false;
+    let accessToken     = null;
+
+    function setStatus(msg, type) {{
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = 'status ' + type;
+    }}
+
+    async function fetchAccessToken() {{
+      const resp = await fetch(BACKEND_URL + '/api/oauth/access-token', {{
+        headers: {{ Authorization: 'Bearer ' + JWT_TOKEN }}
+      }});
+      if (!resp.ok) throw new Error('Google account not connected. Please connect it in the Launchway app first.');
+      const data = await resp.json();
+      return data.access_token;
+    }}
+
+    async function processResumeFile(fileId, fileName) {{
+      const resumeUrl = 'https://docs.google.com/document/d/' + fileId + '/edit';
+      setStatus('Processing "' + fileName + '"... this may take up to 30 seconds.', 'info');
+      const resp = await fetch(BACKEND_URL + '/api/process-resume', {{
+        method: 'POST',
+        headers: {{
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + JWT_TOKEN
+        }},
+        body: JSON.stringify({{ resume_url: resumeUrl }})
+      }});
+      const data = await resp.json();
+      if (!resp.ok || !data.success) throw new Error(data.error || 'Processing failed');
+      return fileName;
+    }}
+
+    function pickerCallback(data) {{
+      if (data[google.picker.Response.ACTION] === google.picker.Action.PICKED) {{
+        const doc  = data[google.picker.Response.DOCUMENTS][0];
+        const id   = doc[google.picker.Document.ID];
+        const name = doc[google.picker.Document.NAME];
+
+        document.getElementById('pick-btn').disabled = true;
+        processResumeFile(id, name)
+          .then(name => {{
+            setStatus('✓ Resume "' + name + '" selected and processed successfully!', 'success');
+            document.getElementById('return-hint').style.display = 'block';
+            document.getElementById('pick-btn').style.display = 'none';
+          }})
+          .catch(err => {{
+            setStatus('Error: ' + err.message, 'error');
+            document.getElementById('pick-btn').disabled = false;
+          }});
+      }}
+    }}
+
+    function createPicker() {{
+      const view = new google.picker.DocsView(google.picker.ViewId.DOCS)
+        .setMimeTypes('application/vnd.google-apps.document')
+        .setMode(google.picker.DocsViewMode.LIST);
+
+      const picker = new google.picker.PickerBuilder()
+        .addView(view)
+        .setOAuthToken(accessToken)
+        .setDeveloperKey(API_KEY)
+        .setCallback(pickerCallback)
+        .setTitle('Select your resume Google Doc')
+        .build();
+      picker.setVisible(true);
+    }}
+
+    async function openPicker() {{
+      try {{
+        document.getElementById('pick-btn').disabled = true;
+        setStatus('Connecting to Google...', 'info');
+
+        if (!accessToken) {{
+          accessToken = await fetchAccessToken();
+        }}
+
+        if (!pickerApiLoaded) {{
+          await new Promise((resolve, reject) => {{
+            gapi.load('picker', {{ callback: resolve, onerror: reject }});
+          }});
+          pickerApiLoaded = true;
+        }}
+
+        setStatus('', '');
+        document.getElementById('pick-btn').disabled = false;
+        createPicker();
+      }} catch (err) {{
+        setStatus('Error: ' + err.message, 'error');
+        document.getElementById('pick-btn').disabled = false;
+      }}
+    }}
+  </script>
+</body>
+</html>"""
+    return page_html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
 
 @app.route("/", methods=['GET'])
 def root():

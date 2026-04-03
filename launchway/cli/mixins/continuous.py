@@ -11,6 +11,7 @@ from collections import deque
 from datetime import datetime, timedelta
 from html.parser import HTMLParser
 from typing import Any, Dict, Optional
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import requests
 
@@ -28,24 +29,42 @@ class ContinuousApplyMixin:
 
         cleaned = str(query).strip()
         cleaned = re.sub(r"\s+", " ", cleaned)
-
-        removal_patterns = [
-            r"\bin any location\b",
-            r"\bin remote locations?\b",
-            r"\bin all locations?\b",
-            r"\bjobs for\b",
-        ]
-        for pattern in removal_patterns:
-            cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
-
-        cleaned = re.sub(r"\b(entry level|mid level|senior)\b", " ", cleaned, flags=re.IGNORECASE)
-        cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,.-")
-
-        tokens = cleaned.split()
-        if len(tokens) > 8:
-            cleaned = " ".join(tokens[:8])
-
         return cleaned or (fallback_keywords or "")
+
+    def _normalize_company_name(self, company: Any) -> str:
+        company_name = str(company or "").strip()
+        if company_name.lower() in {"nan", "none", "null", "n/a", "na"}:
+            company_name = ""
+        return company_name if company_name else "Unknown Company"
+
+    def _canonicalize_job_url(self, url: str) -> str:
+        raw = (url or "").strip()
+        if not raw:
+            return ""
+        try:
+            split = urlsplit(raw)
+            scheme = (split.scheme or "https").lower()
+            netloc = split.netloc.lower()
+            path = split.path.rstrip("/")
+            keep_query_keys = {
+                "id",
+                "jobid",
+                "job_id",
+                "pid",
+                "jk",
+                "gh_jid",
+                "reqid",
+                "requisitionid",
+            }
+            query_pairs = [
+                (k.lower(), v)
+                for k, v in parse_qsl(split.query, keep_blank_values=False)
+                if k and k.lower() in keep_query_keys
+            ]
+            query = urlencode(sorted(query_pairs))
+            return urlunsplit((scheme, netloc, path, query, ""))
+        except Exception:
+            return raw.rstrip("/").lower()
 
     def _extract_job_url(self, job: Dict[str, Any]) -> Optional[str]:
         apply_links = job.get('apply_links', {})
@@ -102,6 +121,16 @@ class ContinuousApplyMixin:
     def _is_rate_limit_error(self, error: Exception) -> bool:
         error_str = str(error).lower()
         return any(kw in error_str for kw in ['429', 'rate limit', 'resource_exhausted', 'quota', 'too many requests'])
+
+    def _prewarm_runtime_models(self):
+        """Warm heavy local models once so first application run is smoother."""
+        try:
+            from Agents.components.executors.semantic_field_mapper import SemanticFieldMapper
+            mapper = SemanticFieldMapper()
+            if mapper._ensure_initialized():
+                self.print_info("✓ Semantic mapper pre-warmed")
+        except Exception as e:
+            logger.debug(f"Semantic mapper prewarm skipped: {e}")
 
     async def _handle_rate_limit(self, automation_state: Dict[str, Any]):
         self.print_warning("\n⚠️  RATE LIMIT DETECTED")
@@ -182,6 +211,7 @@ class ContinuousApplyMixin:
         job_title:        str,
         company:          str,
         tailor_resume:    bool,
+        replace_projects_on_tailor: bool,
         headless:         bool,
         automation_state: Dict[str, Any],
         description:      str = '',
@@ -203,11 +233,20 @@ class ContinuousApplyMixin:
             'rate_limit_error': False,
             'duration_seconds': 0,
             'billing_pending':  False,
+            'agent_final_state': None,
+            'human_intervention_required': False,
         }
 
         try:
             self.print_info("🤖 Starting automated application...")
             self.print_info(f"   Tailor Resume: {'✓ Enabled' if tailor_resume else '✗ Disabled'}")
+            self._mark_job_tracking_status(
+                job_url,
+                "attempted_auto",
+                company=company,
+                title=job_title,
+                evidence="continuous_start",
+            )
 
             playwright = await _get_or_create_playwright()
             agent = RefactoredJobAgent(
@@ -217,14 +256,21 @@ class ContinuousApplyMixin:
                 debug=False,
                 user_id=str(self.current_user['id']),
                 tailor_resume=tailor_resume,
-                mimikree_email=self._session_mimikree_email if tailor_resume else None,
-                mimikree_password=self._session_mimikree_password if tailor_resume else None,
+                replace_projects_on_tailor=replace_projects_on_tailor if tailor_resume else False,
                 job_url=job_url,
                 use_persistent_profile=True,
                 pre_fetched_description=description or None,
                 profile_data=self.current_profile,
+                full_auto_mode=True,
             )
             await agent.process_link(job_url)
+
+            app_state = None
+            if hasattr(agent, 'state_machine') and agent.state_machine and hasattr(agent.state_machine, 'app_state'):
+                app_state = agent.state_machine.app_state
+                job_result['agent_final_state'] = app_state.context.get('final_state')
+            if not job_result.get('agent_final_state'):
+                job_result['agent_final_state'] = getattr(agent, 'last_state_machine_final_state', None)
 
             if tailor_resume:
                 profile = None
@@ -249,6 +295,8 @@ class ContinuousApplyMixin:
                         self.print_info(f"   📊 Match Rate: {match_pct:.1f}% | Keywords Added: {added}")
 
             human_needed = getattr(agent, 'keep_browser_open_for_human', False)
+            if app_state and app_state.context.get('final_state') == 'human_intervention':
+                human_needed = True
 
             if hasattr(agent, 'action_recorder') and agent.action_recorder:
                 for action in agent.action_recorder.actions:
@@ -269,9 +317,35 @@ class ContinuousApplyMixin:
 
             if human_needed:
                 job_result['submitted'] = False
-                job_result['error'] = 'Human intervention required'
+                job_result['human_intervention_required'] = True
+                self._mark_job_tracking_status(
+                    job_url,
+                    "human_takeover_open_tab",
+                    company=company,
+                    title=job_title,
+                    evidence="continuous_handoff",
+                )
+                self._start_manual_submission_hook(
+                    agent,
+                    job_url=job_url,
+                    company=company,
+                    title=job_title,
+                )
+                if app_state and hasattr(app_state, 'context'):
+                    reason = app_state.context.get('human_intervention_reason')
+                    if reason:
+                        job_result['error'] = f'Human intervention required: {reason}'
+                if not job_result.get('error'):
+                    job_result['error'] = 'Human intervention required'
 
-            if job_result['fields_filled'] > 0 and job_result['submitted']:
+            # Trust terminal state machine result when available.
+            final_state = job_result.get('agent_final_state')
+            if final_state == 'success':
+                job_result['submitted'] = True
+            elif final_state in {'fail', 'human_intervention'}:
+                job_result['submitted'] = False
+
+            if job_result['submitted']:
                 job_result['success'] = True
                 automation_state['applications_submitted'] += 1
                 self.record_application(
@@ -299,14 +373,32 @@ class ContinuousApplyMixin:
                 job_result['success']   = False
                 job_result['submitted'] = False
                 automation_state['applications_failed'] += 1
+                if not job_result.get('human_intervention_required'):
+                    self._mark_job_tracking_status(
+                        job_url,
+                        "abandoned_or_timeout",
+                        company=company,
+                        title=job_title,
+                        evidence="continuous_incomplete",
+                    )
                 if not job_result.get('error'):
-                    job_result['error'] = f"Incomplete ({job_result['fields_filled']} fields filled, not submitted)"
+                    status_suffix = f", state={job_result['agent_final_state']}" if job_result.get('agent_final_state') else ""
+                    job_result['error'] = (
+                        f"Incomplete ({job_result['fields_filled']} fields filled, not submitted{status_suffix})"
+                    )
                 self.print_warning(f"⚠ Application incomplete ({job_result['fields_filled']} fields filled)")
 
         except Exception as e:
             error_str = str(e)
             job_result['error'] = error_str
             automation_state['applications_failed'] += 1
+            self._mark_job_tracking_status(
+                job_url,
+                "abandoned_or_timeout",
+                company=company,
+                title=job_title,
+                evidence=f"continuous_exception:{error_str[:120]}",
+            )
             if self._is_rate_limit_error(e):
                 job_result['rate_limit_error'] = True
                 self.print_error(f"✗ Rate limit hit: {error_str[:100]}")
@@ -402,6 +494,7 @@ class ContinuousApplyMixin:
         self.print_info("  • Continuously search for relevant jobs")
         self.print_info("  • Automatically tailor your resume for each job")
         self.print_info("  • Fill and SUBMIT applications automatically")
+        self.print_info("  • Keep every opened application tab for manual finish when needed")
         self.print_info("  • Handle rate limits gracefully (pause & retry)")
         self.print_info("  • Rotate proxies to avoid IP bans")
         self.print_info("  • Generate detailed progress reports")
@@ -427,8 +520,19 @@ class ContinuousApplyMixin:
 
         tailor_all = self.get_input_yn("Tailor resume for each job? (y/n, default: y): ", default='y')
 
+        replace_projects_on_tailor_all = False
         if tailor_all:
-            self.ensure_mimikree_connected_for_tailoring()
+            if not self._confirm_profile_gate():
+                self.print_info("Profile gate declined. Continuous run will proceed without tailoring.")
+                tailor_all = False
+            else:
+                self.print_info(
+                    "Hint: Keep Profile > Projects updated to enable high-quality project swaps during tailoring."
+                )
+                replace_projects_on_tailor_all = self.get_input_yn(
+                    "Enable project replacement for each tailored resume in this run? (y/n, default: n): ",
+                    default='n'
+                )
 
         headless = self.get_input_yn("Run in headless mode? (y/n, default: n): ", default='n')
 
@@ -541,6 +645,7 @@ class ContinuousApplyMixin:
             easy_apply=easy_apply,
             hours_old=hours_old,
             tailor_resume=tailor_all,
+            replace_projects_on_tailor=replace_projects_on_tailor_all,
             headless=headless,
             session_goal=session_goal,
             cooldown_minutes=cooldown_minutes,
@@ -555,6 +660,7 @@ class ContinuousApplyMixin:
         easy_apply:       bool,
         hours_old:        Optional[int],
         tailor_resume:    bool,
+        replace_projects_on_tailor: bool,
         headless:         bool,
         session_goal:     int  = 5,
         cooldown_minutes: int  = 60,
@@ -576,6 +682,7 @@ class ContinuousApplyMixin:
         optimized_keywords     = keywords
         query_variations       = [keywords]
         profile_dict           = None
+        query_optimizer        = None
         enriched_search_params = {
             "keywords":   keywords,
             "location":   location,
@@ -586,6 +693,7 @@ class ContinuousApplyMixin:
 
         try:
             optimizer = GeminiQueryOptimizer()
+            query_optimizer = optimizer
             if self.current_profile:
                 profile_dict = (
                     {k: v for k, v in self.current_profile.__dict__.items() if not k.startswith('_')}
@@ -644,6 +752,9 @@ class ContinuousApplyMixin:
             'optimized_keywords':     optimized_keywords,
             'query_variations':       query_variations,
             'enriched_search_params': enriched_search_params,
+            'discovery_min_relevance': 30,
+            'broaden_retry_used':     False,
+            'broaden_removed_terms':  [],
             'round_number':           0,
         }
 
@@ -654,6 +765,9 @@ class ContinuousApplyMixin:
 
         self.print_info("📋 Loading application history for deduplication...")
         previously_applied_urls = self.get_applied_job_urls()
+        previously_applied_urls |= {
+            self._canonicalize_job_url(u) for u in list(previously_applied_urls) if u
+        }
         if previously_applied_urls:
             self.print_success(f"✓ Loaded {len(previously_applied_urls)} previously applied jobs")
         else:
@@ -675,34 +789,137 @@ class ContinuousApplyMixin:
         )
         self.print_info(f"✓ Progress report: {report_filename}")
         self.print_info("✓ Press Ctrl+C to stop gracefully\n")
+        self._prewarm_runtime_models()
 
         def _enqueue_jobs(new_jobs: list) -> tuple:
-            added, skipped_applied, skipped_dup = 0, 0, 0
+            added, skipped_applied, skipped_dup, skipped_no_url = 0, 0, 0, 0
             for job in new_jobs:
                 url = self._extract_job_url(job)
                 if not url:
+                    skipped_no_url += 1
                     continue
-                if url in previously_applied_urls:
+                canonical_url = self._canonicalize_job_url(url)
+                if canonical_url in previously_applied_urls or url in previously_applied_urls:
                     skipped_applied += 1
                     continue
-                if url in processed_urls:
+                title = str(job.get('title', 'Unknown')).strip() or "Unknown"
+                company = self._normalize_company_name(job.get('company', 'Unknown'))
+                dedupe_key = canonical_url or f"{title.lower()}|{company.lower()}"
+                if dedupe_key in processed_urls:
                     skipped_dup += 1
                     continue
                 entry = {
                     'url':             url,
-                    'title':           job.get('title', 'Unknown'),
-                    'company':         job.get('company', 'Unknown'),
+                    'canonical_url':   canonical_url,
+                    'title':           title,
+                    'company':         company,
                     'description':     job.get('description', ''),
                     'relevance_score': job.get('relevance_score', 0),
                 }
-                processed_urls.add(url)
+                processed_urls.add(dedupe_key)
                 needed = session_goal - len(job_queue)
                 if needed > 0:
                     job_queue.append(entry)
                 else:
                     overflow_queue.append(entry)
                 added += 1
-            return added, skipped_applied, skipped_dup
+            return added, skipped_applied, skipped_dup, skipped_no_url
+
+        def _apply_broader_retry_strategy() -> bool:
+            """One-time broader search retry when strict discovery yields nothing."""
+            if automation_state.get('broaden_retry_used'):
+                return False
+
+            base_keywords = self._sanitize_search_query(
+                automation_state.get('original_keywords', '') or keywords,
+                keywords
+            ) or keywords
+            current_queries = list(automation_state.get('query_variations') or [])
+            seed_query = self._sanitize_search_query(
+                current_queries[0] if current_queries else automation_state.get('optimized_keywords', ''),
+                base_keywords
+            )
+            prior_removed_terms = list(automation_state.get('broaden_removed_terms') or [])
+
+            def _drop_terms(query_text: str, terms: list) -> str:
+                updated = str(query_text or "")
+                for term in terms:
+                    t = str(term or "").strip()
+                    if not t:
+                        continue
+                    updated = re.sub(
+                        rf"(?i)\b{re.escape(t)}\b",
+                        " ",
+                        updated,
+                    )
+                return self._sanitize_search_query(updated, "")
+
+            refined_query = seed_query
+            niche_terms_next = []
+            if query_optimizer:
+                try:
+                    refinement = query_optimizer.refine_query_for_broader_retry(
+                        current_query=seed_query,
+                        location=location,
+                        removed_terms_prior=prior_removed_terms,
+                        profile_data=profile_dict,
+                    )
+                    refined_query = self._sanitize_search_query(
+                        (refinement or {}).get("refined_query", seed_query),
+                        seed_query
+                    )
+                    niche_terms_next = [
+                        str(t).strip() for t in ((refinement or {}).get("niche_terms_to_remove_next") or [])
+                        if str(t).strip()
+                    ]
+                except Exception as ge:
+                    logger.warning(f"Broader retry refinement failed, using seed query: {ge}")
+
+            # One-call strategy: use Gemini's refined query now, store niche terms
+            # to drop if a future broader retry iteration is introduced.
+            broader_candidates = [refined_query]
+            if prior_removed_terms:
+                dropped = _drop_terms(refined_query, prior_removed_terms)
+                if dropped:
+                    broader_candidates.append(dropped)
+            broader_candidates.extend([base_keywords, f"{base_keywords} jobs"])
+
+            seen = set()
+            broadened_queries = []
+            for q in broader_candidates:
+                nq = self._sanitize_search_query(q, base_keywords)
+                if not nq:
+                    continue
+                key = nq.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                broadened_queries.append(nq)
+
+            if niche_terms_next:
+                existing = [str(t).strip() for t in prior_removed_terms if str(t).strip()]
+                existing_lower = {t.lower() for t in existing}
+                for t in niche_terms_next:
+                    if t.lower() not in existing_lower:
+                        existing.append(t)
+                        existing_lower.add(t.lower())
+                automation_state['broaden_removed_terms'] = existing[:12]
+
+            automation_state['query_variations'] = broadened_queries[:4] or [base_keywords]
+
+            overrides = dict(automation_state.get('enriched_search_params', {}))
+            # Broaden temporal constraints for recall.
+            overrides.pop("hours_old", None)
+            # Let adapters pull more candidates during broad retry.
+            overrides["results_wanted"] = max(30, int(overrides.get("results_wanted", 20) or 20))
+            automation_state['enriched_search_params'] = overrides
+
+            # Lower threshold slightly to allow more candidates into queue.
+            automation_state['discovery_min_relevance'] = max(
+                15, int(automation_state.get('discovery_min_relevance', 30)) - 10
+            )
+            automation_state['broaden_retry_used'] = True
+            return True
 
         async def _fill_queue_to_goal() -> bool:
             all_queries = automation_state['query_variations']
@@ -733,20 +950,40 @@ class ContinuousApplyMixin:
                         search_overrides["location"] = location
                     try:
                         result   = agent.search_all_sources(
-                            min_relevance_score=30,
+                            min_relevance_score=int(automation_state.get('discovery_min_relevance', 30)),
                             manual_keywords=q,
                             manual_location=search_overrides.get("location") or None,
                             manual_remote=remote,
                             manual_search_overrides=search_overrides,
                         )
                         new_jobs = result.get('data', [])
-                        added, s_app, s_dup = _enqueue_jobs(new_jobs)
+                        queue_before = len(job_queue)
+                        added, s_app, s_dup, s_no_url = _enqueue_jobs(new_jobs)
                         total_added += added
                         automation_state['jobs_discovered'] += added
+                        source_counts = result.get('sources', {}) or {}
+                        raw_total = sum(int(v or 0) for v in source_counts.values())
+                        after_dedup = int(result.get('total_before_filter', len(new_jobs)) or 0)
+                        after_rank_and_applied = int(result.get('count', len(new_jobs)) or 0)
+                        dropped_upstream = max(0, after_dedup - after_rank_and_applied)
+                        queued_now = max(0, len(job_queue) - queue_before)
+                        overflow_count = max(0, added - queued_now)
                         self.print_info(
                             f"    → {added} new  |  queue: {len(job_queue)}/{session_goal}"
-                            + (f"  ({s_app} prev-applied, {s_dup} dup skipped)" if s_app or s_dup else "")
+                            + (
+                                f"  ({s_app} prev-applied, {s_dup} dup skipped, {s_no_url} missing-url)"
+                                if s_app or s_dup or s_no_url else ""
+                            )
                         )
+                        self.print_info(
+                            "      debug: "
+                            f"raw={raw_total}, unique_after_source_dedup={after_dedup}, "
+                            f"after_rank+db_filter={after_rank_and_applied}, "
+                            f"upstream_dropped={dropped_upstream}, added={added}, queued_now={queued_now}, overflow={overflow_count}"
+                        )
+                        if source_counts:
+                            src_parts = ", ".join(f"{k}:{v}" for k, v in sorted(source_counts.items()))
+                            self.print_info(f"      sources: {src_parts}")
                     except Exception as qe:
                         self.print_warning(f"    ⚠ Query error: {str(qe)[:80]}")
                         if self._is_rate_limit_error(qe):
@@ -767,6 +1004,7 @@ class ContinuousApplyMixin:
 
         async def _run_round() -> int:
             round_submitted = 0
+            round_attempted = 0
             round_goal      = min(session_goal, len(job_queue))
             while job_queue and round_submitted < session_goal and automation_state['running']:
                 # Check credits before each job - stop gracefully when exhausted
@@ -790,22 +1028,37 @@ class ContinuousApplyMixin:
                     break
 
                 job = job_queue.popleft()
+                round_attempted += 1
                 automation_state['jobs_processed'] += 1
 
                 self.print_header(
                     f"ROUND {automation_state['round_number']}  •  "
-                    f"JOB {round_submitted + 1}/{round_goal}  -  {job['company']}"
+                    f"JOB {round_attempted}/{round_goal}  -  {job['company']}"
                 )
                 self.print_info(f"Title:     {job['title']}")
                 self.print_info(f"URL:       {job['url'][:70]}...")
                 self.print_info(f"Relevance: {job['relevance_score']:.1f}%")
+
+                tailor_for_job = tailor_resume
+                replace_projects_for_job = False
+                if tailor_resume:
+                    tailor_for_job = self.get_input_yn(
+                        "Tailor resume for this job? (y/n, default: y): ",
+                        default='y'
+                    )
+                    if tailor_for_job:
+                        replace_projects_for_job = self.get_input_yn(
+                            "Enable project replacement for this tailored resume? (y/n, default: n): ",
+                            default='y' if replace_projects_on_tailor else 'n'
+                        )
 
                 job_result = await self._apply_to_single_job_automated(
                     job_url=job['url'],
                     job_title=job['title'],
                     company=job['company'],
                     description=job.get('description', ''),
-                    tailor_resume=tailor_resume,
+                    tailor_resume=tailor_for_job,
+                    replace_projects_on_tailor=replace_projects_for_job,
                     headless=headless,
                     automation_state=automation_state,
                 )
@@ -813,6 +1066,9 @@ class ContinuousApplyMixin:
 
                 if job_result.get('success') or job_result.get('submitted'):
                     previously_applied_urls.add(job['url'])
+                    canonical = job.get('canonical_url') or self._canonicalize_job_url(job['url'])
+                    if canonical:
+                        previously_applied_urls.add(canonical)
                     round_submitted += 1
 
                 self._save_progress_report(report_filename, automation_state, job_queue)
@@ -867,12 +1123,29 @@ class ContinuousApplyMixin:
                     self.print_info("  1. Wait 5 minutes and retry automatically")
                     self.print_info("  2. Change search parameters (restart)")
                     self.print_info("  3. Stop")
-                    choice = self.get_input("Choice [1/2/3, default 1]: ").strip()
+                    self.print_info("  4. Retry now with broader search terms")
+                    choice = self.get_input("Choice [1/2/3/4, default 1]: ").strip()
                     if choice == '2':
                         self.print_info("Returning to menu - re-run to change parameters.")
                         break
                     if choice == '3':
                         break
+                    if choice == '4':
+                        if _apply_broader_retry_strategy():
+                            self.print_info("Retrying now with broader search terms...")
+                            self.print_info(
+                                f"  Broadened queries: {automation_state['query_variations']}"
+                            )
+                            if automation_state.get('broaden_removed_terms'):
+                                self.print_info(
+                                    f"  Niche terms earmarked for next retry: {automation_state['broaden_removed_terms']}"
+                                )
+                            self.print_info(
+                                f"  Min relevance lowered to {automation_state['discovery_min_relevance']}"
+                            )
+                            continue
+                        self.print_warning("Broader retry already used in this session; choose another option.")
+                        continue
                     self.print_info("Retrying in 5 minutes...")
                     for _ in range(30):
                         if not automation_state['running']:
@@ -896,7 +1169,19 @@ class ContinuousApplyMixin:
                 if not automation_state['running']:
                     break
 
-                await _cooldown()
+                if round_submitted > 0:
+                    await _cooldown()
+                else:
+                    retry_minutes = max(1, int(os.getenv("LAUNCHWAY_CONTINUOUS_ZERO_SUBMIT_RETRY_MINUTES", "5")))
+                    wake_at = datetime.now() + timedelta(minutes=retry_minutes)
+                    self.print_warning(
+                        f"\n⚠ No submissions in round {automation_state['round_number']} - "
+                        f"retrying discovery at {wake_at.strftime('%I:%M %p')} ({retry_minutes} min)"
+                    )
+                    for _ in range(retry_minutes * 4):
+                        if not automation_state['running']:
+                            break
+                        await asyncio.sleep(15)
 
             self.print_header("🎉 AUTOMATION COMPLETED")
 

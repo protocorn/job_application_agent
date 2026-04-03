@@ -5,7 +5,10 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import datetime
+from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from launchway.api_client import LaunchwayAPIError
 from launchway.cli.utils import Colors, format_credits
@@ -86,6 +89,261 @@ class ApplyMixin:
     def _is_unknown_job_value(value: str) -> bool:
         v = (value or "").strip().lower()
         return v in {"", "unknown", "unknown company", "unknown position", "n/a", "na"}
+
+    def _canonicalize_job_url(self, url: str) -> str:
+        raw = (url or "").strip()
+        if not raw:
+            return ""
+        try:
+            split = urlsplit(raw)
+            scheme = (split.scheme or "https").lower()
+            netloc = split.netloc.lower()
+            path = split.path.rstrip("/")
+            keep_query_keys = {
+                "id", "jobid", "job_id", "pid", "jk", "gh_jid", "reqid", "requisitionid"
+            }
+            query_pairs = [
+                (k.lower(), v)
+                for k, v in parse_qsl(split.query, keep_blank_values=False)
+                if k and k.lower() in keep_query_keys
+            ]
+            query = urlencode(sorted(query_pairs))
+            return urlunsplit((scheme, netloc, path, query, ""))
+        except Exception:
+            return raw.rstrip("/").lower()
+
+    def _attempt_tracker_path(self) -> Path:
+        return Path.home() / ".launchway" / "job_attempt_tracker.json"
+
+    def _soft_dedupe_ttl_seconds(self) -> int:
+        hours = int(os.getenv("LAUNCHWAY_SOFT_DEDUPE_TTL_HOURS", "24"))
+        return max(1, hours) * 3600
+
+    def _load_attempt_tracker(self) -> dict:
+        path = self._attempt_tracker_path()
+        if not path.exists():
+            return {"version": 1, "jobs": {}}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                return {"version": 1, "jobs": {}}
+            data.setdefault("version", 1)
+            data.setdefault("jobs", {})
+            if not isinstance(data["jobs"], dict):
+                data["jobs"] = {}
+            return data
+        except Exception:
+            return {"version": 1, "jobs": {}}
+
+    def _save_attempt_tracker(self, tracker: dict) -> None:
+        path = self._attempt_tracker_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(tracker, indent=2), encoding="utf-8")
+
+    def _mark_job_tracking_status(
+        self,
+        job_url: str,
+        status: str,
+        *,
+        company: str = "Unknown Company",
+        title: str = "Unknown Position",
+        evidence: str = "",
+        ttl_seconds: int | None = None,
+    ) -> None:
+        canonical = self._canonicalize_job_url(job_url)
+        if not canonical:
+            return
+
+        tracker = self._load_attempt_tracker()
+        jobs = tracker.setdefault("jobs", {})
+        now = int(time.time())
+        iso_now = datetime.now().isoformat()
+
+        existing = jobs.get(canonical, {})
+        old_status = str(existing.get("status") or "").strip()
+
+        # Never downgrade from confirmed/probable submission.
+        strength = {
+            "attempted_auto": 10,
+            "human_takeover_open_tab": 20,
+            "abandoned_or_timeout": 30,
+            "submitted_probable": 80,
+            "submitted_confirmed": 100,
+            "completed": 100,
+        }
+        if strength.get(old_status, 0) > strength.get(status, 0):
+            return
+
+        effective_ttl = ttl_seconds
+        if effective_ttl is None and status not in {"submitted_confirmed", "submitted_probable", "completed"}:
+            effective_ttl = self._soft_dedupe_ttl_seconds()
+
+        payload = {
+            "status": status,
+            "job_url": job_url,
+            "canonical_url": canonical,
+            "company": company or existing.get("company", "Unknown Company"),
+            "title": title or existing.get("title", "Unknown Position"),
+            "updated_at": iso_now,
+            "updated_at_ts": now,
+            "evidence": evidence or existing.get("evidence", ""),
+            "expires_at_ts": None if effective_ttl is None else now + int(effective_ttl),
+        }
+        jobs[canonical] = payload
+        self._save_attempt_tracker(tracker)
+
+    def _blocked_urls_from_tracker(self) -> set:
+        tracker = self._load_attempt_tracker()
+        jobs = tracker.get("jobs", {})
+        now = int(time.time())
+        blocked = set()
+        dirty = False
+
+        for canonical, meta in list(jobs.items()):
+            status = str(meta.get("status") or "").strip()
+            expires = meta.get("expires_at_ts")
+            if status in {"submitted_confirmed", "submitted_probable", "completed"}:
+                blocked.add(canonical)
+                continue
+            if isinstance(expires, (int, float)) and expires >= now:
+                blocked.add(canonical)
+            elif isinstance(expires, (int, float)) and expires < now:
+                dirty = True
+                # keep historical row, just clear expiry to avoid repeated pruning logic
+                meta["expires_at_ts"] = None
+
+        if dirty:
+            self._save_attempt_tracker(tracker)
+        return blocked
+
+    def _start_manual_submission_hook(
+        self,
+        agent,
+        *,
+        job_url: str,
+        company: str = "Unknown Company",
+        title: str = "Unknown Position",
+    ) -> None:
+        canonical = self._canonicalize_job_url(job_url)
+        if not canonical:
+            return
+        if not hasattr(self, "_manual_submission_tasks"):
+            self._manual_submission_tasks = {}
+
+        existing = self._manual_submission_tasks.get(canonical)
+        if existing and not existing.done():
+            return
+
+        task = asyncio.create_task(
+            self._watch_manual_submission_hook(
+                agent,
+                job_url=job_url,
+                company=company,
+                title=title,
+            )
+        )
+        self._manual_submission_tasks[canonical] = task
+
+        def _cleanup(_task):
+            if hasattr(self, "_manual_submission_tasks"):
+                self._manual_submission_tasks.pop(canonical, None)
+        task.add_done_callback(_cleanup)
+
+    async def _watch_manual_submission_hook(
+        self,
+        agent,
+        *,
+        job_url: str,
+        company: str = "Unknown Company",
+        title: str = "Unknown Position",
+    ) -> None:
+        page = getattr(agent, "page", None)
+        if not page:
+            return
+
+        poll_seconds = max(2, int(os.getenv("LAUNCHWAY_SUBMISSION_HOOK_POLL_SECONDS", "5")))
+        timeout_minutes = max(5, int(os.getenv("LAUNCHWAY_SUBMISSION_HOOK_TIMEOUT_MINUTES", "180")))
+        deadline = time.time() + (timeout_minutes * 60)
+
+        url_markers = ["/success", "/submitted", "/thank", "/confirmation", "thank-you", "application-confirmation"]
+        text_markers = [
+            "application submitted",
+            "thank you for applying",
+            "application received",
+            "we have received your application",
+            "application complete",
+            "successfully submitted",
+        ]
+        id_regexes = [
+            r"application\s*(?:id|number|reference)\s*[:#]\s*[a-z0-9-]+",
+            r"confirmation\s*(?:id|number|code)\s*[:#]\s*[a-z0-9-]+",
+            r"reference\s*(?:id|number)\s*[:#]\s*[a-z0-9-]+",
+        ]
+
+        try:
+            while time.time() < deadline:
+                try:
+                    if page.is_closed():
+                        break
+
+                    current_url = (page.url or "").lower()
+                    if any(marker in current_url for marker in url_markers):
+                        self._mark_job_tracking_status(
+                            job_url,
+                            "submitted_confirmed",
+                            company=company,
+                            title=title,
+                            evidence=f"url:{current_url}",
+                            ttl_seconds=None,
+                        )
+                        self.record_application(job_url, company=company, title=title)
+                        logger.info(f"Manual submission hook confirmed by URL: {job_url}")
+                        return
+
+                    body_text = await page.evaluate(
+                        "() => (document.body && document.body.innerText ? document.body.innerText.slice(0, 15000) : '')"
+                    )
+                    text_l = (body_text or "").lower()
+                    if any(marker in text_l for marker in text_markers):
+                        self._mark_job_tracking_status(
+                            job_url,
+                            "submitted_confirmed",
+                            company=company,
+                            title=title,
+                            evidence="text_success_indicator",
+                            ttl_seconds=None,
+                        )
+                        self.record_application(job_url, company=company, title=title)
+                        logger.info(f"Manual submission hook confirmed by text: {job_url}")
+                        return
+
+                    for rgx in id_regexes:
+                        if re.search(rgx, text_l):
+                            self._mark_job_tracking_status(
+                                job_url,
+                                "submitted_confirmed",
+                                company=company,
+                                title=title,
+                                evidence="confirmation_id_detected",
+                                ttl_seconds=None,
+                            )
+                            self.record_application(job_url, company=company, title=title)
+                            logger.info(f"Manual submission hook confirmed by confirmation id: {job_url}")
+                            return
+                except Exception as loop_err:
+                    logger.debug(f"Manual submission hook poll error ({job_url}): {loop_err}")
+
+                await asyncio.sleep(poll_seconds)
+        finally:
+            # If user closed the tab / timeout without a confirmation signal, keep a soft block.
+            self._mark_job_tracking_status(
+                job_url,
+                "abandoned_or_timeout",
+                company=company,
+                title=title,
+                evidence="hook_timeout_or_tab_closed",
+                ttl_seconds=self._soft_dedupe_ttl_seconds(),
+            )
 
     def _extract_job_metadata_with_llm(
         self,
@@ -217,8 +475,22 @@ Job description snippet:
             tailor_settings = [False] * len(job_urls)
             self.print_info("✓ Will not tailor resume for any jobs")
 
+        replace_projects_settings = [False] * len(job_urls)
         if any(tailor_settings):
-            self.ensure_mimikree_connected_for_tailoring()
+            if not self._confirm_profile_gate():
+                self.print_info("Tailoring disabled for this batch due to profile readiness gate.")
+                tailor_settings = [False] * len(job_urls)
+                replace_projects_settings = [False] * len(job_urls)
+            else:
+                self.print_info(
+                    "Hint: Keep Profile > Projects updated. Tailoring can swap low-relevance resume projects from your profile."
+                )
+                for i, tailor in enumerate(tailor_settings):
+                    if tailor:
+                        replace_projects_settings[i] = self.get_input_yn(
+                            f"  Enable project replacement for job #{i+1}? (y/n, default: n): ",
+                            default='n'
+                        )
 
         # ── Credit check ────────────────────────────────────────────────────
         try:
@@ -245,15 +517,16 @@ Job description snippet:
                     )
                     job_urls = job_urls[:rem_int]
                     tailor_settings = tailor_settings[:rem_int]
+                    replace_projects_settings = replace_projects_settings[:rem_int]
             self.print_info(f"Job Application credits: {credit_str}")
         except LaunchwayAPIError:
             self.print_error("Could not verify credits. Please retry in a moment.")
             self.pause()
             return
 
-        await self.auto_apply_batch(job_urls, tailor_settings)
+        await self.auto_apply_batch(job_urls, tailor_settings, replace_projects_settings)
 
-    async def auto_apply_batch(self, job_urls: list, tailor_settings: list):
+    async def auto_apply_batch(self, job_urls: list, tailor_settings: list, replace_projects_settings: list):
         from Agents.job_application_agent import RefactoredJobAgent, _get_or_create_playwright
 
         total_jobs       = len(job_urls)
@@ -271,6 +544,14 @@ Job description snippet:
             playwright = await _get_or_create_playwright()
             for idx, job_url in enumerate(job_urls, start=1):
                 tailor     = tailor_settings[idx - 1]
+                replace_projects = replace_projects_settings[idx - 1] if idx - 1 < len(replace_projects_settings) else False
+                self._mark_job_tracking_status(
+                    job_url,
+                    "attempted_auto",
+                    company="Unknown Company",
+                    title=f"Job #{idx}",
+                    evidence="assisted_batch_start",
+                )
                 job_result = {
                     'number':        idx,
                     'job_url':       job_url,
@@ -312,8 +593,7 @@ Job description snippet:
                         debug=True,
                         user_id=str(self.current_user['id']),
                         tailor_resume=tailor,
-                        mimikree_email=self._session_mimikree_email if tailor else None,
-                        mimikree_password=self._session_mimikree_password if tailor else None,
+                        replace_projects_on_tailor=replace_projects if tailor else False,
                         job_url=job_url,
                         use_persistent_profile=True,
                         pre_fetched_description=pre_fetched_desc,
@@ -354,6 +634,19 @@ Job description snippet:
                     if human_needed:
                         job_result['submitted'] = False
                         job_result['error']     = 'Human intervention required'
+                        self._mark_job_tracking_status(
+                            job_url,
+                            "human_takeover_open_tab",
+                            company=job_result.get('company', 'Unknown Company'),
+                            title=job_result.get('job_title', f'Job #{idx}'),
+                            evidence="assisted_batch_handoff",
+                        )
+                        self._start_manual_submission_hook(
+                            agent,
+                            job_url=job_url,
+                            company=job_result.get('company', 'Unknown Company'),
+                            title=job_result.get('job_title', f'Job #{idx}'),
+                        )
 
                     if job_result['fields_filled'] > 0 and job_result['submitted']:
                         job_result['success'] = True
@@ -387,12 +680,26 @@ Job description snippet:
                         job_result['submitted'] = False
                         if not job_result.get('error'):
                             job_result['error'] = f"Incomplete ({job_result['fields_filled']} fields filled, not submitted)"
+                        self._mark_job_tracking_status(
+                            job_url,
+                            "abandoned_or_timeout",
+                            company=job_result.get('company', 'Unknown Company'),
+                            title=job_result.get('job_title', f'Job #{idx}'),
+                            evidence="assisted_batch_incomplete",
+                        )
                         failed_apps.append({'number': idx, 'url': job_url, 'error': job_result['error']})
                         self.print_warning(f"Job #{idx} incomplete ({job_result['fields_filled']} fields filled)")
 
                 except Exception as e:
                     error_str       = str(e)
                     job_result['error'] = error_str
+                    self._mark_job_tracking_status(
+                        job_url,
+                        "abandoned_or_timeout",
+                        company=job_result.get('company', 'Unknown Company'),
+                        title=job_result.get('job_title', f'Job #{idx}'),
+                        evidence=f"assisted_batch_exception:{error_str[:120]}",
+                    )
                     self.print_error(f"Job #{idx} failed: {error_str[:100]}")
                     logger.error(f"Job #{idx} auto apply error: {e}", exc_info=True)
                     failed_apps.append({'number': idx, 'url': job_url, 'error': error_str})
@@ -458,6 +765,19 @@ Job description snippet:
         from Agents.job_application_agent import RefactoredJobAgent
 
         tailor   = self.get_input_yn("Tailor resume for this job? (y/n, default: n): ", default='n')
+        replace_projects = False
+        if tailor:
+            if not self._confirm_profile_gate():
+                self.print_info("Proceeding without tailoring due to profile readiness gate.")
+                tailor = False
+            if tailor:
+                self.print_info(
+                    "Hint: Add relevant projects in Profile > Projects so tailored resumes can swap project entries."
+                )
+                replace_projects = self.get_input_yn(
+                    "Enable project replacement for this tailored resume? (y/n, default: n): ",
+                    default='n'
+                )
 
         # Block expensive single-run apply when credits cannot be verified.
         available, daily = self.api.check_credit_available("job_applications")
@@ -472,12 +792,16 @@ Job description snippet:
             self.pause()
             return
 
-        if tailor:
-            self.ensure_mimikree_connected_for_tailoring()
-
         try:
             self.print_info("\nStarting automated job application...")
             self.print_warning("You may need to complete CAPTCHA or final submission manually.")
+            self._mark_job_tracking_status(
+                job_url,
+                "attempted_auto",
+                company="Unknown Company",
+                title="Unknown Position",
+                evidence="assisted_single_start",
+            )
 
             pre_fetched_desc = None
             if tailor:
@@ -500,14 +824,28 @@ Job description snippet:
                     debug=True,
                     user_id=str(self.current_user['id']),
                     tailor_resume=tailor,
-                    mimikree_email=self._session_mimikree_email if tailor else None,
-                    mimikree_password=self._session_mimikree_password if tailor else None,
+                    replace_projects_on_tailor=replace_projects if tailor else False,
                     job_url=job_url,
                     use_persistent_profile=True,
                     pre_fetched_description=pre_fetched_desc,
                     profile_data=self.current_profile,
                 )
                 await agent.process_link(job_url)
+
+                if getattr(agent, 'keep_browser_open_for_human', False):
+                    self._mark_job_tracking_status(
+                        job_url,
+                        "human_takeover_open_tab",
+                        company="Unknown Company",
+                        title="Unknown Position",
+                        evidence="assisted_single_handoff",
+                    )
+                    self._start_manual_submission_hook(
+                        agent,
+                        job_url=job_url,
+                        company="Unknown Company",
+                        title="Unknown Position",
+                    )
 
                 if tailor:
                     profile_ctx = None
@@ -543,6 +881,13 @@ Job description snippet:
             self.pause()
 
         except Exception as e:
+            self._mark_job_tracking_status(
+                job_url,
+                "abandoned_or_timeout",
+                company="Unknown Company",
+                title="Unknown Position",
+                evidence=f"assisted_single_exception:{str(e)[:120]}",
+            )
             self.print_error(f"Auto apply failed: {str(e)}")
             logger.error(f"Auto apply error: {e}", exc_info=True)
             self.pause()
@@ -623,10 +968,26 @@ Job description snippet:
                     description=description,
                 )
             self.api.record_application(job_url, company=company, title=title)
+            self._mark_job_tracking_status(
+                job_url,
+                "submitted_confirmed",
+                company=company,
+                title=title,
+                evidence="record_application_api",
+                ttl_seconds=None,
+            )
             logger.info(f"Application recorded: {job_url} | {company} | {title}")
         except LaunchwayAPIError as e:
             logger.error(f"Failed to record application via API: {e}")
 
     def get_applied_job_urls(self) -> set:
         """Return URLs of previously applied-to jobs (for deduplication)."""
-        return self.api.get_applied_job_urls()
+        urls = set()
+        api_urls = self.api.get_applied_job_urls()
+        for raw in api_urls:
+            urls.add(raw)
+            canonical = self._canonicalize_job_url(raw)
+            if canonical:
+                urls.add(canonical)
+        urls |= self._blocked_urls_from_tracker()
+        return urls

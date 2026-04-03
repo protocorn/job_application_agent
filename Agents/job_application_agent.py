@@ -2,6 +2,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import base64
+import copy
 import os
 import sys
 import time
@@ -51,7 +52,7 @@ except ImportError:
 
 class RefactoredJobAgent:
     """The main class for the refactored job application agent."""
-    def __init__(self, playwright, headless: bool = True, keep_open: bool = False, debug: bool = False, hold_seconds: int = 0, slow_mo_ms: int = 0, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False, resume_path: str = None, job_url: str = None, use_persistent_profile: bool = True, mimikree_email: str = None, mimikree_password: str = None, pre_fetched_description: str = None, profile_data: dict = None, full_auto_mode: bool = False) -> None:
+    def __init__(self, playwright, headless: bool = True, keep_open: bool = False, debug: bool = False, hold_seconds: int = 0, slow_mo_ms: int = 0, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False, resume_path: str = None, job_url: str = None, use_persistent_profile: bool = True, pre_fetched_description: str = None, profile_data: dict = None, full_auto_mode: bool = False, replace_projects_on_tailor: bool = False, **_legacy_kwargs) -> None:
         self.playwright = playwright
         self.use_persistent_profile = use_persistent_profile  # Use persistent browser profile
         self.full_auto_mode = full_auto_mode
@@ -62,9 +63,8 @@ class RefactoredJobAgent:
         self.tailor_resume = tailor_resume
         self.resume_path = resume_path
         self.job_url = job_url  # Store job URL for VNC app mode
-        self.mimikree_email = mimikree_email
-        self.mimikree_password = mimikree_password
         self.pre_fetched_description = pre_fetched_description
+        self.replace_projects_on_tailor = replace_projects_on_tailor
         self.vnc_coordinator = None
 
         if vnc_mode and not VNC_AVAILABLE:
@@ -85,7 +85,9 @@ class RefactoredJobAgent:
         self.jobs_dict = jobs_dict  # Reference to the shared JOBS dictionary
         self.session_manager = session_manager
         self.user_id = user_id  # Store user_id for profile loading
-        self._preloaded_profile = profile_data  # Pre-loaded profile (avoids DB lookup when set)
+        # Keep an immutable-ish per-agent snapshot so per-job mutations (like tailored
+        # resume overrides) never leak back into the shared caller object.
+        self._preloaded_profile = copy.deepcopy(profile_data) if isinstance(profile_data, dict) else profile_data
         self.current_session = None
         self.page: Optional[Page] = None
         self.main_page: Optional[Page] = None  # Store reference to main page (not popup)
@@ -107,6 +109,7 @@ class RefactoredJobAgent:
         self.application_form_detector = None
         self.page_analyzer = None
         self.iframe_helper = None
+        self.last_state_machine_final_state = None
         
         # Track temporary files for cleanup
         self.created_files = []
@@ -269,10 +272,19 @@ class RefactoredJobAgent:
         self.nav_validator = NavValidator(context)
         # Create form filler with action recorder if available
         if hasattr(self, 'action_recorder') and self.action_recorder:
-            self.form_filler = GenericFormFiller(context, self.action_recorder, full_auto_mode=getattr(self, 'full_auto_mode', False))
+            self.form_filler = GenericFormFiller(
+                context,
+                self.action_recorder,
+                user_id=self.user_id,
+                full_auto_mode=getattr(self, 'full_auto_mode', False),
+            )
             logger.info(f"🎬 Form filler initialized with action recorder for context: {type(context).__name__}")
         else:
-            self.form_filler = GenericFormFiller(context, full_auto_mode=getattr(self, 'full_auto_mode', False))
+            self.form_filler = GenericFormFiller(
+                context,
+                user_id=self.user_id,
+                full_auto_mode=getattr(self, 'full_auto_mode', False),
+            )
             logger.warning("⚠️ Form filler initialized WITHOUT action recorder")
         self.submit_detector = SubmitDetector(context)
         self.next_button_detector = NextButtonDetector(context)
@@ -541,7 +553,14 @@ class RefactoredJobAgent:
             self.state_machine = StateMachine(initial_state='start', page=self.page)
             self._register_states()  # Register states AFTER creating the state machine
             self._log_to_jobs("info", "🤖 Starting AI-powered job application process...")
-            await self.state_machine.run()
+            final_app_state = await self.state_machine.run()
+            self.last_state_machine_final_state = (
+                final_app_state.context.get('final_state')
+                if final_app_state and hasattr(final_app_state, 'context')
+                else None
+            )
+            if self.last_state_machine_final_state:
+                logger.info(f"🏁 Agent recorded final state: {self.last_state_machine_final_state}")
             
             # Session will be frozen in the finally block regardless of outcome
         except Exception as e:
@@ -652,56 +671,6 @@ class RefactoredJobAgent:
                 logger.info("🧵 [Resume Tailoring] ENABLED - tailoring starts before application flow")
                 print("[INFO] 🧵 Resume tailoring is enabled. Tailoring resume before application starts...")
                 try:
-                    # Step 0: Enforce Mimikree connection before tailoring
-                    mimikree_email = None
-                    mimikree_password = None
-                    if self.mimikree_email and self.mimikree_password:
-                        mimikree_email = self.mimikree_email
-                        mimikree_password = self.mimikree_password
-                        logger.info(f"🧵 [Resume Tailoring] Using provided Mimikree credentials ({mimikree_email})")
-                    elif self.user_id:
-                        try:
-                            from server.mimikree_service import mimikree_service
-                            connection_test = mimikree_service.test_user_connection(self.user_id)
-                            if not connection_test.get('success'):
-                                error_msg = connection_test.get('error', 'Mimikree is not connected.')
-                                logger.error(f"❌ [Resume Tailoring] {error_msg}")
-                                print(f"[ERROR] ❌ Resume tailoring requires Mimikree connection: {error_msg}")
-                                state.update_context({
-                                    'tailoring_failed': True,
-                                    'tailoring_failure_reason': f'Mimikree not connected: {error_msg}'
-                                })
-                                return 'fail'
-
-                            mimikree_credentials = mimikree_service.get_user_mimikree_credentials(self.user_id)
-                            if not mimikree_credentials:
-                                logger.error("❌ [Resume Tailoring] Mimikree credentials unavailable")
-                                print("[ERROR] ❌ Resume tailoring requires Mimikree credentials. Please reconnect Mimikree.")
-                                state.update_context({
-                                    'tailoring_failed': True,
-                                    'tailoring_failure_reason': 'Mimikree credentials unavailable.'
-                                })
-                                return 'fail'
-
-                            mimikree_email, mimikree_password = mimikree_credentials
-                            logger.info(f"🧵 [Resume Tailoring] Mimikree connected ({mimikree_email})")
-                        except Exception as mimikree_err:
-                            logger.error(f"❌ [Resume Tailoring] Failed to validate Mimikree connection: {mimikree_err}", exc_info=True)
-                            print(f"[ERROR] ❌ Resume tailoring requires Mimikree connection: {mimikree_err}")
-                            state.update_context({
-                                'tailoring_failed': True,
-                                'tailoring_failure_reason': f'Failed to validate Mimikree connection: {mimikree_err}'
-                            })
-                            return 'fail'
-                    else:
-                        logger.error("❌ [Resume Tailoring] Missing user_id for Mimikree validation")
-                        print("[ERROR] ❌ Resume tailoring requires a valid user session.")
-                        state.update_context({
-                            'tailoring_failed': True,
-                            'tailoring_failure_reason': 'Missing user session for Mimikree validation.'
-                        })
-                        return 'fail'
-
                     # Step 1: Resolve source resume URL
                     resume_url = profile.get('resume_url')
                     if not resume_url and 'docs.google.com' in profile.get('resume_path', ''):
@@ -757,8 +726,8 @@ class RefactoredJobAgent:
                         tailoring_text,
                         job_context.get('title', 'Job'),
                         job_context.get('company', 'Company'),
-                        mimikree_email=mimikree_email,
-                        mimikree_password=mimikree_password
+                        user_id=self.user_id,
+                        replace_projects_on_tailor=self.replace_projects_on_tailor,
                     )
 
                     if not tailoring_metrics:
@@ -817,8 +786,52 @@ class RefactoredJobAgent:
                             profile['tailored_resume_ready'] = True
                             profile['tailored_resume_download_path'] = new_pdf_path
 
-                    logger.info("🚀 [Application] Resume tailoring complete. Starting job application flow...")
-                    print("[INFO] 🚀 Resume tailoring complete. Starting job application flow...")
+                    logger.info("✅ [Resume Tailoring] Tailoring completed. Waiting for user confirmation before applying.")
+                    print("[INFO] ✅ Resume tailoring completed.")
+                    review_path = (
+                        profile.get('tailored_resume_download_path')
+                        or profile.get('resume_path')
+                        or "(unknown path)"
+                    )
+                    print(f"[INFO] 📄 Review your tailored resume here: {review_path}")
+                    print("[INFO] ✍️ Make any edits you want. Your changes will be preserved.")
+
+                    # Gate: do not proceed to application until user explicitly confirms.
+                    # Interactive terminal flow (assisted/continuous CLI) asks for yes/no.
+                    # Non-interactive runtimes fall back to human_intervention pause.
+                    try:
+                        import sys as _sys
+                        if _sys.stdin and _sys.stdin.isatty():
+                            while True:
+                                answer = await asyncio.get_event_loop().run_in_executor(
+                                    None,
+                                    input,
+                                    "Does the tailored resume look good? Type 'yes' to continue application (or 'no' to keep editing): "
+                                )
+                                normalized = (answer or "").strip().lower()
+                                if normalized in {"yes", "y"}:
+                                    logger.info("👤 User approved tailored resume. Continuing application flow.")
+                                    print("[INFO] 🚀 Resume approved. Starting application flow...")
+                                    break
+                                if normalized in {"no", "n"}:
+                                    print("[INFO] ⏸️ No problem — edit the resume, then type 'yes' when ready.")
+                                    continue
+                                print("[INFO] Please answer 'yes' or 'no'.")
+                        else:
+                            state.context['pause_for_tailoring_review'] = True
+                            state.context['human_intervention_reason'] = (
+                                "Tailored resume is ready. Please review/edit it, then click continue to resume application."
+                            )
+                            return 'human_intervention'
+                    except Exception as confirmation_err:
+                        logger.warning(
+                            f"⚠️ [Resume Tailoring] Confirmation prompt failed ({confirmation_err}); pausing for manual confirmation."
+                        )
+                        state.context['pause_for_tailoring_review'] = True
+                        state.context['human_intervention_reason'] = (
+                            "Tailored resume is ready. Please review/edit it, then click continue to resume application."
+                        )
+                        return 'human_intervention'
 
                 except Exception as e:
                     logger.error(f"❌ [Resume Tailoring] Error during tailoring: {e}", exc_info=True)
@@ -1094,9 +1107,18 @@ class RefactoredJobAgent:
 
             # Check 4: URL-based detection (success/confirmation pages)
             current_url = self.page.url.lower()
-            if any(keyword in current_url for keyword in ['success', 'confirmation', 'thank', 'submitted', 'complete']):
-                logger.info("✅ Deterministic: URL indicates success page")
-                return 'success'
+            conservative_success_url_patterns = [
+                '/success',
+                '/submitted',
+                '/thank',
+                '/confirmation',
+                'thank-you',
+                'application-confirmation',
+            ]
+            if any(keyword in current_url for keyword in conservative_success_url_patterns):
+                if await self._verify_application_success(state):
+                    logger.info("✅ Deterministic: URL and page content indicate success page")
+                    return 'success'
 
             # If we can't determine confidently, return None to trigger AI
             logger.info("❓ Deterministic: Cannot confidently determine page state")
@@ -1153,7 +1175,7 @@ POSSIBLE ACTIONS (choose exactly ONE):
 4. "submit_form" - If form is filled and ready for submission (Next/Submit button visible)
 5. "application_complete" - ONLY if you see explicit success confirmation messages ("Application submitted", "Thank you for applying", etc.)
 6. "navigate_to_next_page" - If you see METHOD SELECTION buttons like "Autofill with Resume", "Apply Manually", "Use Last Application" (NOT "Apply Now" buttons!)
-7. "need_human_intervention" - If the page requires human attention (captcha, broken pages, authentication failures) - DO NOT use this for resume uploads, chatbots, or help widgets
+7. "need_human_intervention" - If the page requires human attention (broken pages, authentication failures, or unresolved blockers) - DO NOT use this for resume uploads, chatbots, or help widgets
 8. "click_element" - If a specific visible button/link/text needs to be clicked (e.g., "Consent & Continue"). Provide the exact on-screen text in "target_text".
 
 CRITICAL DISTINCTION - "Apply Now" vs "Method Selection":
@@ -1176,7 +1198,7 @@ ANALYSIS CRITERIA:
 - Be VERY conservative about declaring "application_complete" - only if explicit success indicators
 - Consider if forms need filling or if submission is ready
 - IMPORTANT: Chatbots, help widgets, or AI assistants (like "Electra") are NOT blocking elements - ignore them and focus on the main content
-- Only use "need_human_intervention" for actual blockers like CAPTCHAs, broken pages, or authentication failures - NOT for resume uploads
+- Only use "need_human_intervention" for actual blockers like broken pages or authentication failures - NOT for resume uploads
 
 Return ONLY a JSON object:
 {{
@@ -1804,8 +1826,16 @@ Return ONLY a JSON object:
             
             # Check URL for success patterns
             url = self.page.url
-            success_url_patterns = ['success', 'complete', 'submitted', 'thank', 'confirmation', 'done']
-            url_success = any(pattern in url.lower() for pattern in success_url_patterns)
+            success_url_patterns = [
+                '/success',
+                '/submitted',
+                '/thank',
+                '/confirmation',
+                'thank-you',
+                'application-confirmation',
+            ]
+            lowered_url = url.lower()
+            url_success = any(pattern in lowered_url for pattern in success_url_patterns)
             
             if url_success:
                 logger.info("✅ Success patterns found in URL")
@@ -2260,7 +2290,9 @@ Return ONLY a JSON object:
         if self.user_id:
             try:
                 from components.executors.account_creation_handler import AccountCreationHandler
-                profile = _load_profile_data(user_id=self.user_id, profile_data=self._preloaded_profile)
+                profile = state.context.get('profile')
+                if not isinstance(profile, dict):
+                    profile = _load_profile_data(user_id=self.user_id, profile_data=self._preloaded_profile)
                 user_email = profile.get('email', '')
                 
                 if user_email:
@@ -2341,7 +2373,11 @@ Return ONLY a JSON object:
             logger.error("🔄 Maximum iterations reached! Too many fill_form attempts. Stopping.")
             return 'fail'
         
-        profile = _load_profile_data(user_id=self.user_id, profile_data=self._preloaded_profile)
+        # Use job-scoped profile from state context so a tailored resume path applies
+        # only to this job's flow. Fall back to a fresh load when context is missing.
+        profile = state.context.get('profile')
+        if not isinstance(profile, dict):
+            profile = _load_profile_data(user_id=self.user_id, profile_data=self._preloaded_profile)
         profile = await self._prepare_account_password_for_form(profile)
 
         # Store form_filler and profile in context for checkpoint access
@@ -2383,7 +2419,12 @@ Return ONLY a JSON object:
                 return 'fail'
             else:
                 # Success! Log the results
-                logger.info(f"✅ Form filled successfully: {result['total_fields_filled']} fields in {result['iterations']} iterations")
+                if result.get('total_fields_filled', 0) > 0:
+                    logger.info(f"✅ Form filled successfully: {result['total_fields_filled']} fields in {result['iterations']} iterations")
+                else:
+                    logger.warning(
+                        "⚠️ Form fill cycle completed without filling fields; handing control to navigation checks"
+                    )
                 logger.info(f"📊 Deterministic: {result.get('deterministic_count', 0)}, AI: {result.get('ai_count', 0)}")
         except HumanInterventionRequired as e:
             logger.warning(f"⏸️ Human intervention required: {e}")
@@ -3084,7 +3125,7 @@ IMPORTANT:
         logger.warning("⚠️ Cannot determine page state clearly")
         
         # Check if this might be a success page by URL patterns
-        success_url_patterns = ['success', 'complete', 'submitted', 'thank', 'confirmation']
+        success_url_patterns = ['/success', '/submitted', '/thank', '/confirmation', 'thank-you']
         if any(pattern in url.lower() for pattern in success_url_patterns):
             logger.info("✅ URL suggests successful completion - declaring success")
             return 'success'
@@ -3175,12 +3216,28 @@ IMPORTANT:
                 logger.info("🔍 --debug flag: waiting for user to complete manual steps...")
                 self._log_to_jobs("info", "🐛 Debug mode: Complete manual steps, then press Enter to continue")
                 try:
-                    await asyncio.get_event_loop().run_in_executor(
-                        None,
-                        input,
-                        "Press Enter when you have completed the manual steps and want to continue..."
-                    )
-                    logger.info("👤 User confirmed manual completion — continuing...")
+                    if state.context.get('pause_for_tailoring_review'):
+                        while True:
+                            answer = await asyncio.get_event_loop().run_in_executor(
+                                None,
+                                input,
+                                "Tailored resume review: type 'yes' to continue application (or 'no' to keep editing): "
+                            )
+                            normalized = (answer or "").strip().lower()
+                            if normalized in {"yes", "y"}:
+                                break
+                            if normalized in {"no", "n"}:
+                                logger.info("👤 User chose to keep editing tailored resume before continuing")
+                                continue
+                            print("Please answer 'yes' or 'no'.")
+                        logger.info("👤 User approved tailored resume — continuing application...")
+                    else:
+                        await asyncio.get_event_loop().run_in_executor(
+                            None,
+                            input,
+                            "Press Enter when you have completed the manual steps and want to continue..."
+                        )
+                        logger.info("👤 User confirmed manual completion — continuing...")
                     self._log_to_jobs("info", "✅ User confirmed manual completion - continuing...")
 
                     # Optional immediate tracker flush on Enter
@@ -3190,6 +3247,10 @@ IMPORTANT:
                         except Exception as _te:
                             logger.warning(f"HumanFillTracker: Flush error: {_te}")
 
+                    if state.context.get('pause_for_tailoring_review'):
+                        state.context.pop('pause_for_tailoring_review', None)
+                        state.context['came_from_human_intervention'] = True
+                        return 'ai_guided_navigation'
                     return 'success'
                 except KeyboardInterrupt:
                     logger.info("👤 User interrupted - ending process")
@@ -3631,7 +3692,7 @@ async def _get_or_create_playwright():
 
         return _global_playwright_instance
 
-async def run_links_with_refactored_agent(links: list[str], headless: bool, keep_open: bool, debug: bool, hold_seconds: int, slow_mo_ms: int, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False, resume_path: str = None, full_auto_mode: bool = False):
+async def run_links_with_refactored_agent(links: list[str], headless: bool, keep_open: bool, debug: bool, hold_seconds: int, slow_mo_ms: int, job_id: str = None, jobs_dict: dict = None, session_manager: SessionManager = None, user_id: str = None, vnc_mode: bool = False, vnc_port: int = 5900, tailor_resume: bool = False, resume_path: str = None, full_auto_mode: bool = False, replace_projects_on_tailor: bool = False):
     """
     Run job application agent with optional VNC streaming
 
@@ -3682,6 +3743,7 @@ async def run_links_with_refactored_agent(links: list[str], headless: bool, keep
             resume_path=resume_path,
             job_url=job_url,
             full_auto_mode=full_auto_mode,
+            replace_projects_on_tailor=replace_projects_on_tailor,
         )
 
         for link in links:

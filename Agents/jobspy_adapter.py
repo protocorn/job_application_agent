@@ -4,6 +4,7 @@ Integrates JobSpy library to scrape jobs from multiple sources concurrently
 """
 
 import logging
+import os
 from typing import Dict, Any, List
 from jobspy import scrape_jobs
 import pandas as pd
@@ -59,8 +60,11 @@ class JobSpyAdapter:
             hours_old = params.get("hours_old", None)
             easy_apply = params.get("easy_apply", False)
             distance = params.get("distance", 50)
-            country_indeed = params.get("country_indeed", "USA")
-            linkedin_fetch_description = params.get("linkedin_fetch_description", False)
+            country_indeed = params.get("country_indeed")
+            default_fetch_desc = str(
+                os.getenv("LAUNCHWAY_LINKEDIN_FETCH_DESCRIPTION", "1")
+            ).strip().lower() not in {"0", "false", "no", "off"}
+            linkedin_fetch_description = params.get("linkedin_fetch_description", default_fetch_desc)
             
             # Use proxy manager if available, otherwise use provided proxies
             proxies = None
@@ -74,6 +78,16 @@ class JobSpyAdapter:
             
             # Custom sites or use defaults
             site_name = params.get("sites", self.default_sites)
+            if isinstance(site_name, str):
+                site_name = [s.strip() for s in site_name.split(",") if s.strip()]
+
+            # Glassdoor often rejects broad country-only locations (400 location parse errors).
+            # Prefer stable sources in that case to reduce noisy failures.
+            broad_locations = {"united states", "usa", "us", "any", "worldwide"}
+            normalized_location = str(location or "").strip().lower()
+            if "glassdoor" in site_name and normalized_location in broad_locations:
+                site_name = [s for s in site_name if s != "glassdoor"]
+                logger.info("Skipping Glassdoor for broad location search to avoid location parse errors")
             
             # Build Google search term if using Google (or use explicit override)
             google_search_term = params.get("google_search_term", None)

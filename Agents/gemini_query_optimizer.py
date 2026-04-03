@@ -82,6 +82,107 @@ class GeminiQueryOptimizer:
                 "error": str(e)
             }
 
+    def refine_query_for_broader_retry(
+        self,
+        current_query: str,
+        location: str = "",
+        removed_terms_prior: Optional[List[str]] = None,
+        profile_data: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Single-call Gemini refinement for broadening search without dropping role level.
+
+        Returns:
+        {
+          "success": bool,
+          "refined_query": str,
+          "niche_terms_to_remove_next": [str],
+          "method": "gemini_ai|rule_based",
+          "error": "..."
+        }
+        """
+        seed = str(current_query or "").strip()
+        if not seed:
+            return {
+                "success": False,
+                "refined_query": "",
+                "niche_terms_to_remove_next": [],
+                "method": "rule_based",
+                "error": "empty_query"
+            }
+
+        prior_terms = [str(t).strip() for t in (removed_terms_prior or []) if str(t).strip()]
+        if not self.model:
+            # Conservative fallback: keep query unchanged and suggest no removals.
+            return {
+                "success": True,
+                "refined_query": seed,
+                "niche_terms_to_remove_next": [],
+                "method": "rule_based",
+            }
+
+        profile_context = json.dumps(profile_data or {}, indent=2)
+        try:
+            prompt = f"""You are optimizing a job-search query for broader recall after low/no results.
+Return ONLY valid JSON.
+
+Current query:
+"{seed}"
+Location context:
+"{location or ''}"
+Previously removed niche terms:
+{json.dumps(prior_terms)}
+
+Profile context:
+{profile_context}
+
+Goal:
+1) Keep role intent and seniority intent intact (DO NOT remove entry/junior/mid/senior/new grad).
+2) Remove only overly niche technology stack terms or constraints that reduce recall.
+3) Produce one refined query for the immediate retry.
+4) Provide 2-6 niche terms/phrases to remove if the *next* retry still underperforms.
+
+Output JSON schema:
+{{
+  "refined_query": "string",
+  "niche_terms_to_remove_next": ["string"]
+}}
+"""
+            response = self.model.generate_content(prompt)
+            parsed = self._parse_json_from_text((response.text or "").strip())
+            refined = str(parsed.get("refined_query") or "").strip() or seed
+            niche_terms = parsed.get("niche_terms_to_remove_next") or []
+            if not isinstance(niche_terms, list):
+                niche_terms = []
+
+            cleaned_terms: List[str] = []
+            seen = set()
+            for term in niche_terms:
+                t = str(term or "").strip()
+                if not t:
+                    continue
+                key = t.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                cleaned_terms.append(t)
+
+            return {
+                "success": True,
+                "refined_query": refined,
+                "niche_terms_to_remove_next": cleaned_terms[:6],
+                "method": "gemini_ai",
+            }
+        except Exception as e:
+            logger.error(f"Broader retry refinement error: {e}", exc_info=True)
+            return {
+                "success": False,
+                "refined_query": seed,
+                "niche_terms_to_remove_next": [],
+                "method": "fallback",
+                "error": str(e),
+            }
+
     def enrich_jobspy_parameters(
         self,
         user_keywords: str,
@@ -174,6 +275,33 @@ class GeminiQueryOptimizer:
             return "mid level"
         else:
             return "senior"
+
+    def _summarize_experience_context(self, profile_data: Optional[Dict[str, Any]]) -> str:
+        """
+        Build human-readable experience context for prompt grounding.
+        Explicitly says when no work experience is available.
+        """
+        if not profile_data:
+            return "No profile data available. Treat work experience as not provided."
+
+        work_exp = profile_data.get('work_experience', [])
+        if not work_exp:
+            return "No work experience entries found in profile."
+
+        lines = []
+        for idx, exp in enumerate(work_exp[:5], start=1):
+            if not isinstance(exp, dict):
+                continue
+            title = str(exp.get('title', '')).strip() or "Unknown Title"
+            company = str(exp.get('company', '')).strip() or "Unknown Company"
+            start = str(exp.get('start_date', '')).strip()
+            end = str(exp.get('end_date', '')).strip() or "Present"
+            if start:
+                lines.append(f"{idx}. {title} at {company} ({start} - {end})")
+            else:
+                lines.append(f"{idx}. {title} at {company}")
+
+        return "\n".join(lines) if lines else "No parsable work experience entries found in profile."
     
     def _build_optimization_prompt(self, 
                                    keywords: str, 
@@ -181,8 +309,8 @@ class GeminiQueryOptimizer:
                                    profile_data: Optional[Dict[str, Any]]) -> str:
         """Build prompt for Gemini to optimize the search query"""
         
-        # Determine experience level
         experience_level = self._determine_experience_level(profile_data)
+        experience_context = self._summarize_experience_context(profile_data)
         
         prompt = f"""You are a job search expert. Create highly effective job search queries.
 
@@ -190,6 +318,9 @@ USER'S SEARCH:
 - Keywords: "{keywords}"
 - Location: "{location or 'Any location'}"
 - Experience Level: {experience_level}
+
+WORK EXPERIENCE CONTEXT:
+{experience_context}
 """
         
         # Add profile context if available
@@ -273,7 +404,6 @@ NOW CREATE QUERIES FOR THE USER'S SEARCH ABOVE:
         Generate optimized queries using rule-based logic (no AI needed)
         Fallback when Gemini is not available
         """
-        # Determine experience level
         exp_level = self._determine_experience_level(profile_data)
         
         # Extract key skills if available
@@ -372,7 +502,7 @@ NOW CREATE QUERIES FOR THE USER'S SEARCH ABOVE:
             "easy_apply": bool(user_easy_apply) if user_easy_apply is not None else False,
             "distance": 50,
             "country_indeed": "USA",
-            "linkedin_fetch_description": False,
+            "linkedin_fetch_description": True,
             "google_search_term": None,
             "sites": ["indeed", "linkedin", "zip_recruiter", "google"]
         }
@@ -389,6 +519,7 @@ NOW CREATE QUERIES FOR THE USER'S SEARCH ABOVE:
     ) -> str:
         """Prompt Gemini to return structured JobSpy params."""
         profile_context = json.dumps(profile_data or {}, indent=2)
+        experience_context = self._summarize_experience_context(profile_data)
         remote_text = "null" if remote is None else str(bool(remote)).lower()
         easy_text = "null" if user_easy_apply is None else str(bool(user_easy_apply)).lower()
         hours_text = "null" if user_hours_old is None else str(int(user_hours_old))
@@ -406,6 +537,9 @@ User input:
 
 Profile context:
 {profile_context}
+
+Work experience context:
+{experience_context}
 
 Output JSON schema:
 {{

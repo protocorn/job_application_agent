@@ -40,7 +40,7 @@ class HallucinationDetector:
 
         Args:
             generated_content: The AI-generated text to validate
-            source_data: The source data (Mimikree responses, resume context, etc.)
+            source_data: The source data (profile context, resume context, etc.)
             original_content: Optional original text being modified
 
         Returns:
@@ -184,21 +184,21 @@ SUMMARY: [brief explanation]"""
     def validate_bullet_against_experience(
         self,
         bullet_text: str,
-        mimikree_data: str,
+        profile_context_data: str,
         job_context: Optional[str] = None
     ) -> Dict[str, any]:
         """
-        Validate a resume bullet against user's actual experience (Mimikree data).
+        Validate a resume bullet against user's actual experience.
 
         Args:
             bullet_text: The bullet point to validate
-            mimikree_data: User's experience data from Mimikree
+            profile_context_data: User's profile context data
             job_context: Optional job description context
 
         Returns:
             Dict with validation results
         """
-        source_data = mimikree_data
+        source_data = profile_context_data
         if job_context:
             source_data += f"\n\nJOB CONTEXT (for keyword context only - not as source of claims):\n{job_context}"
 
@@ -211,14 +211,14 @@ SUMMARY: [brief explanation]"""
     def batch_validate_bullets(
         self,
         bullets: List[str],
-        mimikree_data: str
+        profile_context_data: str
     ) -> Dict[str, any]:
         """
         Validate multiple bullets in a single batch.
 
         Args:
             bullets: List of bullet texts to validate
-            mimikree_data: User's experience data
+            profile_context_data: User's experience data
 
         Returns:
             Dict with:
@@ -232,7 +232,7 @@ SUMMARY: [brief explanation]"""
         for i, bullet in enumerate(bullets):
             result = self.validate_bullet_against_experience(
                 bullet_text=bullet,
-                mimikree_data=mimikree_data
+                profile_context_data=profile_context_data
             )
             results.append(result)
 
@@ -253,7 +253,7 @@ SUMMARY: [brief explanation]"""
         self,
         project_title: str,
         project_bullets: List[str],
-        mimikree_data: str,
+        profile_context_data: str,
         existing_projects: Optional[List[Dict[str, str]]] = None
     ) -> Dict[str, any]:
         """
@@ -262,7 +262,7 @@ SUMMARY: [brief explanation]"""
         Args:
             project_title: The project name
             project_bullets: List of bullet points for this project
-            mimikree_data: User's experience data
+            profile_context_data: User's experience data
             existing_projects: Optional list of other projects for consistency checking
 
         Returns:
@@ -272,7 +272,7 @@ SUMMARY: [brief explanation]"""
         project_text = f"PROJECT: {project_title}\n" + "\n".join([f"- {b}" for b in project_bullets])
 
         # Add existing projects as additional context (for consistency)
-        source_data = mimikree_data
+        source_data = profile_context_data
         if existing_projects:
             existing_context = "\n\nEXISTING PROJECTS (for consistency checking):\n"
             for proj in existing_projects:

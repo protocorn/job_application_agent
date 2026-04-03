@@ -48,6 +48,20 @@ class UserPatternRecorder:
     INITIAL_CONFIDENCE_HUMAN_FILL       = 0.95
     INITIAL_CONFIDENCE_HUMAN_CORRECTION = 0.90
 
+    # Never persist secrets or auth challenge answers in user_field_overrides.
+    # This blocks common password/passcode/passphrase variants (including typos).
+    SENSITIVE_LABEL_RE = re.compile(
+        r"\b("
+        r"password|passowrd|pasword|passwd|pwd|"
+        r"confirm\s*password|re[-\s]*enter\s*password|"
+        r"passphrase|paraphrase|"
+        r"passcode|pin|otp|one\s*time\s*pass(code|word)|"
+        r"verification\s*code|mfa|2fa|two\s*factor|auth(entication)?\s*code|"
+        r"security\s*(code|answer|question)|secret"
+        r")\b",
+        re.IGNORECASE,
+    )
+
     # Where the Launchway CLI stores the auth token
     _SESSION_FILE = Path.home() / ".launchway" / "session.json"
 
@@ -224,6 +238,12 @@ class UserPatternRecorder:
         site_domain: Optional[str],
         success: bool,
     ) -> bool:
+        if not self._should_record(field_label):
+            logger.warning(
+                f"UserPatternRecorder: Skipping sensitive field '{field_label}'"
+            )
+            return False
+
         normalized_site_domain = (site_domain or "").strip().lower() or None
 
         if not self.engine or not self.SessionLocal:
@@ -251,6 +271,14 @@ class UserPatternRecorder:
         if not user_id:
             logger.warning("UserPatternRecorder: user_id is required, skipping")
             return False
+
+    def _should_record(self, field_label: str) -> bool:
+        """
+        Return False for sensitive/auth fields so secrets are never persisted.
+        """
+        if not field_label:
+            return False
+        return self.SENSITIVE_LABEL_RE.search(field_label) is None
 
         normalized_label = self._normalize_label(field_label)
 

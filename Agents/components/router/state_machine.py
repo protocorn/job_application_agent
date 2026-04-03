@@ -60,6 +60,7 @@ class StateMachine:
         Terminal states are defined in TERMINAL_STATES or when the next state is None.
         """
         transition_count = 0
+        final_state_label: Optional[str] = None
         while self._current_state_name and self._current_state_name not in self.TERMINAL_STATES:
             if transition_count >= self.max_transitions:
                 logger.critical("⚠️ State machine exceeded max transitions. Halting to prevent runaway process.")
@@ -93,6 +94,13 @@ class StateMachine:
                 logger.info(f"✅ State '{previous_state_name}' completed, transitioning to '{next_state_name}'.")
                 self._current_state_name = next_state_name
 
+                # Preserve why the state machine stopped when the next state is None.
+                if next_state_name is None:
+                    if previous_state_name == 'human_intervention':
+                        final_state_label = 'human_intervention'
+                    else:
+                        final_state_label = f"stopped_after_{previous_state_name}"
+
             except Exception as e:
                 logger.error(f"❌ Unhandled error in state '{self._current_state_name}': {e}", exc_info=True)
                 self._current_state_name = 'fail'
@@ -105,8 +113,14 @@ class StateMachine:
             if final_handler:
                 logger.info(f"🚀 Entering terminal state: {self._current_state_name}")
                 await final_handler(self.app_state)
+            final_state_label = self._current_state_name
 
-        logger.info(f"🏁 State machine finished. Final state: {self._current_state_name or 'success'}")
+        if not final_state_label:
+            final_state_label = self._current_state_name or 'stopped'
+
+        self.app_state.context['final_state'] = final_state_label
+
+        logger.info(f"🏁 State machine finished. Final state: {final_state_label}")
         return self.app_state
 
     async def _is_stuck_in_loop(self) -> bool:

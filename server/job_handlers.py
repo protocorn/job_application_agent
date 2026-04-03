@@ -18,6 +18,7 @@ from job_queue import job_handler, JobPriority
 from rate_limiter import rate_limiter, with_gemini_quota
 from security_manager import security_manager
 from database_optimizer import get_optimized_db_session
+from profile_strength import score_profile_strength, MIN_TAILORING_SCORE
 
 # Import existing agents
 from resume_tailoring_agent import tailor_resume_and_return_url
@@ -108,19 +109,16 @@ def handle_resume_tailoring(payload: Dict[str, Any]) -> Dict[str, Any]:
         reservation_id = gemini_quota_manager.reserve_quota(user_id, JobPriority.NORMAL.value)
         
         try:
-            # Get user's Mimikree credentials
-            from mimikree_service import mimikree_service
-            mimikree_credentials = mimikree_service.get_user_mimikree_credentials(user_id)
-            
-            mimikree_email = None
-            mimikree_password = None
-            
-            if mimikree_credentials:
-                mimikree_email, mimikree_password = mimikree_credentials
-                logger.info(f"Using user's Mimikree credentials for tailoring")
-            else:
-                logger.warning(f"User {user_id} has no Mimikree credentials - tailoring will use limited features")
-                # Continue without Mimikree - the tailoring agent can handle this
+            if not payload.get("skip_profile_gate"):
+                from profile_service import ProfileService
+                profile_result = ProfileService.get_profile(str(user_id))
+                profile_data = profile_result.get("profile", {}) if profile_result.get("success") else {}
+                profile_strength = score_profile_strength(profile_data)
+                if profile_strength.get("score", 0) < MIN_TAILORING_SCORE:
+                    raise ValueError(
+                        "Profile strength is too low for reliable tailoring. "
+                        "Update your profile projects/skills first or use skip_profile_gate=true."
+                    )
             
             if resume_source_type == 'latex_zip':
                 # Pull stored LaTeX ZIP source from profile
@@ -151,8 +149,7 @@ def handle_resume_tailoring(payload: Dict[str, Any]) -> Dict[str, Any]:
                     job_title=job_title,
                     company=company,
                     credentials=credentials,
-                    mimikree_email=mimikree_email,
-                    mimikree_password=mimikree_password,
+                    replace_projects_on_tailor=bool(payload.get("replace_projects_on_tailor", False)),
                     user_full_name=user_full_name,
                     user_id=user_id,
                 )
@@ -276,7 +273,9 @@ def handle_job_application(payload: Dict[str, Any]) -> Dict[str, Any]:
                 job_id=f"job_queue_{user_id}_{int(time.time())}",
                 jobs_dict={},  # Empty dict for job queue context
                 session_manager=session_manager,
-                user_id=user_id  # Pass user_id for persistent browser reuse
+                user_id=user_id,  # Pass user_id for persistent browser reuse
+                tailor_resume=use_tailored,
+                replace_projects_on_tailor=bool(payload.get("replace_projects_on_tailor", False)),
             )
         
         # Run the async job application
@@ -434,8 +433,6 @@ def handle_project_analysis(payload: Dict[str, Any]) -> Dict[str, Any]:
         
         # Import required modules
         from project_selection.relevance_engine import ProjectRelevanceEngine
-        from project_selection.mimikree_project_discovery import MimikreeProjectDiscovery
-        from mimikree_integration import MimikreeClient
         
         # Initialize services
         gemini_api_key = os.getenv('GOOGLE_API_KEY')
@@ -501,39 +498,14 @@ def handle_project_analysis(payload: Dict[str, Any]) -> Dict[str, Any]:
             min_improvement_threshold=15.0
         )
         
-        # Discover new projects if requested
+        # Discover-new flow is intentionally disabled.
+        # Launchway now relies only on user-managed profile projects.
         discovered_projects = []
         if discover_new:
-            try:
-                # Get user's Mimikree credentials
-                mimikree_credentials = mimikree_service.get_user_mimikree_credentials(user_id)
-                
-                if mimikree_credentials:
-                    mimikree_email, mimikree_password = mimikree_credentials
-                    mimikree_client = MimikreeClient()
-                    mimikree_client.authenticate(mimikree_email, mimikree_password)
-                    
-                    discovery = MimikreeProjectDiscovery(gemini_api_key)
-                    new_projects, _ = discovery.discover_projects(
-                        mimikree_client,
-                        job_keywords,
-                        job_description,
-                        current_projects,
-                        max_questions=8
-                    )
-                    
-                    discovered_projects = discovery.enrich_discovered_projects(
-                        new_projects,
-                        job_keywords
-                    )
-                    
-                    logger.info(f"Discovered {len(discovered_projects)} new projects for user {user_id}")
-                else:
-                    logger.info(f"User {user_id} has no Mimikree credentials - skipping project discovery")
-            
-            except Exception as e:
-                logger.error(f"Failed to discover new projects: {e}")
-                # Continue without discovered projects
+            logger.info(
+                "discover_new_projects requested for user %s, but external discovery is disabled.",
+                user_id,
+            )
         
         # Log successful analysis
         security_manager.log_security_event(

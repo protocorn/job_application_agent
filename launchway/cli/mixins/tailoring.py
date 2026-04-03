@@ -2,54 +2,110 @@
 
 import logging
 import os
-import webbrowser
-import json
+import inspect
+import importlib.util
 from pathlib import Path
-from typing import Optional, Tuple
 
 from launchway.api_client import LaunchwayAPIError
 from launchway.cli.utils import Colors, format_credits
-
-MIMIKREE_SIGNUP_URL = "https://www.mimikree.com/signup"
 
 logger = logging.getLogger(__name__)
 
 
 class TailoringMixin:
+    def _load_resume_tailoring_callable(self):
+        """
+        Prefer local source checkout for resume tailoring when available.
+        This bypasses encrypted-bundle `Agents` imports during local development.
+        """
+        repo_root = Path(__file__).resolve().parents[3]
+        local_agent_file = repo_root / "Agents" / "resume_tailoring_agent.py"
+        if local_agent_file.exists():
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "launchway_local_resume_tailoring_agent",
+                    str(local_agent_file),
+                )
+                if spec and spec.loader:
+                    module = importlib.util.module_from_spec(spec)
+                    # Ensure sibling imports like `import systematic_tailoring_complete`
+                    # resolve to local checkout first.
+                    local_agents_dir = str(local_agent_file.parent)
+                    if local_agents_dir not in os.sys.path:
+                        os.sys.path.insert(0, local_agents_dir)
+                    spec.loader.exec_module(module)
+                    fn = getattr(module, "tailor_resume_and_return_url", None)
+                    if callable(fn):
+                        return fn
+            except Exception as e:
+                logger.warning(f"Falling back to bundled Agents module: {e}")
 
-    def _prefs_path(self) -> Path:
-        prefs_dir = Path.home() / ".launchway"
-        prefs_dir.mkdir(parents=True, exist_ok=True)
-        return prefs_dir / "preferences.json"
+        from Agents.resume_tailoring_agent import tailor_resume_and_return_url
+        return tailor_resume_and_return_url
 
-    def _skip_mimikree_prompt(self) -> bool:
-        user_id = str((self.current_user or {}).get("id", "anonymous"))
-        try:
-            prefs_file = self._prefs_path()
-            if not prefs_file.exists():
-                return False
-            prefs = json.loads(prefs_file.read_text(encoding="utf-8"))
-            return bool(prefs.get("mimikree_prompt_opt_out", {}).get(user_id, False))
-        except Exception:
-            return False
-
-    def _set_skip_mimikree_prompt(self, value: bool):
-        user_id = str((self.current_user or {}).get("id", "anonymous"))
-        try:
-            prefs_file = self._prefs_path()
-            prefs = {}
-            if prefs_file.exists():
-                prefs = json.loads(prefs_file.read_text(encoding="utf-8"))
-            opt_map = prefs.get("mimikree_prompt_opt_out", {})
-            opt_map[user_id] = bool(value)
-            prefs["mimikree_prompt_opt_out"] = opt_map
-            prefs_file.write_text(json.dumps(prefs, indent=2), encoding="utf-8")
-        except Exception as e:
-            logger.warning(f"Could not save Mimikree prompt preference: {e}")
 
     def _is_latex_resume_mode(self) -> bool:
         source_type = (self.current_profile or {}).get('resume_source_type', 'google_doc')
         return source_type == 'latex_zip'
+
+    def _profile_strength_payload(self) -> dict:
+        profile = self.current_profile or {}
+        score = 0
+        hints = []
+        projects = profile.get("projects") if isinstance(profile.get("projects"), list) else []
+        work_exp = profile.get("work experience") if isinstance(profile.get("work experience"), list) else []
+        skills = profile.get("skills", {})
+        summary = str(profile.get("summary", "") or "").strip()
+
+        project_count = len([p for p in projects if isinstance(p, dict) and str(p.get("name", "")).strip()])
+        work_count = len([w for w in work_exp if isinstance(w, dict) and str(w.get("title", "")).strip()])
+        skill_count = 0
+        if isinstance(skills, dict):
+            for v in skills.values():
+                if isinstance(v, list):
+                    skill_count += len([x for x in v if str(x).strip()])
+                elif str(v).strip():
+                    skill_count += 1
+
+        score += min(25, project_count * 8)
+        score += min(20, work_count * 10)
+        score += min(20, skill_count)
+        score += 10 if summary else 0
+        score += 5 if profile.get("resume_url") or profile.get("resume_text") else 0
+        score = min(100, score)
+
+        if project_count < 2:
+            hints.append("Add at least 2 detailed projects in Profile > Projects.")
+        if work_count < 1:
+            hints.append("Add at least 1 work experience entry with measurable outcomes.")
+        if skill_count < 10:
+            hints.append("Expand skills with concrete tools/frameworks.")
+        if not summary:
+            hints.append("Add a short summary for stronger tailoring context.")
+
+        return {"score": score, "minimum_score": 45, "hints": hints}
+
+    def _confirm_profile_gate(self) -> bool:
+        strength = self._profile_strength_payload()
+        score = strength["score"]
+        threshold = strength["minimum_score"]
+        if score >= threshold:
+            return True
+
+        self.print_warning(f"Profile strength is low ({score}/{threshold}). Tailoring quality may be limited.")
+        for hint in strength["hints"][:3]:
+            self.print_info(f"  • {hint}")
+        self.print_info("You can continue now, but results improve when your Launchway profile is stronger.")
+        return self.get_input_yn("Continue anyway? (y/n, default: n): ", default="n")
+
+    def _ask_replace_projects_on_tailor(self) -> bool:
+        self.print_info(
+            "Project swap option: replace low-relevance resume projects with relevant projects from your Launchway profile."
+        )
+        self.print_info(
+            "Hint: Add projects in Profile > Projects so tailoring can swap in projects not present on your resume."
+        )
+        return self.get_input_yn("Enable project replacement for this tailoring run? (y/n, default: n): ", default='n')
 
     def _ensure_resume_ready_for_auto_apply(self) -> bool:
         if not self.current_profile:
@@ -122,101 +178,6 @@ class TailoringMixin:
         )
         return False
 
-    def ensure_mimikree_connected_for_tailoring(self) -> Tuple[Optional[str], Optional[str]]:
-        """
-        Ensure Mimikree credentials are available for local resume tailoring.
-        Tries the API first; if not connected, offers: open signup, enter login, or skip.
-        Never forces connection - returns (None, None) if user skips; callers may continue without Mimikree.
-        """
-        if not self.current_user:
-            self.print_error("You must be logged in before using resume tailoring.")
-            return None, None
-
-        if self._session_mimikree_email and self._session_mimikree_password:
-            return self._session_mimikree_email, self._session_mimikree_password
-
-        try:
-            email, password = self.api.get_mimikree_credentials()
-            if email and password:
-                self._session_mimikree_email    = email
-                self._session_mimikree_password = password
-                self._set_skip_mimikree_prompt(False)
-                self.print_success(f"Mimikree connected ({email}). Tailoring will use Mimikree for better factual accuracy.")
-                return email, password
-        except LaunchwayAPIError as e:
-            if e.status_code not in (404, 400):
-                logger.warning(f"Could not fetch Mimikree credentials: {e}")
-
-        if self._skip_mimikree_prompt():
-            self.print_info("Mimikree is not connected (prompt disabled). Tailoring will continue with reduced accuracy.")
-            return None, None
-
-        self.print_info("Mimikree is not connected. Tailoring can still run, but quality may be lower.")
-        while True:
-            print(f"\n  {Colors.BOLD}Mimikree options:{Colors.ENDC}")
-            print("    1) Open signup page (create account) - https://www.mimikree.com/signup")
-            print("    2) Enter login details to connect")
-            print("    3) Continue without Mimikree (reduced accuracy)")
-            print("    4) Never show this prompt again")
-            choice = self.get_input("\n  Choose [1/2/3/4]: ").strip().lower()
-
-            if choice == '1':
-                try:
-                    webbrowser.open(MIMIKREE_SIGNUP_URL)
-                    self.print_info(f"Opened {MIMIKREE_SIGNUP_URL}")
-                    self.print_info("After creating an account, choose 2 here to connect.")
-                except Exception as e:
-                    self.print_warning(f"Could not open browser: {e}")
-                    self.print_info(f"Visit {MIMIKREE_SIGNUP_URL} to sign up.")
-                continue
-
-            if choice == '2':
-                email    = self.get_input("  Mimikree Email: ").strip()
-                password = self.get_input("  Mimikree Password: ", password=True)
-
-                if not email or not password:
-                    self.print_error("Both email and password are required.")
-                    if not self.get_input_yn("  Try again? (y/n): ", default=None):
-                        return None, None
-                    continue
-
-                self.print_info("Connecting Mimikree account...")
-                try:
-                    result = self.api.connect_mimikree(email, password)
-                    if result.get('success'):
-                        self.print_success("Mimikree connected successfully.")
-                        self._set_skip_mimikree_prompt(False)
-                        try:
-                            stored_email, stored_password = self.api.get_mimikree_credentials()
-                            if stored_email and stored_password:
-                                self._session_mimikree_email    = stored_email
-                                self._session_mimikree_password = stored_password
-                                return stored_email, stored_password
-                        except LaunchwayAPIError:
-                            pass
-                        self._session_mimikree_email    = email
-                        self._session_mimikree_password = password
-                        return email, password
-                    self.print_error(result.get('error', 'Failed to connect Mimikree.'))
-                except LaunchwayAPIError as e:
-                    self.print_error(str(e))
-
-                if not self.get_input_yn("  Try again? (y/n): ", default=None):
-                    return None, None
-                continue
-
-            if choice == '3':
-                self.print_info("Continuing without Mimikree. Tailoring may be less accurate or less factual.")
-                return None, None
-
-            if choice == '4':
-                self._set_skip_mimikree_prompt(True)
-                self.print_info("Got it - we will stop asking about Mimikree for this account.")
-                self.print_info("Tailoring will continue without Mimikree and may be less accurate.")
-                return None, None
-
-            self.print_warning("Please enter 1, 2, 3, or 4.")
-
     def resume_tailoring_menu(self):
         self.clear_screen()
         self.print_header("RESUME TAILORING")
@@ -231,7 +192,10 @@ class TailoringMixin:
             self.pause()
             return
 
-        mimikree_email, mimikree_password = self.ensure_mimikree_connected_for_tailoring()
+        if not self._confirm_profile_gate():
+            self.pause()
+            return
+        replace_projects_on_tailor = self._ask_replace_projects_on_tailor()
 
         resume_url = (self.current_profile or {}).get('resume_url')
         if not resume_url:
@@ -289,7 +253,7 @@ class TailoringMixin:
         company   = self.get_input("Company Name: ").strip() or "Company"
 
         try:
-            from Agents.resume_tailoring_agent import tailor_resume_and_return_url
+            tailor_resume_and_return_url = self._load_resume_tailoring_callable()
 
             self.print_info("\nStarting resume tailoring... This may take 1-2 minutes")
             user_full_name = (
@@ -298,17 +262,41 @@ class TailoringMixin:
                 or "Resume"
             )
 
-            tailored_url = tailor_resume_and_return_url(
+            tailor_kwargs = dict(
                 original_resume_url=resume_url,
                 job_description=job_description,
                 job_title=job_title,
                 company=company,
                 credentials=None,
-                mimikree_email=mimikree_email,
-                mimikree_password=mimikree_password,
                 user_full_name=user_full_name,
                 user_id=self.current_user.get('id'),
+                profile_projects=(self.current_profile or {}).get("projects", []),
             )
+            # Compatibility guard: some older runtime copies may not expose
+            # the newer project-swap keyword yet.
+            try:
+                sig = inspect.signature(tailor_resume_and_return_url)
+                source_path = inspect.getsourcefile(tailor_resume_and_return_url) or "<unknown>"
+                self.print_info(
+                    f"Tailoring runtime: {tailor_resume_and_return_url.__module__} | {source_path}"
+                )
+                self.print_info(f"Tailoring signature: {sig}")
+                accepts_var_kw = any(
+                    p.kind == inspect.Parameter.VAR_KEYWORD
+                    for p in sig.parameters.values()
+                )
+                if "replace_projects_on_tailor" in sig.parameters or accepts_var_kw:
+                    tailor_kwargs["replace_projects_on_tailor"] = replace_projects_on_tailor
+                else:
+                    self.print_warning(
+                        "Project swap was requested, but the loaded tailoring agent "
+                        f"does not support it in this runtime. Signature: {sig}"
+                    )
+            except Exception:
+                # Best-effort fallback - keep tailoring flow running.
+                tailor_kwargs["replace_projects_on_tailor"] = replace_projects_on_tailor
+
+            tailored_url = tailor_resume_and_return_url(**tailor_kwargs)
 
             if tailored_url:
                 self.print_success("\nResume tailored successfully!")

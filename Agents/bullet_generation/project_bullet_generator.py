@@ -35,7 +35,7 @@ class ProjectBulletGenerator:
         job_description: str,
         target_bullet_count: int = 3,
         char_limit_per_line: int = 90,
-        mimikree_context: Optional[str] = None
+        profile_context: Optional[str] = None
     ) -> List[str]:
         """
         Generate tailored resume bullets for a project.
@@ -46,7 +46,7 @@ class ProjectBulletGenerator:
             job_description: Full job description for context
             target_bullet_count: Number of bullets to generate
             char_limit_per_line: Character limit per bullet line
-            mimikree_context: Optional additional context from Mimikree
+            profile_context: Optional additional profile context
 
         Returns:
             List of bullet strings
@@ -70,8 +70,8 @@ FEATURES:
 
             # Prepare additional context section (avoid backslash in f-string)
             additional_context = ""
-            if mimikree_context:
-                additional_context = f"ADDITIONAL CONTEXT:\n{mimikree_context}\n"
+            if profile_context:
+                additional_context = f"ADDITIONAL CONTEXT:\n{profile_context}\n"
             
             prompt = f"""Generate {target_bullet_count} tailored resume bullet points for this project.
 
