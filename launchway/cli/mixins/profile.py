@@ -439,6 +439,17 @@ class ProfileMixin:
         base_url = getattr(self.api, 'base_url', '').rstrip('/')
         picker_url = f"{base_url}/pick-resume?token={token}"
 
+        # Snapshot current resume so we can detect whether Picker actually
+        # changed anything (avoids false "success" when browser flow fails).
+        prev_url = ""
+        prev_source = ""
+        try:
+            before_profile = self.api.get_profile() or {}
+            prev_url = str(before_profile.get('resume_url') or '').strip()
+            prev_source = str(before_profile.get('resume_source_type') or '').strip()
+        except Exception:
+            pass
+
         print(f"\n  {Colors.OKCYAN}Opening Google Drive Picker in your browser...{Colors.ENDC}")
         print("  Select your resume Google Doc, then return here and press Enter.\n")
         print(f"  If the browser does not open automatically, visit:\n  {picker_url}\n")
@@ -457,9 +468,16 @@ class ProfileMixin:
             print(" done.\n")
             url = (self.current_profile or {}).get('resume_url', '')
             source = (self.current_profile or {}).get('resume_source_type', '')
-            if url and source == 'google_doc':
+            changed = (str(url or '').strip() != prev_url) or (str(source or '').strip() != prev_source)
+            if url and source == 'google_doc' and changed:
                 self.print_success("Resume selected and profile populated.")
                 self.print_info(f"Resume: {url[:80]}")
+            elif url and source == 'google_doc':
+                self.print_warning(
+                    "Resume appears unchanged after Picker selection.\n"
+                    "  The browser flow may have failed (for example /api/process-resume returned 500).\n"
+                    "  Check the browser console/status on the picker page, then try again."
+                )
             else:
                 self.print_warning(
                     "No Google Doc resume found in your profile after the Picker flow.\n"

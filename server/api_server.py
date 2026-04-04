@@ -3975,6 +3975,13 @@ def pick_resume_page():
 
     picker_api_key = os.getenv("GOOGLE_PICKER_API_KEY", "")
     google_client_id = os.getenv("GOOGLE_CLIENT_ID", "")
+    # Google Picker + drive.file authorization works reliably when appId
+    # (Google Cloud project number) is provided.
+    google_picker_app_id = (
+        os.getenv("GOOGLE_PICKER_APP_ID", "").strip()
+        or os.getenv("GOOGLE_CLOUD_PROJECT_NUMBER", "").strip()
+        or os.getenv("GOOGLE_PROJECT_NUMBER", "").strip()
+    )
 
     page_html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -4051,6 +4058,7 @@ def pick_resume_page():
     const BACKEND_URL = {json.dumps(backend_url)};
     const API_KEY     = {json.dumps(picker_api_key)};
     const CLIENT_ID   = {json.dumps(google_client_id)};
+    const APP_ID      = {json.dumps(google_picker_app_id)};
 
     let pickerApiLoaded = false;
     let accessToken     = null;
@@ -4120,13 +4128,17 @@ def pick_resume_page():
         .setMimeTypes('application/vnd.google-apps.document')
         .setMode(google.picker.DocsViewMode.LIST);
 
-      const picker = new google.picker.PickerBuilder()
+      let builder = new google.picker.PickerBuilder()
         .addView(view)
+        .setOrigin(window.location.protocol + '//' + window.location.host)
         .setOAuthToken(accessToken)
         .setDeveloperKey(API_KEY)
         .setCallback(pickerCallback)
-        .setTitle('Select your resume Google Doc')
-        .build();
+        .setTitle('Select your resume Google Doc');
+      if (APP_ID) {{
+        builder = builder.setAppId(APP_ID);
+      }}
+      const picker = builder.build();
       picker.setVisible(true);
     }}
 
