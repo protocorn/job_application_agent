@@ -138,6 +138,22 @@ def handle_preflight():
 @app.after_request
 @require_secure_headers
 def after_request(response):
+    # The /pick-resume page embeds inline styles, inline scripts, and loads
+    # external resources from Google (apis.google.com, accounts.google.com,
+    # content.googleapis.com).  The blanket "default-src 'self'" CSP blocks
+    # all of that, so we replace it with a permissive-but-scoped policy for
+    # that one route only.
+    if request.path == "/pick-resume":
+        response.headers['Content-Security-Policy'] = (
+            "default-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "script-src 'self' 'unsafe-inline' https://apis.google.com https://accounts.google.com; "
+            "frame-src https://docs.google.com https://drive.google.com https://accounts.google.com; "
+            "connect-src 'self' https://accounts.google.com https://www.googleapis.com; "
+            "img-src 'self' data: https://ssl.gstatic.com https://www.gstatic.com;"
+        )
+        # Google Picker opens in a popup — allow it to iframe the page
+        response.headers.pop('X-Frame-Options', None)
     return response
 
 JOBS: Dict[str, Dict[str, Any]] = {}
@@ -4016,13 +4032,11 @@ def pick_resume_page():
     <div class="logo">Launchway</div>
     <h1>Select Your Resume</h1>
     <p>Click the button below to pick your Google Doc resume from Drive. Once selected, Launchway will process it automatically.</p>
-    <button id="pick-btn" onclick="openPicker()">
+    <button id="pick-btn">
       Open Google Drive Picker
     </button>
     <div id="status" class="status"></div>
-    <p id="return-hint" class="return-hint" style="display:none">
-      ✓ Done! Switch back to your terminal and press <strong>Enter</strong> to continue.
-    </p>
+    <p id="return-hint" class="return-hint"></p>
   </div>
 
   <script src="https://apis.google.com/js/api.js"></script>
@@ -4035,10 +4049,17 @@ def pick_resume_page():
     let pickerApiLoaded = false;
     let accessToken     = null;
 
+    // Hide the return hint on load (cannot rely on inline style= due to CSP)
+    document.addEventListener('DOMContentLoaded', function() {{
+      document.getElementById('return-hint').style.display = 'none';
+      document.getElementById('pick-btn').addEventListener('click', openPicker);
+    }});
+
     function setStatus(msg, type) {{
       const el = document.getElementById('status');
       el.textContent = msg;
-      el.className = 'status ' + type;
+      el.className = 'status ' + (type || '');
+      if (!type) el.style.display = 'none';
     }}
 
     async function fetchAccessToken() {{
@@ -4052,7 +4073,7 @@ def pick_resume_page():
 
     async function processResumeFile(fileId, fileName) {{
       const resumeUrl = 'https://docs.google.com/document/d/' + fileId + '/edit';
-      setStatus('Processing "' + fileName + '"... this may take up to 30 seconds.', 'info');
+      setStatus('Processing "' + fileName + '"… this may take up to 30 seconds.', 'info');
       const resp = await fetch(BACKEND_URL + '/api/process-resume', {{
         method: 'POST',
         headers: {{
@@ -4074,12 +4095,14 @@ def pick_resume_page():
 
         document.getElementById('pick-btn').disabled = true;
         processResumeFile(id, name)
-          .then(name => {{
+          .then(function(name) {{
             setStatus('✓ Resume "' + name + '" selected and processed successfully!', 'success');
-            document.getElementById('return-hint').style.display = 'block';
+            const hint = document.getElementById('return-hint');
+            hint.innerHTML = '✓ Done! Switch back to your terminal and press <strong>Enter</strong> to continue.';
+            hint.style.display = 'block';
             document.getElementById('pick-btn').style.display = 'none';
           }})
-          .catch(err => {{
+          .catch(function(err) {{
             setStatus('Error: ' + err.message, 'error');
             document.getElementById('pick-btn').disabled = false;
           }});
@@ -4104,14 +4127,14 @@ def pick_resume_page():
     async function openPicker() {{
       try {{
         document.getElementById('pick-btn').disabled = true;
-        setStatus('Connecting to Google...', 'info');
+        setStatus('Connecting to Google…', 'info');
 
         if (!accessToken) {{
           accessToken = await fetchAccessToken();
         }}
 
         if (!pickerApiLoaded) {{
-          await new Promise((resolve, reject) => {{
+          await new Promise(function(resolve, reject) {{
             gapi.load('picker', {{ callback: resolve, onerror: reject }});
           }});
           pickerApiLoaded = true;

@@ -1220,6 +1220,8 @@ CRITICAL OUTPUT FORMAT:
                 continue
             # For each project bullet, enhance with keywords
             for bullet in project['description_bullets']:
+                if not bullet['text'].strip():
+                    continue
                 # Check if bullet needs keyword injection
                 has_keyword = any(
                     kw.lower() in bullet['text'].lower()
@@ -1315,6 +1317,11 @@ CRITICAL OUTPUT FORMAT:
         if slot_count > 0:
             new_texts = _fit_bullet_texts_to_slots(_build_swap_bullet_texts(candidate), slot_count)
             for line, nt in zip(content_lines, new_texts):
+                if not nt:
+                    # Never replace an existing bullet with empty text — it leaves
+                    # a blank bullet point in the rendered resume. Skip the slot so
+                    # the original line is preserved (better than an empty bullet).
+                    continue
                 reps.append(
                     {
                         "old_text": line["text"],
@@ -1466,7 +1473,8 @@ CRITICAL OUTPUT FORMAT:
                 break
 
             while i < len(lines) and lines[i].get('bullet_level', 0) > 0:
-                project['description_bullets'].append(lines[i])
+                if lines[i]['text'].strip():  # skip blank bullet placeholder lines
+                    project['description_bullets'].append(lines[i])
                 i += 1
 
             has_content = bool(

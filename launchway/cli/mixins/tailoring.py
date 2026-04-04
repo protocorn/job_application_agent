@@ -262,12 +262,23 @@ class TailoringMixin:
                 or "Resume"
             )
 
+            # Use the server's Google OAuth token so the tailoring agent can
+            # access the user's resume doc without a separate local OAuth flow.
+            google_credentials = None
+            try:
+                access_token = self.api.get_google_oauth_access_token()
+                if access_token:
+                    from google.oauth2.credentials import Credentials as GoogleCredentials
+                    google_credentials = GoogleCredentials(token=access_token)
+            except Exception as _cred_err:
+                logger.debug(f"Could not fetch server Google token: {_cred_err}")
+
             tailor_kwargs = dict(
                 original_resume_url=resume_url,
                 job_description=job_description,
                 job_title=job_title,
                 company=company,
-                credentials=None,
+                credentials=google_credentials,
                 user_full_name=user_full_name,
                 user_id=self.current_user.get('id'),
                 profile_projects=(self.current_profile or {}).get("projects", []),
@@ -320,6 +331,170 @@ class TailoringMixin:
             self.print_error(f"Resume tailoring failed: {str(e)}")
             logger.error(f"Resume tailoring error: {e}", exc_info=True)
             self.pause()
+
+    async def _pre_tailor_for_job(
+        self,
+        idx: int,
+        job_url: str,
+        pre_fetched_desc: str | None,
+        replace_projects: bool,
+    ) -> dict:
+        """
+        Run resume tailoring BEFORE opening the browser for a job.
+
+        Returns a dict with keys:
+            skip       - bool: user chose to skip this job entirely
+            pdf_path   - str | None: local PDF of the tailored resume
+            resume_url - str | None: tailored Google Doc URL (or original if fallback)
+            did_tailor - bool: whether tailoring actually ran
+        """
+        import asyncio
+        import inspect
+
+        result = {"skip": False, "pdf_path": None, "resume_url": None, "did_tailor": False}
+
+        job_desc = pre_fetched_desc
+        if not job_desc:
+            self.print_warning("Could not auto-fetch the job description.")
+            paste = self.get_input_yn(
+                "  Paste description manually for tailoring? (y/n, default: n): ", default="n"
+            )
+            if paste:
+                self.print_info("  Paste the job description — press Enter on a blank line twice when done:")
+                lines = []
+                while True:
+                    line = input("    > ")
+                    if line == "" and lines and lines[-1] == "":
+                        break
+                    lines.append(line)
+                job_desc = "\n".join(lines).strip()
+            if not job_desc:
+                self.print_info("  No description available — skipping tailoring, using original resume.")
+                return result
+
+        resume_url_for_tailor = (self.current_profile or {}).get("resume_url", "")
+        user_full_name = (
+            f"{self.current_user.get('first_name', '')} "
+            f"{self.current_user.get('last_name', '')}".strip()
+            or "Resume"
+        )
+
+        self.print_info("  Tailoring resume… (this may take 1-2 minutes)")
+        try:
+            tailor_callable = self._load_resume_tailoring_callable()
+
+            # Use the server's Google OAuth token so the tailoring agent can
+            # access the user's existing resume doc without a local OAuth flow.
+            google_credentials = None
+            try:
+                access_token = self.api.get_google_oauth_access_token()
+                if access_token:
+                    from google.oauth2.credentials import Credentials as GoogleCredentials
+                    google_credentials = GoogleCredentials(token=access_token)
+            except Exception as _cred_err:
+                logger.debug(f"Could not fetch server Google token for tailoring: {_cred_err}")
+
+            tailor_kwargs = dict(
+                original_resume_url=resume_url_for_tailor,
+                job_description=job_desc,
+                job_title=f"Job {idx}",
+                company=f"Company {idx}",
+                credentials=google_credentials,
+                user_full_name=user_full_name,
+                user_id=str(self.current_user.get("id")),
+                profile_projects=(self.current_profile or {}).get("projects", []),
+            )
+            try:
+                sig = inspect.signature(tailor_callable)
+                accepts_var_kw = any(
+                    p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+                )
+                if "replace_projects_on_tailor" in sig.parameters or accepts_var_kw:
+                    tailor_kwargs["replace_projects_on_tailor"] = replace_projects
+            except Exception:
+                tailor_kwargs["replace_projects_on_tailor"] = replace_projects
+
+            tailoring_result = await asyncio.to_thread(tailor_callable, **tailor_kwargs)
+        except Exception as err:
+            err_str = str(err)
+            if "notFound" in err_str or "File not found" in err_str or "404" in err_str:
+                self.print_error(
+                    "  Tailoring failed: The app cannot access your Google Doc resume.\n"
+                    "  This happens when the resume was not uploaded through the web app.\n"
+                    "\n"
+                    "  FIX: Go to the web app → Profile → re-upload your Google Doc resume\n"
+                    "       by pasting its URL into the 'Google Doc Resume URL' field and\n"
+                    "       clicking Save. This re-grants the app access to the file.\n"
+                    "\n"
+                    "  Continuing with original resume for now."
+                )
+            else:
+                self.print_error(f"  Tailoring failed: {err}. Will use original resume.")
+            return result
+
+        if not tailoring_result:
+            self.print_error("  Tailoring returned no result. Will use original resume.")
+            return result
+
+        result["did_tailor"] = True
+
+        # ── Extract paths from result ─────────────────────────────────────────
+        if isinstance(tailoring_result, dict):
+            result["pdf_path"]   = tailoring_result.get("pdf_path")
+            result["resume_url"] = tailoring_result.get("url")
+        elif isinstance(tailoring_result, str):
+            result["resume_url"] = tailoring_result
+
+        # ── Show the tailored resume to the user ─────────────────────────────
+        print(f"\n{Colors.OKGREEN}{'='*60}{Colors.ENDC}")
+        print(f"{Colors.BOLD}{Colors.OKGREEN}  Resume Tailored — Job #{idx}{Colors.ENDC}")
+        print(f"{Colors.OKGREEN}{'='*60}{Colors.ENDC}")
+
+        if result["pdf_path"] and __import__("os").path.exists(result["pdf_path"]):
+            print(f"\n  PDF: {Colors.OKCYAN}{result['pdf_path']}{Colors.ENDC}")
+            if self.get_input_yn("  Open PDF to review? (y/n, default: y): ", default="y"):
+                try:
+                    import subprocess
+                    subprocess.run(["start", result["pdf_path"]], shell=True)
+                except Exception:
+                    self.print_info(f"  Open manually: {result['pdf_path']}")
+
+        if result["resume_url"]:
+            print(f"\n  Google Doc: {Colors.OKCYAN}{result['resume_url']}{Colors.ENDC}")
+
+        if isinstance(tailoring_result, dict):
+            match_stats = tailoring_result.get("match_stats", {})
+            if match_stats:
+                match_pct = match_stats.get("match_percentage", 0)
+                added     = match_stats.get("added", 0)
+                missing   = match_stats.get("missing", 0)
+                print(f"\n  Match Rate:       {Colors.OKGREEN}{match_pct:.1f}%{Colors.ENDC}")
+                if added:   print(f"  Keywords Added:   {Colors.OKGREEN}{added}{Colors.ENDC}")
+                if missing: print(f"  Keywords Missing: {Colors.WARNING}{missing}{Colors.ENDC}")
+
+        print(f"{Colors.OKGREEN}{'='*60}{Colors.ENDC}\n")
+
+        # ── Ask for confirmation before opening the browser ───────────────────
+        confirmed = self.get_input_yn(
+            "  Proceed with this tailored resume? (y/n, default: y): ", default="y"
+        )
+        if not confirmed:
+            choice = (
+                self.get_input(
+                    "  (s)kip this job entirely  or  (o)riginal resume — which? (s/o, default: s): "
+                )
+                .strip()
+                .lower()
+            )
+            if choice == "o":
+                # Fall back to original resume; don't set tailored paths
+                result["pdf_path"]   = None
+                result["resume_url"] = None
+                result["did_tailor"] = False
+            else:
+                result["skip"] = True
+
+        return result
 
     def _display_tailored_resume_download(self, tailoring_metrics, company: str):
         try:

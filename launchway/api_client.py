@@ -212,6 +212,11 @@ class LaunchwayClient:
         data = self._get("/api/oauth/authorize")
         return data.get("authorization_url", "")
 
+    def get_google_oauth_access_token(self) -> str:
+        """Return the user's current Google OAuth access token from the server."""
+        data = self._get("/api/oauth/access-token")
+        return data.get("access_token", "")
+
     def verify_token(self) -> Dict[str, Any]:
         """Verify the current token and refresh user info."""
         return self._get("/api/auth/verify")

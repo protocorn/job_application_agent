@@ -573,18 +573,55 @@ Job description snippet:
 
                 try:
                     pre_fetched_desc = None
+                    self.print_info("Pre-fetching job description...")
+                    try:
+                        pre_fetched_desc = await asyncio.to_thread(
+                            self._fetch_job_description_from_url, job_url
+                        )
+                        if pre_fetched_desc:
+                            self.print_success(f"Description fetched ({len(pre_fetched_desc)} chars)")
+                        else:
+                            self.print_info("Will extract description from page during navigation")
+                    except Exception as _pf_err:
+                        logger.debug(f"Pre-fetch description error: {_pf_err}")
+
+                    # ── Pre-tailor resume BEFORE opening the browser ──────────
+                    # If tailoring is enabled, tailor now, show the result, ask
+                    # for user confirmation, then apply with the tailored resume.
+                    tailored_pdf_path  = None
+                    tailored_resume_url = None
+                    did_tailor         = False
+
                     if tailor:
-                        self.print_info("Pre-fetching job description for tailoring...")
-                        try:
-                            pre_fetched_desc = await asyncio.to_thread(
-                                self._fetch_job_description_from_url, job_url
-                            )
-                            if pre_fetched_desc:
-                                self.print_success(f"Description fetched ({len(pre_fetched_desc)} chars)")
-                            else:
-                                self.print_info("Will extract description from page during navigation")
-                        except Exception as _pf_err:
-                            logger.debug(f"Pre-fetch description error: {_pf_err}")
+                        tailor_result = await self._pre_tailor_for_job(
+                            idx=idx,
+                            job_url=job_url,
+                            pre_fetched_desc=pre_fetched_desc,
+                            replace_projects=replace_projects,
+                        )
+
+                        if tailor_result["skip"]:
+                            job_result["error"] = "Skipped by user after tailoring preview"
+                            failed_apps.append({"number": idx, "url": job_url, "error": job_result["error"]})
+                            detailed_results.append(job_result)
+                            self.print_info(f"Job #{idx} skipped.")
+                            if idx < total_jobs:
+                                self.print_info("\n" + "="*60 + "\n")
+                            continue
+
+                        tailored_pdf_path   = tailor_result["pdf_path"]
+                        tailored_resume_url = tailor_result["resume_url"]
+                        did_tailor          = tailor_result["did_tailor"]
+
+                    # Build profile_data for the agent, overriding resume URL
+                    # if a tailored version is available.
+                    agent_profile_data = dict(self.current_profile or {})
+                    if tailored_resume_url:
+                        agent_profile_data["resume_url"] = tailored_resume_url
+
+                    # When we've already tailored, tell the agent NOT to tailor
+                    # again; it will use the pre-tailored resume directly.
+                    agent_should_tailor = tailor and not did_tailor
 
                     agent = RefactoredJobAgent(
                         playwright=playwright,
@@ -592,16 +629,19 @@ Job description snippet:
                         keep_open=True,
                         debug=True,
                         user_id=str(self.current_user['id']),
-                        tailor_resume=tailor,
-                        replace_projects_on_tailor=replace_projects if tailor else False,
+                        tailor_resume=agent_should_tailor,
+                        replace_projects_on_tailor=(replace_projects if agent_should_tailor else False),
                         job_url=job_url,
                         use_persistent_profile=True,
                         pre_fetched_description=pre_fetched_desc,
-                        profile_data=self.current_profile,
+                        profile_data=agent_profile_data,
+                        resume_path=tailored_pdf_path,  # None if Google Doc path
                     )
                     await agent.process_link(job_url)
 
-                    if tailor:
+                    # Only show in-agent tailoring metrics when the agent did
+                    # the tailoring itself (fallback path).
+                    if agent_should_tailor:
                         profile_ctx = None
                         if hasattr(agent, 'state_machine') and agent.state_machine:
                             if hasattr(agent.state_machine, 'app_state'):

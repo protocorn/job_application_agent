@@ -179,6 +179,75 @@ def copy_google_doc(drive_service, doc_id, new_title):
         print(f"An error occurred while copying the document: {error}")
         return None
 
+
+def copy_google_doc_via_export(drive_service, doc_id, new_title, credentials=None):
+    """Fallback copy: export as DOCX then re-upload as a new Google Doc.
+
+    This works when drive.files().copy() returns 404 because the source file
+    was not opened through the app's Google Picker (drive.file scope restriction).
+    Publicly shared docs are readable via the export URL even without Drive API
+    file-level access. The re-uploaded doc is app-created, so drive.file covers
+    all future operations on it.
+    """
+    import io
+    import requests as _requests
+    from googleapiclient.http import MediaIoBaseUpload
+
+    export_url = f"https://docs.google.com/document/d/{doc_id}/export?format=docx"
+    print(f"Falling back to DOCX export+upload to create tailoring copy...")
+
+    # Try authenticated download first (works for private docs if the token
+    # has access), then fall back to unauthenticated (works for public docs).
+    docx_bytes = None
+    if credentials and hasattr(credentials, 'token') and credentials.token:
+        try:
+            headers = {"Authorization": f"Bearer {credentials.token}"}
+            resp = _requests.get(export_url, headers=headers, timeout=60)
+            if resp.status_code == 200:
+                docx_bytes = resp.content
+                print("  Downloaded DOCX via authenticated request")
+        except Exception as _auth_err:
+            print(f"  Authenticated DOCX download failed: {_auth_err}")
+
+    if not docx_bytes:
+        try:
+            resp = _requests.get(export_url, timeout=60)
+            if resp.status_code == 200:
+                docx_bytes = resp.content
+                print("  Downloaded DOCX via public export URL")
+            else:
+                print(f"  Public DOCX export returned HTTP {resp.status_code}")
+                return None
+        except Exception as _pub_err:
+            print(f"  Public DOCX export failed: {_pub_err}")
+            return None
+
+    if not docx_bytes:
+        return None
+
+    try:
+        file_metadata = {
+            'name': new_title,
+            'mimeType': 'application/vnd.google-apps.document',
+        }
+        media = MediaIoBaseUpload(
+            io.BytesIO(docx_bytes),
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            resumable=False,
+        )
+        created = drive_service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id',
+        ).execute()
+        new_id = created.get('id')
+        if new_id:
+            print(f"  Created new Google Doc from DOCX export (id: {new_id[:12]}...)")
+        return new_id
+    except Exception as upload_err:
+        print(f"  DOCX re-upload failed: {upload_err}")
+        return None
+
 def read_google_doc_content(docs_service, document_id, max_retries=3):
     """Reads and returns the text content of a Google Doc.
 
@@ -1861,12 +1930,27 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
         print(f"Creating tailored resume: '{copied_doc_title}'")
         copied_doc_id = copy_google_doc(drive_service, original_doc_id, copied_doc_title)
         if not copied_doc_id:
-            raise ValueError("Could not copy the Google Doc")
+            # Drive API copy failed (likely drive.file scope restriction for files
+            # not opened through the Google Picker). Fall back to DOCX export+upload.
+            print("Drive API copy unavailable — trying DOCX export fallback...")
+            copied_doc_id = copy_google_doc_via_export(
+                drive_service, original_doc_id, copied_doc_title, credentials=credentials
+            )
+        if not copied_doc_id:
+            raise ValueError(
+                "Could not copy the Google Doc.\n"
+                "Your resume file is not accessible to the app.\n"
+                "FIX: Go to the web app → Profile → make sure your Google Doc resume is\n"
+                "     shared as 'Anyone with the link can view', then try again.\n"
+                "     Or upload a PDF version of your resume instead."
+            )
 
-        # Read content from the ORIGINAL document (optimize by getting document once)
-        print("Reading original resume from Google Docs...")
+        # Read content from the tailored COPY (which the app owns, so drive.file
+        # always has access). This also avoids a second API call to the original
+        # when it may not be accessible due to drive.file scope restrictions.
+        print("Reading resume content from Google Docs...")
         try:
-            document = docs_service.documents().get(documentId=original_doc_id).execute()
+            document = docs_service.documents().get(documentId=copied_doc_id).execute()
         except Exception as e:
             raise ValueError(f"Could not read the Google Doc: {e}")
 
