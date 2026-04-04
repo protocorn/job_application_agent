@@ -3963,7 +3963,15 @@ def pick_resume_page():
       4. On selection, page POSTs to /api/process-resume then shows Done
     """
     jwt_token = request.args.get("token", "")
+    # Build backend origin safely behind reverse proxies (Railway/Nginx/etc).
+    # request.host_url can incorrectly appear as http:// when TLS is terminated
+    # upstream; that breaks browser fetch() due to CSP + mixed-content rules.
     backend_url = request.host_url.rstrip("/")
+    forwarded_proto = (request.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip().lower()
+    if forwarded_proto == "https" and backend_url.startswith("http://"):
+        backend_url = "https://" + backend_url[len("http://"):]
+    if backend_url.startswith("http://") and "railway.app" in backend_url:
+        backend_url = "https://" + backend_url[len("http://"):]
 
     picker_api_key = os.getenv("GOOGLE_PICKER_API_KEY", "")
     google_client_id = os.getenv("GOOGLE_CLIENT_ID", "")
