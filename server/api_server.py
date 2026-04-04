@@ -152,8 +152,6 @@ def after_request(response):
             "connect-src 'self' https://accounts.google.com https://www.googleapis.com; "
             "img-src 'self' data: https://ssl.gstatic.com https://www.gstatic.com;"
         )
-        # Google Picker opens in a popup — allow it to iframe the page
-        response.headers.pop('X-Frame-Options', None)
     return response
 
 JOBS: Dict[str, Dict[str, Any]] = {}

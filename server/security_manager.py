@@ -684,13 +684,15 @@ def require_secure_headers(f):
         response = f(*args, **kwargs)
         
         if hasattr(response, 'headers'):
-            # Security headers
-            response.headers['X-Content-Type-Options'] = 'nosniff'
-            response.headers['X-Frame-Options'] = 'DENY'
-            response.headers['X-XSS-Protection'] = '1; mode=block'
-            response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-            response.headers['Content-Security-Policy'] = "default-src 'self'"
-            response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+            # Security headers.
+            # Use setdefault so route-specific handlers can override values
+            # (e.g., /pick-resume needs Google Picker CSP allowances).
+            response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+            response.headers.setdefault('X-Frame-Options', 'DENY')
+            response.headers.setdefault('X-XSS-Protection', '1; mode=block')
+            response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+            response.headers.setdefault('Content-Security-Policy', "default-src 'self'")
+            response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
         
         return response
     return decorated_function
