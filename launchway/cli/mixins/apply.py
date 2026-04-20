@@ -85,6 +85,170 @@ class ApplyMixin:
         self.print_warning("No resume is uploaded (Google Doc URL or PDF/DOCX).")
         self.print_info("Update your profile before running auto-apply for better results.\n")
 
+    # ------------------------------------------------------------------
+    # ATS compatibility confidence check
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _detect_ats_client_side(url: str) -> dict:
+        """
+        Offline URL-pattern ATS detection used as fallback when the backend
+        endpoint is unreachable or not yet deployed.  Mirrors the ATS_PATTERNS
+        table in server/routes/cli.py.
+        """
+        try:
+            from urllib.parse import urlsplit
+            netloc = urlsplit(url).netloc.lower()
+        except Exception:
+            netloc = ""
+
+        ATS_PATTERNS = [
+            ("Greenhouse",      ["job-boards.greenhouse.io", "boards.greenhouse.io"],       "supported",   0.85),
+            ("Lever",           ["jobs.lever.co"],                                           "supported",   0.85),
+            ("Ashby",           ["jobs.ashbyhq.com"],                                        "supported",   0.85),
+            ("Workday",         ["myworkdayjobs.com"],                                       "partial",     0.55),
+            ("SmartRecruiters", ["careers.smartrecruiters.com", "smartrecruiters.com"],      "partial",     0.55),
+            ("Rippling ATS",    ["ats.rippling.com"],                                        "partial",     0.55),
+            ("BambooHR",        ["app.bamboohr.com"],                                        "partial",     0.55),
+            ("JazzHR",          ["app.jazz.co"],                                             "partial",     0.55),
+            ("Recruitee",       ["jobs.recruitee.com"],                                      "partial",     0.55),
+            ("Breezy HR",       ["breezy.hr"],                                               "partial",     0.55),
+            ("Teamtailor",      ["teamtailor.com"],                                          "partial",     0.55),
+            ("Personio",        ["personio.de", "personio.com"],                             "partial",     0.55),
+            ("Pinpoint",        ["pinpointhq.com"],                                          "partial",     0.55),
+            ("Taleo",           ["taleo.net"],                                               "unsupported", 0.25),
+            ("iCIMS",           ["icims.com"],                                               "unsupported", 0.25),
+            ("SuccessFactors",  ["successfactors.com", "successfactors.eu"],                 "unsupported", 0.25),
+        ]
+
+        for ats_name, patterns, tier, confidence in ATS_PATTERNS:
+            if any(p in netloc for p in patterns):
+                return {
+                    "success": True,
+                    "ats_name": ats_name,
+                    "ats_tier": tier,
+                    "final_confidence": confidence,
+                    "personal": {},
+                    "source": "client_side",
+                }
+
+        return {
+            "success": True,
+            "ats_name": "Unknown / Custom ATS",
+            "ats_tier": "unsupported",
+            "final_confidence": 0.25,
+            "personal": {},
+            "source": "client_side",
+        }
+
+    def _show_ats_confidence_check(self, url: str, *, auto_mode: bool = False) -> bool:
+        """
+        Fetch and display ATS compatibility for a job URL before the agent runs.
+
+        Prints a summary block showing the detected ATS platform, support tier,
+        confidence score, and the user's personal history on that domain.
+
+        auto_mode=False (single apply, interactive):
+            • Shows the block.
+            • On 'unsupported' tier, asks the user to confirm — returns False
+              if they decline (caller should skip this URL).
+            • On all other tiers, always returns True.
+
+        auto_mode=True (batch/continuous, non-interactive):
+            • Shows the block as a log line — never blocks.
+            • Always returns True so automation is uninterrupted.
+        """
+        from launchway.cli.utils import Colors
+
+        W  = Colors.WARNING
+        G  = Colors.OKGREEN
+        R  = Colors.FAIL
+        B  = Colors.OKBLUE
+        C  = Colors.OKCYAN
+        BD = Colors.BOLD
+        E  = Colors.ENDC
+
+        try:
+            data = self.api.get_ats_confidence(url)
+        except Exception:
+            data = {}
+
+        if not data.get("success"):
+            # Backend endpoint not available — fall back to client-side URL detection
+            # so the user always sees at least the platform name and tier.
+            data = self._detect_ats_client_side(url)
+            if not data.get("success"):
+                return True
+
+        ats_name   = data.get("ats_name", "Unknown")
+        ats_tier   = data.get("ats_tier", "unsupported")
+        confidence = data.get("final_confidence", 0.5)
+        personal   = data.get("personal", {})
+
+        pct  = int(round(confidence * 100))
+        apps_attempted  = personal.get("total_apps_attempted",  0)
+        apps_completed  = personal.get("completed_apps",         0)
+        fields_learned  = personal.get("total_fields_learned",   0)
+        human_fills     = personal.get("human_fills",            0)
+        human_correct   = personal.get("human_corrections",      0)
+
+        # Tier display
+        if ats_tier == "supported":
+            tier_icon  = f"{G}✅ Fully supported{E}"
+            conf_color = G
+        elif ats_tier == "partial":
+            tier_icon  = f"{W}⚠  Partial support — some fields may need manual input{E}"
+            conf_color = W
+        else:
+            tier_icon  = f"{R}❌ Not well supported — high chance of needing manual help{E}"
+            conf_color = R
+
+        conf_str = f"{conf_color}{BD}{pct}%{E}"
+
+        # History lines
+        history_lines = []
+        if apps_attempted > 0:
+            history_lines.append(
+                f"  {C}Your history:{E}  {apps_attempted} app(s) attempted, "
+                f"{apps_completed} completed on this platform"
+            )
+        if fields_learned > 0:
+            history_lines.append(
+                f"                 {fields_learned} field(s) learned"
+                + (f", {human_fills} fill(s) + {human_correct} correction(s) by you" if human_fills or human_correct else "")
+            )
+        if not history_lines:
+            history_lines.append(f"  {C}Your history:{E}  No previous runs on this platform")
+
+        print()
+        print(f"  {BD}{'─' * 54}{E}")
+        print(f"  {BD}  ATS COMPATIBILITY CHECK{E}")
+        print(f"  {BD}{'─' * 54}{E}")
+        print(f"  {B}Platform:{E}      {BD}{ats_name}{E}")
+        print(f"  {B}Support:{E}       {tier_icon}")
+        print(f"  {B}Confidence:{E}    {conf_str}")
+        for line in history_lines:
+            print(line)
+        print(f"  {BD}{'─' * 54}{E}")
+        print()
+
+        # In auto mode, always proceed (batch can't wait for input)
+        if auto_mode:
+            if ats_tier == "unsupported":
+                self.print_warning(
+                    f"⚠  [{ats_name}] Low confidence ({pct}%) — proceeding anyway (auto mode)."
+                )
+            return True
+
+        # In interactive mode, ask on unsupported platforms
+        if ats_tier == "unsupported":
+            return self.get_input_yn(
+                f"  Confidence is low ({pct}%). Continue anyway? (y/n, default: y): ",
+                default="y",
+            )
+
+        return True
+
     @staticmethod
     def _is_unknown_job_value(value: str) -> bool:
         v = (value or "").strip().lower()
@@ -492,6 +656,16 @@ Job description snippet:
                             default='n'
                         )
 
+        mode_raw = self.get_input(
+            "Assisted batch mode: (1) pause on intervention with resume option, "
+            "(2) continuous run (default: 1): "
+        ).strip()
+        batch_mode = "continuous" if mode_raw == "2" else "guided"
+        if batch_mode == "guided":
+            self.print_info("✓ Guided mode: pause on intervention, then choose next or continue current job")
+        else:
+            self.print_info("✓ Continuous mode: process all jobs one-by-one without pause prompts")
+
         # ── Credit check ────────────────────────────────────────────────────
         try:
             available, daily = self.api.check_credit_available("job_applications")
@@ -524,9 +698,38 @@ Job description snippet:
             self.pause()
             return
 
-        await self.auto_apply_batch(job_urls, tailor_settings, replace_projects_settings)
+        await self.auto_apply_batch(
+            job_urls,
+            tailor_settings,
+            replace_projects_settings,
+            batch_mode=batch_mode
+        )
 
-    async def auto_apply_batch(self, job_urls: list, tailor_settings: list, replace_projects_settings: list):
+    def _post_intervention_action(self, job_number: int) -> str:
+        """
+        Ask what to do after a human intervention stop.
+        Returns one of: 'continue_current', 'next_job', 'stop_batch'
+        """
+        print()
+        self.print_info(f"Job #{job_number} is paused for manual intervention.")
+        self.print_info("Choose next action:")
+        print("  1) Continue CURRENT application with agent takeover")
+        print("  2) Move to NEXT application")
+        print("  3) Stop batch now")
+        choice = self.get_input("Select (1/2/3, default: 2): ").strip()
+        if choice == "1":
+            return "continue_current"
+        if choice == "3":
+            return "stop_batch"
+        return "next_job"
+
+    async def auto_apply_batch(
+        self,
+        job_urls: list,
+        tailor_settings: list,
+        replace_projects_settings: list,
+        batch_mode: str = "guided",
+    ):
         from Agents.job_application_agent import RefactoredJobAgent, _get_or_create_playwright
 
         total_jobs       = len(job_urls)
@@ -540,8 +743,18 @@ Job description snippet:
         self.print_info(f"{'='*60}\n")
         self.print_warning("Do not close browser windows manually during the process")
 
+        # Create a session manager once for the whole batch so every agent
+        # gets an action recorder — without it fields_filled is always 0.
+        session_mgr = None
+        try:
+            from Agents.components.session.session_manager import SessionManager
+            session_mgr = SessionManager(storage_dir="sessions")
+        except Exception as _sm_err:
+            logger.debug(f"Session manager unavailable, action recording disabled: {_sm_err}")
+
         try:
             playwright = await _get_or_create_playwright()
+            stop_batch_early = False
             for idx, job_url in enumerate(job_urls, start=1):
                 tailor     = tailor_settings[idx - 1]
                 replace_projects = replace_projects_settings[idx - 1] if idx - 1 < len(replace_projects_settings) else False
@@ -570,6 +783,7 @@ Job description snippet:
                 self.print_header(f"JOB {idx}/{total_jobs}")
                 self.print_info(f"URL: {job_url}")
                 self.print_info(f"Tailor Resume: {'Yes' if tailor else 'No'}")
+                self._show_ats_confidence_check(job_url, auto_mode=True)
 
                 try:
                     pre_fetched_desc = None
@@ -627,7 +841,10 @@ Job description snippet:
                         playwright=playwright,
                         headless=False,
                         keep_open=True,
-                        debug=True,
+                        # Batch mode handles intervention flow at CLI level.
+                        # Keep agent debug prompts disabled so continuous mode
+                        # never blocks on "Press Enter..." inside the agent.
+                        debug=False,
                         user_id=str(self.current_user['id']),
                         tailor_resume=agent_should_tailor,
                         replace_projects_on_tailor=(replace_projects if agent_should_tailor else False),
@@ -636,8 +853,34 @@ Job description snippet:
                         pre_fetched_description=pre_fetched_desc,
                         profile_data=agent_profile_data,
                         resume_path=tailored_pdf_path,  # None if Google Doc path
+                        session_manager=session_mgr,
                     )
                     await agent.process_link(job_url)
+
+                    if batch_mode == "guided":
+                        # In guided mode, if agent paused for human intervention,
+                        # let user decide whether to continue same job or move on.
+                        # This enables "fix manually, then let agent continue" flow.
+                        while getattr(agent, 'keep_browser_open_for_human', False):
+                            action = self._post_intervention_action(idx)
+                            if action == "continue_current":
+                                # Reset the flag so resume can set it again only if
+                                # another blocker is encountered.
+                                agent.keep_browser_open_for_human = False
+                                try:
+                                    await agent.continue_current_application()
+                                except Exception as continue_err:
+                                    self.print_warning(f"Could not continue current job automatically: {continue_err}")
+                                    logger.warning(f"Continue current job failed (job #{idx}): {continue_err}")
+                                    # Re-enter decision prompt so user can choose next/stop.
+                                    agent.keep_browser_open_for_human = True
+                            elif action == "stop_batch":
+                                stop_batch_early = True
+                                break
+                            else:
+                                break
+                        if stop_batch_early:
+                            job_result['error'] = job_result.get('error') or "Stopped by user during guided mode"
 
                     # Only show in-agent tailoring metrics when the agent did
                     # the tailoring itself (fallback path).
@@ -747,10 +990,24 @@ Job description snippet:
                 detailed_results.append(job_result)
                 if idx < total_jobs:
                     self.print_info("\n" + "="*60 + "\n")
+                if stop_batch_early:
+                    self.print_warning("Batch stopped by user.")
+                    break
 
         except Exception as e:
             self.print_error(f"Batch process error: {str(e)}")
             logger.error(f"Batch application error: {e}", exc_info=True)
+
+        # ── Close browser after batch so the next run starts clean ──────────
+        # For persistent contexts, context.close() also terminates the Chrome
+        # process.  Without this, Chrome stays alive holding the profile lock
+        # and the very next launchway run fails with TargetClosedError on every
+        # single job.
+        try:
+            from Agents.persistent_browser_manager import close_all_active_browsers
+            await close_all_active_browsers()
+        except Exception as _cleanup_err:
+            logger.debug(f"Post-batch browser cleanup: {_cleanup_err}")
 
         # Save local report
         report_filename = f"batch_progress_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
@@ -829,6 +1086,12 @@ Job description snippet:
         if not available:
             credit_str = format_credits(daily.get("remaining"), daily.get("limit"), daily.get("reset_time"))
             self.print_error(f"Daily job application limit reached ({credit_str}).")
+            self.pause()
+            return
+
+        # ATS compatibility check — warn user before spending time/credits.
+        if not self._show_ats_confidence_check(job_url, auto_mode=False):
+            self.print_info("Skipped — you can try a different URL or a supported platform.")
             self.pause()
             return
 

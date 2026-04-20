@@ -5,9 +5,11 @@ Analyzes and scores projects based on job requirements.
 Recommends which projects to include/exclude from resume.
 """
 
+import json
+import hashlib
 import re
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 from datetime import datetime
 from gemini_compat import genai
 
@@ -27,10 +29,206 @@ class ProjectRelevanceEngine:
         """
         if gemini_api_key:
             genai.configure(api_key=gemini_api_key)
-            self.model = genai.GenerativeModel("gemini-2.5-flash")
+            self.model = genai.GenerativeModel("gemini-2.0-flash-lite")
         else:
             self.model = None
         self.logger = logger
+        self._llm_score_cache: Dict[str, Dict[str, float]] = {}
+
+    @staticmethod
+    def _normalize_text(text: str) -> str:
+        """Lowercase and normalize whitespace for consistent matching."""
+        return re.sub(r"\s+", " ", (text or "").lower()).strip()
+
+    @staticmethod
+    def _tokenize_text(text: str) -> Set[str]:
+        """
+        Tokenize text into alphanumeric-ish tokens.
+
+        Keeps common tech punctuation in tokens (e.g., c++, c#, node.js).
+        """
+        return set(re.findall(r"[a-z0-9][a-z0-9+#.\-]*", text.lower()))
+
+    @staticmethod
+    def _contains_phrase(normalized_text: str, phrase: str) -> bool:
+        """Match phrase with token boundaries to avoid substring false positives."""
+        normalized_phrase = re.sub(r"\s+", " ", phrase.lower()).strip()
+        if not normalized_phrase:
+            return False
+
+        tokens = [re.escape(token) for token in normalized_phrase.split()]
+        pattern = r"(?<![a-z0-9])" + r"\s+".join(tokens) + r"(?![a-z0-9])"
+        return re.search(pattern, normalized_text) is not None
+
+    @classmethod
+    def _term_matches(cls, candidate: str, reference: str) -> bool:
+        """
+        Return True when candidate and reference tech terms align.
+
+        Examples:
+        - "react" matches "react native"
+        - "node.js" matches "node"
+        """
+        cand = cls._normalize_text(candidate)
+        ref = cls._normalize_text(reference)
+        if not cand or not ref:
+            return False
+
+        if cand == ref:
+            return True
+
+        return cls._contains_phrase(cand, ref) or cls._contains_phrase(ref, cand)
+
+    @staticmethod
+    def _clamp_score(score: float) -> float:
+        """Clamp score to the 0-100 range."""
+        return max(0.0, min(100.0, float(score)))
+
+    @staticmethod
+    def _project_key(project: Dict, index: int) -> str:
+        """Stable key used to map LLM scores back to projects."""
+        project_id = project.get("id")
+        if project_id is not None:
+            return str(project_id)
+
+        fingerprint_source = json.dumps(
+            {
+                "name": str(project.get("name", "")).strip().lower(),
+                "description": str(project.get("description", "")).strip().lower(),
+                "technologies": sorted(str(t).strip().lower() for t in project.get("technologies", [])),
+                "features": sorted(str(f).strip().lower() for f in project.get("features", [])),
+            },
+            sort_keys=True,
+            ensure_ascii=True,
+        )
+        return f"fp_{hashlib.sha1(fingerprint_source.encode('utf-8')).hexdigest()[:20]}"
+
+    @staticmethod
+    def _extract_json_payload(text: str) -> Dict[str, Any]:
+        """Extract a JSON object from raw model output."""
+        if not text:
+            return {}
+
+        cleaned = text.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+            cleaned = re.sub(r"\s*```$", "", cleaned)
+
+        try:
+            parsed = json.loads(cleaned)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            pass
+
+        match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+        if not match:
+            return {}
+
+        try:
+            parsed = json.loads(match.group(0))
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+
+    def calculate_llm_relevance_batch(
+        self,
+        projects: List[Dict],
+        job_description: str,
+        job_keywords: List[str],
+        required_technologies: Optional[List[str]] = None,
+    ) -> Dict[str, float]:
+        """
+        Score project-job relevance in one lightweight LLM call.
+
+        Returns:
+            Mapping of project_key -> score (0-100)
+        """
+        if not self.model or not projects or not job_description:
+            return {}
+
+        normalized_job = self._normalize_text(job_description)
+        if not normalized_job:
+            return {}
+        prompt_job_description = normalized_job[:2500]
+
+        required_technologies = required_technologies or []
+        compact_projects = []
+
+        for idx, project in enumerate(projects):
+            compact_projects.append({
+                "project_key": self._project_key(project, idx),
+                "name": project.get("name", ""),
+                "description": project.get("description", "")[:500],
+                "technologies": project.get("technologies", [])[:20],
+                "features": project.get("features", [])[:12],
+            })
+
+        cache_material = {
+            "job_description": prompt_job_description,
+            "job_keywords": [self._normalize_text(k) for k in (job_keywords or [])][:20],
+            "required_technologies": [self._normalize_text(t) for t in required_technologies][:20],
+            "projects": compact_projects,
+        }
+        cache_key = json.dumps(cache_material, sort_keys=True)
+        if cache_key in self._llm_score_cache:
+            return self._llm_score_cache[cache_key]
+
+        prompt = f"""
+You are scoring resume projects for job relevance.
+
+Return ONLY valid JSON in this exact schema:
+{{
+  "scores": [
+    {{
+      "project_key": "string",
+      "score": 0-100
+    }}
+  ]
+}}
+
+Scoring guidance:
+- 90-100: Strong direct match to role scope and responsibilities
+- 70-89: Good match with clear overlap
+- 40-69: Partial relevance
+- 0-39: Weak match
+
+Job description:
+{prompt_job_description}
+
+Priority keywords:
+{", ".join((job_keywords or [])[:25])}
+
+Required technologies:
+{", ".join((required_technologies or [])[:25])}
+
+Projects:
+{json.dumps(compact_projects, ensure_ascii=True)}
+""".strip()
+
+        try:
+            response = self.model.generate_content(prompt)
+            payload = self._extract_json_payload(getattr(response, "text", ""))
+            raw_scores = payload.get("scores", [])
+
+            score_map: Dict[str, float] = {}
+            if isinstance(raw_scores, list):
+                for item in raw_scores:
+                    if not isinstance(item, dict):
+                        continue
+                    project_key = str(item.get("project_key", "")).strip()
+                    score_value = item.get("score")
+                    if not project_key or score_value is None:
+                        continue
+                    try:
+                        score_map[project_key] = self._clamp_score(float(score_value))
+                    except (TypeError, ValueError):
+                        continue
+
+            self._llm_score_cache[cache_key] = score_map
+            return score_map
+        except Exception as exc:
+            self.logger.warning("LLM relevance scoring failed: %s", exc)
+            return {}
 
     def calculate_keyword_overlap(self, project: Dict, job_keywords: List[str]) -> float:
         """
@@ -43,28 +241,38 @@ class ProjectRelevanceEngine:
         Returns:
             Score 0-100 based on keyword matches
         """
-        project_text = " ".join([
+        project_text = self._normalize_text(" ".join([
             project.get('name', ''),
             project.get('description', ''),
             " ".join(project.get('technologies', [])),
             " ".join(project.get('features', [])),
             " ".join(project.get('detailed_bullets', []))
-        ]).lower()
+        ]))
+        project_tokens = self._tokenize_text(project_text)
 
         # Count unique keyword matches
         matches = 0
-        total_keywords = len(job_keywords)
-
+        normalized_keywords = []
+        seen_keywords = set()
         for keyword in job_keywords:
-            keyword_lower = keyword.lower()
+            normalized = self._normalize_text(keyword)
+            if normalized and normalized not in seen_keywords:
+                seen_keywords.add(normalized)
+                normalized_keywords.append(normalized)
+
+        total_keywords = len(normalized_keywords)
+
+        for keyword_lower in normalized_keywords:
+            keyword_tokens = keyword_lower.split()
 
             # Full keyword match
-            if keyword_lower in project_text:
+            if len(keyword_tokens) == 1 and keyword_tokens[0] in project_tokens:
+                matches += 1
+            elif self._contains_phrase(project_text, keyword_lower):
                 matches += 1
             # Partial match (if keyword is multi-word, check for any word)
-            elif len(keyword_lower.split()) > 1:
-                words = keyword_lower.split()
-                if any(word in project_text for word in words if len(word) > 3):
+            elif len(keyword_tokens) > 1:
+                if any(word in project_tokens for word in keyword_tokens if len(word) > 3):
                     matches += 0.5
 
         # Convert to 0-100 score (weight keyword coverage heavily)
@@ -89,62 +297,29 @@ class ProjectRelevanceEngine:
         Returns:
             Score 0-100
         """
-        project_techs = [t.lower() for t in project.get('technologies', [])]
-        required_techs = [t.lower() for t in required_technologies]
+        project_techs = [
+            self._normalize_text(t)
+            for t in project.get('technologies', [])
+            if self._normalize_text(t)
+        ]
+        required_techs = []
+        seen_required = set()
+        for tech in required_technologies:
+            normalized = self._normalize_text(tech)
+            if normalized and normalized not in seen_required:
+                seen_required.add(normalized)
+                required_techs.append(normalized)
 
         if not required_techs:
             return 50.0  # Neutral score if no specific requirements
 
-        matches = sum(1 for req in required_techs if any(req in proj for proj in project_techs))
+        matches = sum(
+            1 for req in required_techs
+            if any(self._term_matches(proj, req) for proj in project_techs)
+        )
         match_rate = matches / len(required_techs)
 
         return match_rate * 100
-
-    def calculate_domain_relevance(
-        self,
-        project: Dict,
-        job_domain: str
-    ) -> float:
-        """
-        Calculate domain/industry relevance.
-
-        Args:
-            project: Project dict
-            job_domain: Domain/industry (e.g., "web development", "machine learning")
-
-        Returns:
-            Score 0-100
-        """
-        # Domain keywords mapping
-        domain_keywords = {
-            'web development': ['web', 'frontend', 'backend', 'fullstack', 'api', 'rest', 'http', 'server', 'client'],
-            'machine learning': ['ml', 'ai', 'model', 'neural', 'deep learning', 'nlp', 'computer vision', 'tensorflow', 'pytorch'],
-            'mobile': ['mobile', 'ios', 'android', 'react native', 'flutter', 'app'],
-            'data': ['data', 'analytics', 'pipeline', 'etl', 'database', 'sql', 'big data', 'warehouse'],
-            'devops': ['devops', 'ci/cd', 'docker', 'kubernetes', 'aws', 'cloud', 'infrastructure'],
-            'security': ['security', 'authentication', 'encryption', 'penetration', 'vulnerability'],
-        }
-
-        job_domain_lower = job_domain.lower()
-        relevant_keywords = []
-
-        # Find matching domain keywords
-        for domain, keywords in domain_keywords.items():
-            if domain in job_domain_lower:
-                relevant_keywords.extend(keywords)
-
-        if not relevant_keywords:
-            return 50.0  # Neutral if can't determine domain
-
-        # Check project for domain keywords
-        project_text = " ".join([
-            project.get('name', ''),
-            project.get('description', ''),
-            " ".join(project.get('technologies', []))
-        ]).lower()
-
-        matches = sum(1 for kw in relevant_keywords if kw in project_text)
-        return min(100, (matches / len(relevant_keywords)) * 200)  # Boost and cap
 
     def calculate_recency_score(self, project: Dict) -> float:
         """
@@ -181,7 +356,7 @@ class ProjectRelevanceEngine:
             score = max(0, 100 - (years_ago * 15))
             return score
 
-        except:
+        except (ValueError, TypeError):
             return 50.0  # Default if can't parse
 
     def calculate_complexity_score(self, project: Dict) -> float:
@@ -233,7 +408,7 @@ class ProjectRelevanceEngine:
         project: Dict,
         job_keywords: List[str],
         required_technologies: Optional[List[str]] = None,
-        job_domain: Optional[str] = None,
+        llm_relevance_score: Optional[float] = None,
         weights: Optional[Dict[str, float]] = None
     ) -> Dict[str, float]:
         """
@@ -243,7 +418,7 @@ class ProjectRelevanceEngine:
             project: Project dict
             job_keywords: Keywords from job description
             required_technologies: List of required technologies
-            job_domain: Domain/industry of the job
+            llm_relevance_score: Optional LLM relevance score (0-100)
             weights: Optional custom weights for scoring components
 
         Returns:
@@ -265,10 +440,10 @@ class ProjectRelevanceEngine:
             project,
             required_technologies or []
         )
-        domain_score = self.calculate_domain_relevance(
-            project,
-            job_domain or 'general'
-        )
+        if llm_relevance_score is not None:
+            domain_score = self._clamp_score(llm_relevance_score)
+        else:
+            domain_score = 50.0
         recency_score = self.calculate_recency_score(project)
         complexity_score = self.calculate_complexity_score(project)
 
@@ -286,6 +461,7 @@ class ProjectRelevanceEngine:
             'keyword_overlap': round(keyword_score, 2),
             'technology_match': round(tech_score, 2),
             'domain_relevance': round(domain_score, 2),
+            'llm_relevance': round(domain_score, 2) if llm_relevance_score is not None else None,
             'recency': round(recency_score, 2),
             'complexity': round(complexity_score, 2),
             'weights_used': weights
@@ -296,7 +472,7 @@ class ProjectRelevanceEngine:
         projects: List[Dict],
         job_keywords: List[str],
         required_technologies: Optional[List[str]] = None,
-        job_domain: Optional[str] = None,
+        job_description: Optional[str] = None,
         top_n: Optional[int] = None
     ) -> List[Tuple[Dict, Dict[str, float]]]:
         """
@@ -306,7 +482,7 @@ class ProjectRelevanceEngine:
             projects: List of project dicts
             job_keywords: Keywords from job description
             required_technologies: List of required technologies
-            job_domain: Domain/industry
+            job_description: Full job description for optional LLM relevance scoring
             top_n: Return only top N projects (None = all)
 
         Returns:
@@ -314,12 +490,19 @@ class ProjectRelevanceEngine:
         """
         scored_projects = []
 
-        for project in projects:
+        llm_scores = self.calculate_llm_relevance_batch(
+            projects=projects,
+            job_description=job_description or "",
+            job_keywords=job_keywords,
+            required_technologies=required_technologies or [],
+        )
+
+        for idx, project in enumerate(projects):
             scores = self.calculate_overall_relevance(
                 project,
                 job_keywords,
                 required_technologies,
-                job_domain
+                llm_relevance_score=llm_scores.get(self._project_key(project, idx))
             )
             scored_projects.append((project, scores))
 
@@ -337,7 +520,7 @@ class ProjectRelevanceEngine:
         all_projects: List[Dict],
         job_keywords: List[str],
         required_technologies: Optional[List[str]] = None,
-        job_domain: Optional[str] = None,
+        job_description: Optional[str] = None,
         min_improvement_threshold: float = 15.0
     ) -> List[Dict]:
         """
@@ -348,7 +531,7 @@ class ProjectRelevanceEngine:
             all_projects: All available projects
             job_keywords: Keywords from job description
             required_technologies: List of required technologies
-            job_domain: Domain/industry
+            job_description: Full job description for optional LLM relevance scoring
             min_improvement_threshold: Minimum score improvement to recommend swap
 
         Returns:
@@ -362,14 +545,21 @@ class ProjectRelevanceEngine:
                 'reason': str
             }
         """
+        llm_scores = self.calculate_llm_relevance_batch(
+            projects=all_projects,
+            job_description=job_description or "",
+            job_keywords=job_keywords,
+            required_technologies=required_technologies or [],
+        )
+
         # Score all current projects
         current_scored = []
-        for proj in current_projects:
+        for idx, proj in enumerate(current_projects):
             scores = self.calculate_overall_relevance(
                 proj,
                 job_keywords,
                 required_technologies,
-                job_domain
+                llm_relevance_score=llm_scores.get(self._project_key(proj, idx))
             )
             current_scored.append((proj, scores['overall_score']))
 
@@ -381,12 +571,12 @@ class ProjectRelevanceEngine:
         alternatives = [p for p in all_projects if p.get('id') not in current_ids]
 
         alternative_scored = []
-        for proj in alternatives:
+        for idx, proj in enumerate(alternatives):
             scores = self.calculate_overall_relevance(
                 proj,
                 job_keywords,
                 required_technologies,
-                job_domain
+                llm_relevance_score=llm_scores.get(self._project_key(proj, idx))
             )
             alternative_scored.append((proj, scores['overall_score']))
 
@@ -410,7 +600,10 @@ class ProjectRelevanceEngine:
                     new_techs = add_techs - remove_techs
 
                     if new_techs and required_technologies:
-                        matching_techs = [t for t in new_techs if any(rt.lower() in t.lower() for rt in required_technologies)]
+                        matching_techs = [
+                            t for t in new_techs
+                            if any(self._term_matches(t, rt) for rt in required_technologies)
+                        ]
                         if matching_techs:
                             reason += f"; adds required tech: {', '.join(matching_techs[:2])}"
 
@@ -434,7 +627,7 @@ class ProjectRelevanceEngine:
         job_keywords: List[str],
         target_count: int = 3,
         required_technologies: Optional[List[str]] = None,
-        job_domain: Optional[str] = None
+        job_description: Optional[str] = None,
     ) -> Tuple[List[Dict], float]:
         """
         Suggest the optimal set of N projects for this job.
@@ -444,7 +637,7 @@ class ProjectRelevanceEngine:
             job_keywords: Keywords from job description
             target_count: Number of projects to include
             required_technologies: List of required technologies
-            job_domain: Domain/industry
+            job_description: Full job description for optional LLM relevance scoring
 
         Returns:
             Tuple of (optimal_projects, total_score)
@@ -454,7 +647,7 @@ class ProjectRelevanceEngine:
             all_projects,
             job_keywords,
             required_technologies,
-            job_domain,
+            job_description,
             top_n=target_count * 2  # Get more candidates for optimization
         )
 

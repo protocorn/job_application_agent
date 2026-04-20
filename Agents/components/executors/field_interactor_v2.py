@@ -236,12 +236,18 @@ class FieldInteractorV2:
         }
 
         try:
-            # Check if already filled (special handling for groups)
-            if category in ['radio_group', 'checkbox_group']:
-                # For groups, we ALWAYS try to fill (don't skip based on individual element state)
-                # The group handler will check if the correct option is selected
-                pass
-            elif await self._is_already_filled(element, category):
+            # Check if already filled.
+            # IMPORTANT: For choice controls we must NOT skip just because they
+            # currently have some value/selection (often a default top option).
+            # We always try to set the intended target value for these categories.
+            never_skip_categories = {
+                'radio_group', 'checkbox_group',
+                'radio', 'checkbox',
+                'dropdown', 'greenhouse_dropdown', 'greenhouse_dropdown_multi',
+                'workday_dropdown', 'lever_dropdown', 'workday_multiselect',
+                'ashby_yesno', 'ashby_button_group',
+            }
+            if category not in never_skip_categories and await self._is_already_filled(element, category):
                 logger.info(f"⏭️ '{field_label}' already filled, skipping")
                 # For already-filled fields, record the VALUE WE INTENDED TO FILL (from profile)
                 # not what we read from the DOM, because DOM values can be truncated or mismatched
@@ -440,9 +446,20 @@ class FieldInteractorV2:
             )
 
             if success:
+                # Critical guard against regressions where dropdown typing happens
+                # but the UI keeps/chooses the default top option.
+                verified = await self._verify_dropdown_selection(element, value, category)
+                if not verified:
+                    raise DropdownInteractionError(
+                        field_label=field_label,
+                        value=value,
+                        dropdown_type=category,
+                        reason="Dropdown selection did not match intended value (default/incorrect option selected)"
+                    )
+
                 result.update({
                     "success": True,
-                    "method": "fast_fuzzy_match",
+                    "method": "fast_fuzzy_match_verified",
                     "final_value": value
                 })
             else:
@@ -768,6 +785,115 @@ class FieldInteractorV2:
                 strategy=FieldInteractionStrategy.STANDARD_CLICK,
                 field_type=category
             )
+
+    @staticmethod
+    def _selection_match_score(expected: str, actual: str) -> float:
+        """Loose-but-safe text match score for selected option verification."""
+        exp = (expected or "").strip().lower()
+        act = (actual or "").strip().lower()
+        if not exp or not act:
+            return 0.0
+        if exp == act:
+            return 1.0
+        if exp in act:
+            return max(0.7, len(exp) / max(len(act), 1))
+        if act in exp:
+            return max(0.65, len(act) / max(len(exp), 1))
+
+        stop = {"of", "the", "in", "a", "an", "(", ")", ".", ",", "-", "&"}
+        exp_toks = {w for w in exp.split() if w not in stop and len(w) > 1}
+        act_toks = {w for w in act.split() if w not in stop and len(w) > 1}
+        if not exp_toks or not act_toks:
+            return 0.0
+        return len(exp_toks & act_toks) / len(exp_toks | act_toks)
+
+    async def _verify_dropdown_selection(self, element: Locator, expected_value: str, category: str) -> bool:
+        """
+        Verify dropdown-like controls selected the intended value, not a default.
+        Returns True when match is confirmed, False when confirmed mismatch.
+        If no reliable selected text can be extracted, returns True to avoid
+        false negatives on ATSes with hidden state.
+        """
+        expected = (expected_value or "").strip()
+        if not expected:
+            return True
+
+        candidates: List[str] = []
+        try:
+            tag = await element.evaluate('el => (el.tagName || "").toLowerCase()')
+        except Exception:
+            tag = ""
+
+        try:
+            if tag == "select":
+                selected_text = await element.evaluate(
+                    'el => el.selectedOptions && el.selectedOptions.length ? (el.selectedOptions[0].textContent || "") : ""'
+                )
+                if selected_text and selected_text.strip():
+                    candidates.append(selected_text.strip())
+            else:
+                # Input value / attribute value can hold selected item text in many ATS controls.
+                try:
+                    v = await element.input_value()
+                    if v and v.strip():
+                        candidates.append(v.strip())
+                except Exception:
+                    pass
+                try:
+                    v_attr = await element.get_attribute("value")
+                    if v_attr and v_attr.strip():
+                        candidates.append(v_attr.strip())
+                except Exception:
+                    pass
+
+                # Greenhouse/React-select selected label is usually in nearby single-value node.
+                parent = element.locator('..')
+                nearby_selectors = [
+                    '.select__single-value',
+                    '[class*="singleValue"]',
+                    '[class*="value"][class*="single"]',
+                    '[data-value]',
+                ]
+                for sel in nearby_selectors:
+                    try:
+                        loc = parent.locator(sel).first
+                        if await loc.count() > 0:
+                            txt = await loc.text_content(timeout=250)
+                            if txt and txt.strip():
+                                candidates.append(txt.strip())
+                    except Exception:
+                        continue
+
+        except Exception as e:
+            logger.debug(f"Dropdown verification extraction failed for '{category}': {e}")
+
+        # Deduplicate while preserving order
+        deduped: List[str] = []
+        for c in candidates:
+            if c not in deduped:
+                deduped.append(c)
+
+        if not deduped:
+            logger.debug(f"Dropdown verification: no comparable selected text for '{category}', accepting handler success")
+            return True
+
+        best = 0.0
+        best_text = ""
+        for actual in deduped:
+            score = self._selection_match_score(expected, actual)
+            if score > best:
+                best = score
+                best_text = actual
+
+        if best >= 0.55:
+            logger.debug(f"Dropdown verification passed ({best:.2f}): expected='{expected}' actual='{best_text}'")
+            return True
+
+        logger.warning(
+            f"Dropdown verification failed ({best:.2f}): expected='{expected}', best_actual='{best_text}', "
+            f"all_actual={deduped}"
+        )
+        return False
 
     async def _fill_radio_group(
         self,
@@ -1888,6 +2014,33 @@ class FieldInteractorV2:
                         category = 'textarea'
                     else:
                         category = 'text_input'
+
+                    # --- SKIP React Select inner search inputs ---
+                    # React Select renders an <input type="text"> INSIDE the dropdown
+                    # value container (.select__value-container) for type-ahead searching.
+                    # This internal input is NOT a real form field — it's already managed
+                    # by the greenhouse_dropdown handler.  Detecting it creates ghost fields
+                    # (e.g. a second "Country" text_input next to the Country dropdown) that
+                    # then get filled with the wrong value and corrupt the phone widget.
+                    # Detect by: element sits inside '.select__value-container' or
+                    # '.select__input-container' (React Select DOM class names).
+                    if category == 'text_input':
+                        try:
+                            is_react_select_inner = await element.evaluate('''
+                                el => !!(
+                                    el.closest('.select__value-container') ||
+                                    el.closest('.select__input-container') ||
+                                    el.closest('[class*="select__input"]')
+                                )
+                            ''')
+                            if is_react_select_inner:
+                                logger.debug(
+                                    f"  [field_scan] Skipping React Select inner input "
+                                    f"(name={name!r}, aria-label={aria_label!r})"
+                                )
+                                continue
+                        except Exception:
+                            pass
                     
                     # Try to find label (enhanced for Greenhouse/React Select)
                     label_text = ''
@@ -1896,12 +2049,20 @@ class FieldInteractorV2:
                     # NOTE: page.locator() is SYNCHRONOUS in Playwright - do NOT await it.
                     # Awaiting a Locator object raises TypeError (silently caught), breaking
                     # label detection for all fields that rely on this path (e.g. radio buttons).
+                    # For file inputs, <label for=id> is often the button text ("Attach",
+                    # "Upload") rather than the semantic field name ("Cover Letter") — we
+                    # discard those so the ancestor-walk can find the real label.
+                    _FILE_UI_WORDS = {'attach', 'upload', 'browse', 'choose file', 'select file',
+                                      'add file', 'pick file', 'open file'}
                     if id_attr:
                         try:
                             label_element = self.page.locator(f'label[for="{id_attr}"]').first
                             if await label_element.count() > 0:
                                 label_text = await label_element.inner_text()
                                 label_text = label_text.strip().replace('*', '').strip()
+                                # Discard generic UI words for file inputs — use ancestor walk instead
+                                if input_type == 'file' and label_text.lower() in _FILE_UI_WORDS:
+                                    label_text = ''
                         except:
                             pass
                     
@@ -1939,7 +2100,65 @@ class FieldInteractorV2:
                     if not label_text:
                         try:
                             label_text = aria_label or placeholder or name
+                            # For file inputs, discard generic UI action words from
+                            # aria-label too (Greenhouse sets aria-label="Attach" on the
+                            # file input button, hiding the semantic label "Cover Letter").
+                            if (input_type == 'file'
+                                    and label_text
+                                    and label_text.strip().lower() in _FILE_UI_WORDS):
+                                label_text = ''
                         except:
+                            pass
+
+                    # Method 3.5: Ancestor-walk — find a label in the closest form-field
+                    # container. Handles Greenhouse file-upload fields ("Cover Letter") and
+                    # conditional fields whose <label> is not linked via `for=id`.
+                    if not label_text:
+                        try:
+                            ancestor_label = await element.evaluate(r'''
+                                el => {
+                                    // Walk up the DOM, look for a <label> sibling or container label
+                                    let node = el.parentElement;
+                                    for (let depth = 0; depth < 7; depth++) {
+                                        if (!node || node === document.body) break;
+
+                                        // Prefer a <label> that is a direct child of this container
+                                        // and does NOT wrap the input itself
+                                        const directLabels = Array.from(
+                                            node.querySelectorAll(':scope > label, :scope > div > label')
+                                        );
+                                        for (const lbl of directLabels) {
+                                            const t = lbl.textContent.replace(/\*/g, '').trim();
+                                            if (t && t.length >= 2 && t.length <= 200) return t;
+                                        }
+
+                                        // Any <label> inside the container that doesn't wrap the input
+                                        const allLabels = Array.from(node.querySelectorAll('label'));
+                                        for (const lbl of allLabels) {
+                                            if (!lbl.contains(el)) {
+                                                const t = lbl.textContent.replace(/\*/g, '').trim();
+                                                if (t && t.length >= 2 && t.length <= 200) return t;
+                                            }
+                                        }
+
+                                        // Preceding sibling that looks like a label/heading
+                                        const prev = node.previousElementSibling;
+                                        if (prev) {
+                                            const tag = prev.tagName.toLowerCase();
+                                            if (['label', 'legend', 'h1', 'h2', 'h3', 'h4', 'p', 'span'].includes(tag)) {
+                                                const t = prev.textContent.replace(/\*/g, '').trim();
+                                                if (t && t.length >= 2 && t.length <= 200) return t;
+                                            }
+                                        }
+
+                                        node = node.parentElement;
+                                    }
+                                    return '';
+                                }
+                            ''')
+                            if ancestor_label:
+                                label_text = ancestor_label.strip().replace('*', '').strip()
+                        except Exception:
                             pass
 
                     # Method 4: Workday multiselect - label lives on the container div

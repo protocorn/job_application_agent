@@ -519,6 +519,15 @@ def _profile_has_swap_content(candidate: Dict[str, Any]) -> bool:
     return False
 
 
+def _normalized_project_title_for_swap(text: str) -> str:
+    """Normalize project title for equivalence checks across formatting/link variants."""
+    base = str(text or "").strip()
+    if "|" in base:
+        base = base.split("|", 1)[0].strip()
+    # Keep alnum only for robust comparisons
+    return re.sub(r"[^a-z0-9]+", "", base.lower())
+
+
 def _link_line_replacements(
     old_lines: List[Dict[str, Any]], new_urls: List[str]
 ) -> List[Dict[str, Any]]:
@@ -526,8 +535,8 @@ def _link_line_replacements(
         return []
     reps: List[Dict[str, Any]] = []
     if not new_urls:
-        for ol in old_lines:
-            reps.append({"old_text": ol["text"], "new_text": "", "type": "project_swap_link"})
+        # Preserve existing links when replacement project has no links.
+        # Removing links hurts resume quality and is usually unnecessary.
         return reps
     if len(old_lines) == 1:
         return [{"old_text": old_lines[0]["text"], "new_text": " · ".join(new_urls), "type": "project_swap_link"}]
@@ -535,7 +544,8 @@ def _link_line_replacements(
         if i < len(new_urls):
             reps.append({"old_text": ol["text"], "new_text": new_urls[i], "type": "project_swap_link"})
         else:
-            reps.append({"old_text": ol["text"], "new_text": "", "type": "project_swap_link"})
+            # Keep extra original link lines if we don't have enough new URLs.
+            continue
     return reps
 
 
@@ -1170,12 +1180,19 @@ CRITICAL OUTPUT FORMAT:
             candidate_projects = profile_projects or []
             if low_relevance_projects and candidate_projects:
                 used_names = {p['title_text'].strip().lower() for p, _ in projects_with_relevance}
+                used_normalized_names = {
+                    _normalized_project_title_for_swap(p['title_text'])
+                    for p, _ in projects_with_relevance
+                }
                 feasible_candidates = []
                 for candidate in candidate_projects:
                     name = str(candidate.get('name') or '').strip()
                     if not name or not _profile_has_swap_content(candidate):
                         continue
                     if name.lower() in used_names:
+                        continue
+                    if _normalized_project_title_for_swap(name) in used_normalized_names:
+                        # Skip no-op swaps where only link/date suffix differs.
                         continue
                     desc = str(candidate.get('description') or '').strip()
                     dates = str(candidate.get('dates') or candidate.get('date_range') or '').strip()
@@ -1196,9 +1213,12 @@ CRITICAL OUTPUT FORMAT:
                 swap_n = 0
                 for replace_project, _rel in low_relevance_projects:
                     candidate = None
+                    replace_norm = _normalized_project_title_for_swap(replace_project.get("title_text", ""))
                     for cand, _score in feasible_candidates:
                         cn = str(cand.get("name") or "").strip().lower()
                         if not cn or cn in used_names or cn in used_candidate_names:
+                            continue
+                        if _normalized_project_title_for_swap(cand.get("name") or "") == replace_norm:
                             continue
                         candidate = cand
                         break
@@ -1243,6 +1263,10 @@ REQUIREMENTS:
 - Keep all quantified data
 - Stay within {bullet.get('char_buffer', 20)} additional characters
 - Be truthful - only add keywords that make sense
+- Match original writing style for this bullet:
+  * preserve tense (past/present) used by the original bullet
+  * preserve punctuation pattern (if original has no trailing period, keep it that way)
+  * keep similarly concise sentence structure
 
 CRITICAL OUTPUT FORMAT:
 - Return ONLY the rewritten bullet text

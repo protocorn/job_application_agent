@@ -184,6 +184,7 @@ class UserProfile(Base):
 
     # Additional Info
     disabilities = Column(JSON)  # Array
+    race_ethnicity = Column(String)
     veteran_status = Column(String)
     visa_status = Column(String)
     visa_sponsorship = Column(String)
@@ -444,6 +445,7 @@ def _apply_incremental_migrations():
         "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS resume_text TEXT",
         "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS resume_filename VARCHAR(255)",
         "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS resume_file_base64 TEXT",
+        "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS race_ethnicity VARCHAR(255)",
         # AI Engine key config (added Mar 2026)
         "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS api_primary_mode VARCHAR(20)",
         "ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS api_secondary_mode VARCHAR(20)",

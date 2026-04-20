@@ -84,6 +84,14 @@ class GenericFormFillerV2Enhanced:
 
     MAX_ITERATIONS = 5
     DYNAMIC_CONTENT_WAIT_MS = 1000
+    _CACHED_OVERRIDE_ALLOWED_CATEGORIES = {
+        "text_input",
+        "textarea",
+        "dropdown",
+        "selection",
+        "radio_group",
+        "checkbox_group",
+    }
 
     def __init__(self, page: Page | Frame, action_recorder=None, user_id=None, full_auto_mode: bool = False):
         self.page = page
@@ -419,6 +427,13 @@ class GenericFormFillerV2Enhanced:
         """
         logger.info("🚀 Starting enhanced form filling with single-attempt strategy...")
 
+        # Start the debug reporter for this fill_form call
+        try:
+            import fill_debug_reporter as _fdr
+            _reporter = _fdr.start_report()
+        except Exception:
+            _reporter = None
+
         current_url = self.page.url
         self.completion_tracker.set_current_page(current_url)
 
@@ -536,6 +551,26 @@ class GenericFormFillerV2Enhanced:
         # Step 8: Look for Next/Continue button and click it (but never Submit)
         next_button_clicked = await self._try_click_next_button()
         result["next_button_clicked"] = next_button_clicked
+
+        # ── Debug report ──────────────────────────────────────────────────
+        try:
+            import fill_debug_reporter as _fdr
+            rptr = _fdr.get_reporter()
+            if rptr:
+                # Stamp human-intervention fields
+                for fh in result.get("requires_human", []):
+                    sid = fh.get("stable_id", "") or fh.get("field", "")
+                    rptr.record_human(sid, fh.get("field", sid), "")
+                # Stamp skipped fields
+                for sf in result.get("skipped_fields", []):
+                    sid = sf.get("stable_id", "") or sf.get("field", "")
+                    rptr.record_skip(sid, sf.get("field", sid), "",
+                                     sf.get("reason", ""))
+                debug_path = _fdr.finish_report(current_url)
+                if debug_path:
+                    logger.info(f"📋 Fill debug report saved: {debug_path}")
+        except Exception:
+            pass
 
         return result
 
@@ -994,6 +1029,42 @@ class GenericFormFillerV2Enhanced:
         else:
             fields_needing_ai = fields_needing_semantic
 
+        # PHASE 1.9: Silently skip optional file upload fields that have no content
+        # configured in the user's profile. Sending these to AI results in
+        # NEEDS_HUMAN_INPUT which forces human intervention — but cover letters,
+        # writing samples, etc. are always optional fields.
+        _OPTIONAL_FILE_LABEL_KEYWORDS = {
+            'cover letter', 'covering letter', 'letter of interest',
+            'writing sample', 'portfolio', 'work sample', 'additional attachment',
+        }
+        if fields_needing_ai:
+            still_needing_ai = []
+            for field in fields_needing_ai:
+                label_lower = field.get('label', '').lower()
+                category = field.get('field_category', '')
+                is_optional_file = (
+                    category == 'file_upload'
+                    and any(kw in label_lower for kw in _OPTIONAL_FILE_LABEL_KEYWORDS)
+                )
+                if is_optional_file:
+                    cover_val = (
+                        (profile or {}).get('cover_letter') or
+                        (profile or {}).get('cover_letter_path') or
+                        (profile or {}).get('cover_letter_text') or ''
+                    )
+                    if not str(cover_val).strip():
+                        logger.info(
+                            f"⏭️ Skipping optional file field '{field.get('label')}' "
+                            f"— no cover letter configured in profile"
+                        )
+                        result['skipped_fields'].append({
+                            "field": field.get('label', 'Unknown'),
+                            "reason": "Optional file field — not configured in profile"
+                        })
+                        continue
+                still_needing_ai.append(field)
+            fields_needing_ai = still_needing_ai
+
         # PHASE 2 & 3: Batch AI processing
         if fields_needing_ai:
             logger.info(f"🤖 Phase 2: Batch processing {len(fields_needing_ai)} fields with Gemini...")
@@ -1052,15 +1123,24 @@ class GenericFormFillerV2Enhanced:
             # Fill the field with cleaned value
             fill_result = await self.interactor.fill_field(field_data, cleaned_value, profile)
 
+            _fid  = self._get_field_id(field)
+            _flbl = field_label
+            _fcat = field.get('field_category', '')
+
             if fill_result['success']:
-                # Trust the fill result - it already verified success
-                # Log and store the CLEANED value (not the original from profile)
                 logger.info(f"✅ Deterministic: '{field_label}' = '{cleaned_value}'")
                 result["fields_by_method"]["deterministic"] += 1
                 result["filled_fields"][field_label] = cleaned_value
-
-                field_id = self._get_field_id(field)
-                self.completion_tracker.mark_field_completed(field_id, field_label, cleaned_value)
+                self.completion_tracker.mark_field_completed(_fid, _flbl, cleaned_value)
+                # Debug reporter
+                try:
+                    import fill_debug_reporter as _fdr
+                    r = _fdr.get_reporter()
+                    if r:
+                        r.record_fill(_fid, _flbl, _fcat, "deterministic", cleaned_value,
+                                      f"profile_field={mapping.profile_key}")
+                except Exception:
+                    pass
                 return True
             else:
                 logger.debug(f"⏭️ Deterministic fill failed for '{field_label}'")
@@ -1085,6 +1165,12 @@ class GenericFormFillerV2Enhanced:
         _user_gemini_context.  This prevents cached answers to job-specific
         questions (e.g. "Relocate to Seattle? → Yes") from being blindly
         reused on a different job posting.
+
+        Enhancement:
+        For user overrides with a mapped profile_field, if that profile value is
+        currently missing, we can fall back to the user-cached value (when safe).
+        This prevents deadlocks where a reusable personal field was learned from
+        human input but is absent in Launchway profile data.
         """
         field_label    = field.get('label', 'Unknown')
         field_category = field.get('field_category', 'text_input')
@@ -1100,20 +1186,63 @@ class GenericFormFillerV2Enhanced:
                 logger.debug(f"⏭️ No learned pattern for '{field_label}'")
                 return False
 
-            # Only proceed when profile_field is mapped — that means the
-            # profiler confirmed this is a stable, reusable personal fact.
-            # NULL profile_field means the answer may be job-specific; those
-            # entries are passed to Gemini as hints, not auto-filled.
-            if not learned_pattern.profile_field:
-                logger.debug(
-                    f"⏭️ User override for '{field_label}' has no profile_field mapping — "
-                    f"skipping direct fill, will surface as Gemini context hint"
-                )
-                return False
+            using_cached_override_fallback = False
+            value = None
 
-            value = self.learned_mapper.get_profile_value(
-                profile, learned_pattern.profile_field
-            )
+            # If profile_field is unmapped (NULL), still allow direct reuse of a
+            # user override cached value for safe categories. This is essential
+            # for assisted auto-apply where users intentionally override fields
+            # that are not represented in Launchway profile schema.
+            if not learned_pattern.profile_field:
+                if (
+                    learned_pattern.source == "user_override"
+                    and learned_pattern.cached_value
+                    and self._can_reuse_cached_override(field_category)
+                ):
+                    value = learned_pattern.cached_value
+                    using_cached_override_fallback = True
+                    logger.info(
+                        f"♻️ Using cached user override for unmapped field '{field_label}'"
+                    )
+                else:
+                    logger.debug(
+                        f"⏭️ User override for '{field_label}' has no profile_field mapping — "
+                        f"skipping direct fill, will surface as Gemini context hint"
+                    )
+                    return False
+            else:
+                value = self.learned_mapper.get_profile_value(
+                    profile, learned_pattern.profile_field
+                )
+
+            if not value:
+                # If this came from a user override and we have a cached value,
+                # use it when the field category is safely reusable.
+                if (
+                    learned_pattern.source == "user_override"
+                    and learned_pattern.cached_value
+                    and self._can_reuse_cached_override(field_category)
+                ):
+                    value = learned_pattern.cached_value
+                    using_cached_override_fallback = True
+                    logger.info(
+                        f"♻️ Using cached user override for '{field_label}' "
+                        f"(profile missing '{learned_pattern.profile_field}')"
+                    )
+                else:
+                    logger.debug(
+                        f"⏭️ Learned pattern found '{field_label}' → "
+                        f"{learned_pattern.profile_field}, but no value in profile"
+                    )
+                    if learned_pattern.source == "global":
+                        await self.pattern_recorder.record_pattern(
+                            field_label,
+                            learned_pattern.profile_field,
+                            field_category,
+                            success=False,
+                            user_id=self.user_id,
+                        )
+                    return False
 
             if not value:
                 logger.debug(
@@ -1160,11 +1289,17 @@ class GenericFormFillerV2Enhanced:
             fill_result = await self.interactor.fill_field(field_data, cleaned_value, profile)
 
             if fill_result['success']:
-                source_desc = (
-                    f"from {learned_pattern.profile_field}"
-                    if learned_pattern.profile_field
-                    else "cached human fill"
-                )
+                if using_cached_override_fallback:
+                    source_desc = (
+                        f"cached user override "
+                        f"(profile missing {learned_pattern.profile_field})"
+                    )
+                else:
+                    source_desc = (
+                        f"from {learned_pattern.profile_field}"
+                        if learned_pattern.profile_field
+                        else "cached human fill"
+                    )
                 logger.info(
                     f"✅ Learned Pattern: '{field_label}' = '{cleaned_value}' "
                     f"({source_desc}, confidence: {learned_pattern.confidence_score:.2f})"
@@ -1200,6 +1335,13 @@ class GenericFormFillerV2Enhanced:
         except Exception as e:
             logger.error(f"❌ Error in learned pattern attempt for '{field_label}': {e}")
             return False
+
+    def _can_reuse_cached_override(self, field_category: str) -> bool:
+        """
+        Allow cached user-override fallback only for reusable field categories.
+        File uploads and unknown/custom categories should continue through AI/human.
+        """
+        return (field_category or "").lower().strip() in self._CACHED_OVERRIDE_ALLOWED_CATEGORIES
 
     async def _try_semantic(
         self,
@@ -1480,9 +1622,7 @@ class GenericFormFillerV2Enhanced:
                 fill_result = await self.interactor.fill_field(field_data, cleaned_value, profile)
 
                 if fill_result['success']:
-                    # Log differently for generated text vs mapped values
                     if mapping_type == 'manual':
-                        # Truncate long text for logging
                         display_value = value[:100] + '...' if len(value) > 100 else value
                         logger.info(f"✅ AI Generated: '{field_label}' = '{display_value}'")
                     else:
@@ -1493,6 +1633,17 @@ class GenericFormFillerV2Enhanced:
                     self.completion_tracker.mark_field_completed(field_id, field_label, value)
                     self._lock_ai_filled(field_label, field.get('field_category', ''))
                     filled_count += 1
+                    # Debug reporter
+                    try:
+                        import fill_debug_reporter as _fdr
+                        r = _fdr.get_reporter()
+                        if r:
+                            r.record_fill(field_id, field_label,
+                                          field.get('field_category', ''),
+                                          "ai", value,
+                                          f"type={mapping_type} profile_field={mapping_data.get('profile_field','?')}")
+                    except Exception:
+                        pass
 
                     # NEW: Record successful AI mapping as learned pattern (except manual/essay fields)
                     if mapping_type not in ['manual', 'needs_human_input']:

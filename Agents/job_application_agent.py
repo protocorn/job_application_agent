@@ -639,6 +639,36 @@ class RefactoredJobAgent:
             except Exception:
                 pass
 
+    async def continue_current_application(self) -> None:
+        """
+        Resume automation on the CURRENT page after human intervention.
+        Unlike process_link(), this does not open a new tab or navigate back
+        to the job URL; it resumes directly from what the user currently sees.
+        """
+        if not self.page or self.page.is_closed():
+            raise RuntimeError("Current application page is not available to resume.")
+
+        logger.info("🔁 Resuming current application from existing page context")
+        self._log_to_jobs("info", "🔁 Resuming current application from the current browser page")
+
+        # Clear previous handoff flag before retrying.
+        self.keep_browser_open_for_human = False
+
+        # Ensure all components are bound to the current page.
+        self._set_context(self.page)
+
+        # Re-run state machine from AI-guided analysis on current page state.
+        self.state_machine = StateMachine(initial_state='ai_guided_navigation', page=self.page)
+        self._register_states()
+        final_app_state = await self.state_machine.run()
+        self.last_state_machine_final_state = (
+            final_app_state.context.get('final_state')
+            if final_app_state and hasattr(final_app_state, 'context')
+            else None
+        )
+        if self.last_state_machine_final_state:
+            logger.info(f"🏁 Resume run final state: {self.last_state_machine_final_state}")
+
     def _register_states(self):
         """Registers all the state handlers with the state machine."""
         if not self.state_machine:
@@ -1497,6 +1527,9 @@ Return ONLY a JSON object:
     async def _handle_form_submission_intelligent(self, state: ApplicationState) -> str:
         """Intelligently handle form submission."""
         try:
+            # Fill first, then search/click next or submit buttons.
+            await self._pre_button_fill_pass(state, source="submission_intelligent")
+
             # Check for Next or Submit buttons
             next_button = await self.next_button_detector.detect()
             submit_button = await self.submit_detector.detect()
@@ -1541,6 +1574,10 @@ Return ONLY a JSON object:
             logger.warning("⚠️ AI requested click_element but no target_text was provided")
             state.context['human_intervention_reason'] = "AI requested clicking an element but did not provide a label to locate."
             return 'human_intervention'
+
+        # For non-apply clicks during application flow, try fill methods first.
+        if state.context.get('has_clicked_apply') and 'apply' not in target_text.lower():
+            await self._pre_button_fill_pass(state, source=f"click_element:{target_text[:40]}")
 
         logger.info(f"🖱️ Attempting to click element labeled '{target_text}'")
 
@@ -1609,6 +1646,10 @@ Return ONLY a JSON object:
         try:
             reason = page_analysis.get('reason', '').lower()
             elements_detected = page_analysis.get('elements_detected', [])
+
+            # After apply flow has started, attempt fill strategies before
+            # searching/clicking generic navigation buttons.
+            await self._pre_button_fill_pass(state, source="ai_navigation")
 
             # PRIORITY 1: Handle "Apply Now" buttons (most common case in iframes)
             apply_now_keywords = ['apply now', 'start applying', 'submit application']
@@ -2578,6 +2619,73 @@ Return ONLY a JSON object:
         else:
             logger.info("📝 No work experience section detected")
 
+    async def _pre_button_fill_pass(self, state: ApplicationState, source: str = "unknown") -> None:
+        """
+        Before clicking non-apply buttons, attempt every available fill strategy:
+        1) Main form filler (deterministic + AI field mapping)
+        2) Section fillers (education/work)
+        3) AI recovery for remaining validation/missing-field errors
+
+        This is intentionally skipped on job-listing/apply-discovery flow.
+        It only runs after we are already in the application flow.
+        """
+        try:
+            # Keep apply-button discovery/click flow unchanged.
+            if not state.context.get('has_clicked_apply'):
+                return
+
+            current_url = (self.current_context.url or "").strip()
+            if not current_url:
+                return
+
+            # Avoid repeatedly running this expensive pass on the same page URL.
+            if state.context.get('pre_button_fill_last_url') == current_url:
+                return
+
+            # Re-entrancy guard.
+            if state.context.get('pre_button_fill_in_progress'):
+                return
+
+            state.context['pre_button_fill_in_progress'] = True
+            logger.info(f"🧪 Pre-button fill pass ({source}) on: {current_url}")
+
+            profile = state.context.get('profile')
+            if not isinstance(profile, dict):
+                profile = _load_profile_data(user_id=self.user_id, profile_data=self._preloaded_profile)
+            profile = await self._prepare_account_password_for_form(profile)
+            state.context['profile'] = profile
+
+            # Method 1: Main form filler (includes deterministic + AI mapping paths)
+            try:
+                fill_result = await self.form_filler.fill_form(profile)
+                logger.info(
+                    "🧪 Pre-button form pass: filled=%s deterministic=%s ai=%s",
+                    fill_result.get('total_fields_filled', 0),
+                    fill_result.get('deterministic_count', 0),
+                    fill_result.get('ai_count', 0),
+                )
+            except Exception as fill_err:
+                logger.debug(f"Pre-button main fill pass failed: {fill_err}")
+
+            # Method 2: Section fillers (education/work experience)
+            try:
+                await self._fill_sections_if_needed(profile)
+            except Exception as section_err:
+                logger.debug(f"Pre-button section fill pass failed: {section_err}")
+
+            # Method 3: AI recovery for remaining missing/error fields
+            try:
+                errors = await self._detect_form_errors()
+                if errors:
+                    logger.info(f"🧪 Pre-button AI recovery with {len(errors)} detected issue(s)")
+                    await self._fill_missing_fields_with_ai(profile, errors)
+            except Exception as ai_err:
+                logger.debug(f"Pre-button AI recovery failed: {ai_err}")
+
+            state.context['pre_button_fill_last_url'] = current_url
+        finally:
+            state.context['pre_button_fill_in_progress'] = False
+
     async def _handle_form_submission_with_error_recovery(self, state: ApplicationState, profile: Dict[str, Any]) -> Optional[str]:
         """
         Smart form submission with error recovery:
@@ -2587,6 +2695,9 @@ Return ONLY a JSON object:
         4. Resume after human intervention
         """
         logger.info("🔄 Attempting form submission with error recovery...")
+
+        # Ensure we attempt all fill strategies before any next/submit button actions.
+        await self._pre_button_fill_pass(state, source="submission_with_recovery")
         
         # Step 1: Check for Next or Submit button
         next_button = await self.next_button_detector.detect()

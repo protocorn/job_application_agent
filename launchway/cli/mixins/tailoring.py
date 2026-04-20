@@ -378,6 +378,25 @@ class TailoringMixin:
             f"{self.current_user.get('last_name', '')}".strip()
             or "Resume"
         )
+        # Best-effort metadata extraction so tailored files use real company/title
+        # (avoids generic names like Company_1 and duplicate resume filenames).
+        resolved_company = f"Company_{idx}"
+        resolved_title = f"Job {idx}"
+        try:
+            if hasattr(self, "_extract_job_metadata_with_llm"):
+                c, t = self._extract_job_metadata_with_llm(
+                    job_url=job_url,
+                    company="Unknown Company",
+                    title=f"Job #{idx}",
+                    description=job_desc or "",
+                )
+                unknown_values = {"", "unknown", "unknown company", "n/a", "na"}
+                if str(c or "").strip().lower() not in unknown_values:
+                    resolved_company = str(c).strip()
+                if str(t or "").strip().lower() not in {"", "unknown", "unknown position", "n/a", "na"}:
+                    resolved_title = str(t).strip()
+        except Exception as _meta_err:
+            logger.debug(f"Could not resolve job metadata for pre-tailor naming: {_meta_err}")
 
         self.print_info("  Tailoring resume… (this may take 1-2 minutes)")
         try:
@@ -397,8 +416,8 @@ class TailoringMixin:
             tailor_kwargs = dict(
                 original_resume_url=resume_url_for_tailor,
                 job_description=job_desc,
-                job_title=f"Job {idx}",
-                company=f"Company {idx}",
+                job_title=resolved_title,
+                company=resolved_company,
                 credentials=google_credentials,
                 user_full_name=user_full_name,
                 user_id=str(self.current_user.get("id")),
@@ -461,6 +480,13 @@ class TailoringMixin:
 
         if result["resume_url"]:
             print(f"\n  Google Doc: {Colors.OKCYAN}{result['resume_url']}{Colors.ENDC}")
+            if self.get_input_yn("  Open Google Doc to review/edit? (y/n, default: n): ", default="n"):
+                try:
+                    import webbrowser
+                    webbrowser.open(result["resume_url"])
+                    self.get_input("  Press Enter after you finish reviewing/editing in Google Docs: ")
+                except Exception:
+                    self.print_info(f"  Open manually: {result['resume_url']}")
 
         if isinstance(tailoring_result, dict):
             match_stats = tailoring_result.get("match_stats", {})
@@ -493,6 +519,26 @@ class TailoringMixin:
                 result["did_tailor"] = False
             else:
                 result["skip"] = True
+        else:
+            # IMPORTANT: If user edited the tailored Google Doc before confirming,
+            # refresh PDF from the latest doc state so apply uses final content.
+            if result.get("resume_url"):
+                try:
+                    import os
+                    import re
+                    import tempfile
+
+                    def _safe(s: str) -> str:
+                        token = re.sub(r"[^A-Za-z0-9]+", "_", (s or "").strip()).strip("_")
+                        return token or "Resume"
+
+                    fresh_name = f"{_safe(user_full_name)}_Resume_{_safe(resolved_company)}.pdf"
+                    fresh_pdf_path = os.path.join(tempfile.gettempdir(), fresh_name)
+                    if self.api.download_resume_pdf(fresh_pdf_path, resume_url=result["resume_url"]):
+                        result["pdf_path"] = fresh_pdf_path
+                        self.print_info(f"  Using latest edited resume PDF: {fresh_pdf_path}")
+                except Exception as _fresh_pdf_err:
+                    logger.debug(f"Could not refresh tailored PDF after review/edit: {_fresh_pdf_err}")
 
         return result
 

@@ -4,6 +4,7 @@ Health Monitor and Error Recovery System
 Monitors system health and provides error recovery mechanisms
 """
 
+import atexit
 import logging
 import threading
 import time
@@ -414,3 +415,175 @@ def shutdown_health_monitor():
         if _global_health_monitor is not None:
             _global_health_monitor.stop()
             _global_health_monitor = None
+
+
+# --- Application runtime bootstrap (resource manager + health monitor) ---
+
+_runtime_initialized = False
+
+
+def initialize_system():
+    """
+    Initialize resource manager and health monitor, register recovery callbacks,
+    and schedule graceful shutdown via atexit.
+    """
+    global _runtime_initialized
+
+    if _runtime_initialized:
+        logger.warning("System already initialized")
+        return
+
+    try:
+        logger.info("=" * 80)
+        logger.info("🚀 Initializing Job Application Agent System")
+        logger.info("=" * 80)
+
+        from resource_manager import get_resource_manager
+
+        resource_manager = get_resource_manager()
+        logger.info("✅ Resource Manager initialized")
+        logger.info(f"   Max workers: {resource_manager.max_workers}")
+        logger.info(
+            f"   Retry config: max_attempts={resource_manager.retry_handler.config.max_attempts}"
+        )
+        logger.info(
+            f"   Circuit breaker threshold: {resource_manager.circuit_breaker.config.failure_threshold}"
+        )
+
+        health_monitor = get_health_monitor()
+        logger.info("✅ Health Monitor initialized")
+        logger.info(f"   Check interval: {health_monitor.check_interval}s")
+        logger.info(f"   CPU threshold: {health_monitor.cpu_threshold}%")
+        logger.info(f"   Memory threshold: {health_monitor.memory_threshold}%")
+
+        _register_recovery_callbacks(health_monitor)
+        atexit.register(shutdown_system)
+
+        _runtime_initialized = True
+
+        logger.info("=" * 80)
+        logger.info("✅ System initialization complete")
+        logger.info("=" * 80)
+
+    except Exception as e:
+        logger.error(f"❌ System initialization failed: {e}")
+        import traceback
+
+        logger.error(traceback.format_exc())
+        raise
+
+
+def shutdown_system():
+    """Gracefully shut down health monitor and resource manager."""
+    global _runtime_initialized
+
+    if not _runtime_initialized:
+        return
+
+    try:
+        logger.info("=" * 80)
+        logger.info("🛑 Shutting down Job Application Agent System")
+        logger.info("=" * 80)
+
+        try:
+            from resource_manager import get_resource_manager
+
+            rm = get_resource_manager()
+            hm = get_health_monitor()
+
+            logger.info("📊 Final Statistics:")
+            logger.info(f"   Resource Manager: {rm.get_stats()}")
+            logger.info(
+                f"   Health: Total errors: {hm.total_errors}, Recoveries: {hm.total_recoveries}"
+            )
+        except Exception:
+            pass
+
+        shutdown_health_monitor()
+        logger.info("✅ Health Monitor shutdown")
+
+        from resource_manager import shutdown_resource_manager
+
+        shutdown_resource_manager()
+        logger.info("✅ Resource Manager shutdown")
+
+        _runtime_initialized = False
+
+        logger.info("=" * 80)
+        logger.info("✅ System shutdown complete")
+        logger.info("=" * 80)
+
+    except Exception as e:
+        logger.error(f"❌ Error during system shutdown: {e}")
+        import traceback
+
+        logger.error(traceback.format_exc())
+
+
+def _register_recovery_callbacks(health_monitor: HealthMonitor):
+    """Register error recovery callbacks on the global health monitor."""
+
+    def recover_connection_error(error):
+        logger.info(f"🔧 Attempting connection error recovery for session {error.session_id}")
+        try:
+            from resource_manager import get_resource_manager
+
+            rm = get_resource_manager()
+            rm.cleanup_all_loops()
+            logger.info("✅ Connection error recovery completed")
+        except Exception as e:
+            logger.error(f"Connection recovery failed: {e}")
+
+    def recover_thread_exhaustion(error):
+        logger.info("🔧 Attempting thread exhaustion recovery")
+        try:
+            from resource_manager import get_resource_manager
+
+            rm = get_resource_manager()
+            rm.cleanup_all_loops()
+            stats = rm.get_stats()
+            logger.info(f"   After cleanup: {stats}")
+            logger.info("✅ Thread exhaustion recovery completed")
+        except Exception as e:
+            logger.error(f"Thread recovery failed: {e}")
+
+    health_monitor.register_recovery_callback("connection_closed", recover_connection_error)
+    health_monitor.register_recovery_callback("thread_exhaustion", recover_thread_exhaustion)
+
+    logger.info("✅ Registered error recovery callbacks")
+
+
+def get_system_status() -> dict:
+    """Aggregate resource manager and health monitor status for APIs."""
+    if not _runtime_initialized:
+        return {"initialized": False, "message": "System not initialized"}
+
+    try:
+        from resource_manager import get_resource_manager
+
+        rm = get_resource_manager()
+        hm = get_health_monitor()
+
+        return {
+            "initialized": True,
+            "resource_manager": rm.get_stats(),
+            "health": hm.get_health_report(),
+        }
+    except Exception as e:
+        logger.error(f"Error getting system status: {e}")
+        return {"initialized": True, "error": str(e)}
+
+
+def report_error(
+    error_type: str,
+    error_message: str,
+    session_id: Optional[str] = None,
+    recoverable: bool = True,
+):
+    """Report an error to the health monitor (no-op if runtime not initialized)."""
+    try:
+        if _runtime_initialized:
+            hm = get_health_monitor()
+            hm.record_error(error_type, error_message, session_id, recoverable)
+    except Exception as e:
+        logger.error(f"Failed to report error: {e}")

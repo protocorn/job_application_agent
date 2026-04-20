@@ -320,6 +320,31 @@ class LaunchwayClient:
             logger.error(f"Failed to fetch applied job URLs: {e}")
             return set()
 
+    def get_ats_confidence(self, url: str) -> Dict[str, Any]:
+        """
+        Pre-run ATS compatibility check for a job URL.
+
+        Returns detected ATS platform, support tier, and a confidence score
+        (blended from URL-pattern baseline + user's personal history on that
+        domain).  Never raises — on network/auth failure returns a safe default
+        so callers can always proceed.
+
+        Keys in the returned dict:
+            success           bool
+            ats_name          str   e.g. "Greenhouse"
+            ats_tier          str   "supported" | "partial" | "unsupported"
+            final_confidence  float 0.0 – 1.0
+            personal          dict  { total_apps_attempted, completed_apps,
+                                      human_fills, human_corrections,
+                                      total_fields_learned }
+        """
+        try:
+            return self._get("/api/cli/ats-confidence", params={"url": url})
+        except Exception as exc:
+            logger.debug(f"get_ats_confidence failed (non-fatal): {exc}")
+            return {"success": False, "ats_name": "Unknown", "ats_tier": "unsupported",
+                    "final_confidence": 0.5, "personal": {}}
+
     def save_user_field_overrides(self, overrides: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Batch-upsert human-captured field overrides to the server.

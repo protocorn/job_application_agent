@@ -1,5 +1,6 @@
 """Browser profile setup mixin - one-time persistent login."""
 
+import asyncio
 import logging
 from launchway.cli.utils import Colors
 
@@ -96,6 +97,9 @@ class BrowserSetupMixin:
             print(f"  Location: {profile_info['profile_path']}")
             print(f"\nYou're now ready to use automated job applications!")
 
+        except asyncio.CancelledError:
+            # Ctrl+C during the browser setup wait — treat as intentional exit.
+            self.print_info("Browser setup interrupted by user.")
         except Exception as e:
             self.print_error(f"Profile setup failed: {str(e)}")
             logger.error(f"Browser profile setup error: {e}", exc_info=True)

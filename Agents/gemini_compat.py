@@ -82,6 +82,46 @@ def _extract_text(response: Any) -> str:
     return ""
 
 
+# ── GenerationConfig ─────────────────────────────────────────────────────────
+
+class GenerationConfig:
+    """
+    Drop-in replacement for google.generativeai.GenerationConfig.
+    Stores generation parameters and converts to google.genai types on demand.
+    """
+
+    def __init__(
+        self,
+        temperature: float | None = None,
+        max_output_tokens: int | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
+        **kwargs,
+    ):
+        self.temperature = temperature
+        self.max_output_tokens = max_output_tokens
+        self.top_p = top_p
+        self.top_k = top_k
+        self._extra = kwargs
+
+    def to_genai_config(self):
+        """Convert to google.genai GenerateContentConfig."""
+        try:
+            from google.genai import types as _types
+            params = {}
+            if self.temperature is not None:
+                params["temperature"] = self.temperature
+            if self.max_output_tokens is not None:
+                params["max_output_tokens"] = self.max_output_tokens
+            if self.top_p is not None:
+                params["top_p"] = self.top_p
+            if self.top_k is not None:
+                params["top_k"] = self.top_k
+            return _types.GenerateContentConfig(**params)
+        except Exception:
+            return None
+
+
 # ── GenerativeModel ──────────────────────────────────────────────────────────
 
 class GenerativeModel:
@@ -123,7 +163,18 @@ class GenerativeModel:
             prompt = str(contents)
 
         client = _genai_new.Client(api_key=api_key)
-        raw = client.models.generate_content(model=self.model_name, contents=prompt)
+        gen_config = None
+        raw_config = kwargs.get("generation_config")
+        if raw_config is not None:
+            if isinstance(raw_config, GenerationConfig):
+                gen_config = raw_config.to_genai_config()
+            # If someone passed a native google.genai config, pass it through
+            elif hasattr(raw_config, "__class__") and "GenerateContentConfig" in type(raw_config).__name__:
+                gen_config = raw_config
+        call_kwargs = {"model": self.model_name, "contents": prompt}
+        if gen_config is not None:
+            call_kwargs["config"] = gen_config
+        raw = client.models.generate_content(**call_kwargs)
         return _CompatResponse(_extract_text(raw))
 
 
@@ -141,6 +192,7 @@ class _CompatNamespace:
 
     # Expose classes as attributes so isinstance checks work
     GenerativeModel = GenerativeModel
+    GenerationConfig = GenerationConfig
 
     @staticmethod
     def configure(api_key: str = "", **kwargs) -> None:

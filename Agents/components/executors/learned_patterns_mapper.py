@@ -221,9 +221,8 @@ class LearnedPatternsMapper:
                 'min_confidence': self.MIN_CONFIDENCE_USER_OVERRIDE,
             }).first()
 
-            session.close()
-
             if result:
+                session.close()
                 return LearnedPattern(
                     profile_field=result[1] or "",
                     field_category=result[2] or field_category,
@@ -280,6 +279,7 @@ class LearnedPatternsMapper:
             except Exception:
                 pass  # pg_trgm not available; that's fine
 
+            session.close()
             return None
 
         except Exception as e:

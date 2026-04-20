@@ -470,7 +470,7 @@ def handle_project_analysis(payload: Dict[str, Any]) -> Dict[str, Any]:
             projects_data,
             job_keywords,
             payload.get('required_technologies', []),
-            payload.get('job_domain')
+            job_description=job_description,
         )
         
         # Categorize results
@@ -494,7 +494,7 @@ def handle_project_analysis(payload: Dict[str, Any]) -> Dict[str, Any]:
             projects_data,
             job_keywords,
             payload.get('required_technologies', []),
-            payload.get('job_domain'),
+            job_description=job_description,
             min_improvement_threshold=15.0
         )
         

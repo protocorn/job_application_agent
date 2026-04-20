@@ -7,6 +7,7 @@ so that data round-trips correctly through POST /api/profile.
 """
 
 import logging
+import os
 from datetime import datetime
 from launchway.api_client import LaunchwayAPIError
 from launchway.cli.utils import Colors
@@ -127,7 +128,9 @@ class ProfileMixin:
 
     def view_profile(self):
         self.clear_screen()
-        self.print_header("YOUR PROFILE")
+        # Visible runtime marker so users can immediately confirm patched code is active.
+        self.print_header("YOUR PROFILE [RACE_PATCH_V4]")
+        print(f"  [PROFILE DEBUG] build=race_patch_v3 file={__file__}")
 
         if not self.current_profile:
             self.print_warning("No profile data available.")
@@ -135,6 +138,15 @@ class ProfileMixin:
             return
 
         p = self.current_profile
+
+        # Optional runtime debug for profile shape mismatches.
+        # Enable with: $env:LAUNCHWAY_PROFILE_DEBUG=\"1\"
+        profile_debug = os.getenv("LAUNCHWAY_PROFILE_DEBUG", "").strip().lower() in {"1", "true", "yes", "y"}
+        if profile_debug:
+            print(f"{Colors.WARNING}[PROFILE DEBUG] race_ethnicity key present: {'race_ethnicity' in p}{Colors.ENDC}")
+            print(f"{Colors.WARNING}[PROFILE DEBUG] race_ethnicity value: {p.get('race_ethnicity', '<missing>')!r}{Colors.ENDC}")
+            eeo_keys = [k for k in p.keys() if "race" in str(k).lower() or "ethnic" in str(k).lower() or "veteran" in str(k).lower() or "visa" in str(k).lower()]
+            print(f"{Colors.WARNING}[PROFILE DEBUG] EEO-like keys from API: {eeo_keys}{Colors.ENDC}\n")
 
         def section(title):
             print(f"\n{Colors.BOLD}{Colors.OKCYAN}{title}{Colors.ENDC}")
@@ -207,6 +219,8 @@ class ProfileMixin:
         section("EEO / Compliance")
         row("Visa Status",        "visa status")
         row("Visa Sponsorship",   "visa sponsorship")
+        race_value = p.get("race_ethnicity") or p.get("race ethnicity") or p.get("race/ethnicity") or ""
+        print(f"  {'Race / Ethnicity':<28} {race_value or '-'}")
         row("Veteran Status",     "veteran status")
         row("Disabilities",       "disabilities", _list_str)
 
@@ -969,6 +983,7 @@ class ProfileMixin:
     def update_eeo_info(self):
         self.clear_screen()
         self.print_header("EEO / COMPLIANCE INFO")
+        print(f"  [PROFILE DEBUG] build=race_patch_v3 file={__file__}\n")
         print("  This information is used to answer optional diversity and")
         print("  compliance questions on job applications.\n")
         print("  Leave blank to keep the current value.\n")
@@ -981,6 +996,18 @@ class ProfileMixin:
         val = _ask("Visa Sponsorship Required? (yes/no/not required)", p.get("visa sponsorship"))
         visa_sponsorship = val or None
 
+        # Race / Ethnicity — shown with guidance so users know what to enter
+        print()
+        print(f"  {Colors.OKCYAN}Race / Ethnicity{Colors.ENDC}")
+        print("  Common values: White, Black or African American, Asian,")
+        print("    Hispanic or Latino, Native American, Pacific Islander,")
+        print("    Two or more races,  Prefer not to say")
+        print("  Enter exactly what you want the agent to select on EEO forms.")
+        print("  'Prefer not to say' will make the agent look for an opt-out option.")
+        current_race = p.get("race_ethnicity") or p.get("race ethnicity") or p.get("race/ethnicity") or ""
+        val = _ask("Race / Ethnicity", current_race or None)
+        race_ethnicity = val or None
+
         val = _ask("Veteran Status (e.g. Not a veteran, Veteran, etc.)", p.get("veteran status"))
         veteran_status = val or None
 
@@ -990,10 +1017,14 @@ class ProfileMixin:
         )
 
         changes = {}
-        if visa_status:          changes["visa status"]     = visa_status
+        if visa_status:          changes["visa status"]      = visa_status
         if visa_sponsorship:     changes["visa sponsorship"] = visa_sponsorship
-        if veteran_status:       changes["veteran status"]  = veteran_status
-        if disabilities_list:    changes["disabilities"]    = disabilities_list
+        if race_ethnicity:
+            # Write both key variants so older/newer backends both persist it.
+            changes["race_ethnicity"] = race_ethnicity
+            changes["race ethnicity"] = race_ethnicity
+        if veteran_status:       changes["veteran status"]   = veteran_status
+        if disabilities_list:    changes["disabilities"]     = disabilities_list
 
         if not changes:
             self.print_warning("No changes made.")
@@ -1001,6 +1032,22 @@ class ProfileMixin:
             return
         if self._save_profile_changes(changes):
             self.print_success("EEO / compliance info updated!")
+            # Verify persistence immediately after save so backend key-mapping
+            # mismatches are visible to the user.
+            persisted_race = (
+                (self.current_profile or {}).get("race_ethnicity")
+                or (self.current_profile or {}).get("race ethnicity")
+                or (self.current_profile or {}).get("race/ethnicity")
+                or ""
+            )
+            if race_ethnicity:
+                if persisted_race.strip().lower() == race_ethnicity.strip().lower():
+                    self.print_info(f"Race / Ethnicity saved as: {persisted_race}")
+                else:
+                    self.print_warning(
+                        "Race / Ethnicity did not persist after save. "
+                        f"Entered='{race_ethnicity}', ReadBack='{persisted_race or '-'}'."
+                    )
         self.pause()
 
     def update_other_links(self):

@@ -169,6 +169,11 @@ def get_doc_id_from_url(url):
         return match.group(1)
     return None
 
+
+def _sanitize_doc_token(value: str, fallback: str) -> str:
+    token = re.sub(r"[^A-Za-z0-9]+", "_", str(value or "").strip()).strip("_")
+    return token or fallback
+
 def copy_google_doc(drive_service, doc_id, new_title):
     """Creates a copy of the specified Google Doc."""
     try:
@@ -669,15 +674,44 @@ JOB DESCRIPTION:
             text = re.sub(r'\n?```$', '', text.strip())
             text = text.strip()
 
-        # Attempt strict parse first; fall back to a lenient extractor
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            # Extract the first {...} block in case Gemini added explanation text
-            match = re.search(r'\{.*\}', text, re.DOTALL)
-            if match:
-                return json.loads(match.group(0))
-            raise
+        def _normalize_keywords_payload(raw_obj):
+            if not isinstance(raw_obj, dict):
+                raise ValueError("Keyword payload is not a JSON object")
+            out = {
+                "required_skills": raw_obj.get("required_skills", []),
+                "preferred_skills": raw_obj.get("preferred_skills", []),
+                "key_themes": raw_obj.get("key_themes", []),
+                "prioritized_keywords": raw_obj.get("prioritized_keywords", []),
+            }
+            for key, value in list(out.items()):
+                if isinstance(value, str):
+                    out[key] = [v.strip() for v in value.split(",") if v.strip()]
+                elif isinstance(value, list):
+                    out[key] = [str(v).strip() for v in value if str(v).strip()]
+                else:
+                    out[key] = []
+            return out
+
+        # Attempt strict parse first; then lenient normalization for common model glitches.
+        candidate_texts = [text]
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if match:
+            candidate_texts.append(match.group(0))
+
+        for candidate in candidate_texts:
+            # Pass 1: strict JSON
+            try:
+                return _normalize_keywords_payload(json.loads(candidate))
+            except Exception:
+                pass
+            # Pass 2: remove trailing commas before } or ]
+            try:
+                cleaned = re.sub(r',\s*([}\]])', r'\1', candidate)
+                return _normalize_keywords_payload(json.loads(cleaned))
+            except Exception:
+                pass
+
+        raise ValueError("Could not parse keyword extraction JSON")
     except Exception as e:
         print(f"Warning: Keyword extraction failed ({e}), continuing without keywords")
         return {
@@ -778,6 +812,33 @@ def _extracts_quantified_data(original_text):
     ]
     return any(re.search(p, original_text) for p in quantified_patterns)
 
+
+def _extract_protected_tokens(text: str) -> List[str]:
+    """Extract URL/contact-like tokens that must not be altered by AI edits."""
+    if not text:
+        return []
+    patterns = [
+        r'https?://[^\s)]+',
+        r'www\.[^\s)]+',
+        r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}',
+        r'\b(?:github|linkedin)/[^\s|,;]+',
+        r'\b[a-z0-9][a-z0-9.-]+\.(?:com|io|dev|ai|app|org|net|edu)(?:/[^\s|,;]*)?\b',
+    ]
+    tokens: List[str] = []
+    for p in patterns:
+        tokens.extend(re.findall(p, text, flags=re.IGNORECASE))
+    # Normalize for robust comparison
+    return sorted({t.strip().lower() for t in tokens if str(t).strip()})
+
+
+def _changes_protected_link_or_contact_text(original_text: str, updated_text: str) -> bool:
+    """True if replacement changes URL/contact-like tokens from original text."""
+    original_tokens = _extract_protected_tokens(original_text)
+    if not original_tokens:
+        return False
+    updated_tokens = _extract_protected_tokens(updated_text)
+    return original_tokens != updated_tokens
+
 def _removes_quantified_data(original_text, updated_text):
     """Check if updated text removes quantified data that was in original."""
     # Extract numbers from both
@@ -827,6 +888,8 @@ def _validate_replacements(raw_replacements, line_metadata=None, safety_margin=0
             reason = 'header_text'
         elif _contains_banned_phrases(updated_text):
             reason = 'banned_phrase'
+        elif _changes_protected_link_or_contact_text(original_text, updated_text):
+            reason = 'changes_protected_link_or_contact_text'
         elif _is_low_content_change(original_text, updated_text):
             reason = 'low_content_change'
         # Removed: _removes_quantified_data check - trust Gemini's judgment
@@ -1050,41 +1113,10 @@ def _apply_styles_from_tags(docs_service, document_id, strip_tags: bool):
 
     format_requests = []
 
-    # Apply bold formatting by finding each text snippet
-    print("\n🎨 Applying bold formatting:")
-    for idx, text_to_bold in enumerate(bold_texts):
-        text_position = clean_doc_text.find(text_to_bold)
-        if text_position == -1:
-            print(f"❌ {idx+1}. Could not find: '{text_to_bold}'")
-            print(f"   Searching in: ...{clean_doc_text[max(0, text_position-50):text_position+100]}...")
-            continue
-
-        # Google Docs uses 1-based indexing
-        # endIndex is EXCLUSIVE, so we need +2 (one for 1-based, one for exclusive end)
-        start_idx = text_position + 1
-        end_idx = text_position + len(text_to_bold) + 2
-
-        # Show context
-        context_start = max(0, text_position - 20)
-        context_end = min(len(clean_doc_text), text_position + len(text_to_bold) + 20)
-        context = clean_doc_text[context_start:context_end]
-
-        print(f"✓ {idx+1}. '{text_to_bold}' at position {text_position}")
-        print(f"   Context: ...{context}...")
-        print(f"   Range: [{start_idx}, {end_idx})")
-
-        format_requests.append({
-            'updateTextStyle': {
-                'range': {
-                    'startIndex': start_idx,
-                    'endIndex': end_idx
-                },
-                'textStyle': {
-                    'bold': True
-                },
-                'fields': 'bold'
-            }
-        })
+    # Bold formatting intentionally disabled for now (user preference).
+    # Keep this log so behavior is explicit during runs.
+    if bold_texts:
+        print(f"\n🎨 Bold styling disabled - skipping {len(bold_texts)} bold snippet(s)")
 
     # Apply italic formatting
     for idx, text_to_italicize in enumerate(italic_texts):
@@ -1240,7 +1272,9 @@ Other Constraints:
 - Make concrete, job-relevant improvements using the job description
 - Preserve professional tone and be specific
 - 1 replacement per original_text
-- You can use <b>text</b> for bold and <i>text</i> for italic styling if needed
+- Do NOT alter any links/contact tokens: URLs, domains, emails, github/..., linkedin/...
+- If original line contains these tokens, keep them exactly unchanged
+- Do NOT use bold styling; plain text only (or <i> only if absolutely required)
 
 Return strict JSON with this shape:
 {{"replacements": [{{"original_text": "...", "updated_text": "..."}}]}}
@@ -1426,12 +1460,15 @@ def apply_json_replacements_to_doc(docs_service, document_id, replacements_json,
                         }
                     })
 
+                    # Track every replaced text so we can explicitly normalize
+                    # bold=False afterward (replaceAllText may inherit bold style
+                    # from the matched source range in Google Docs).
+                    marker_specs_all.append({
+                        'text': plain_updated_text,
+                        'style_ranges': style_ranges or []
+                    })
                     # Store formatting info if there are style ranges
                     if style_ranges:
-                        marker_specs_all.append({
-                            'text': plain_updated_text,
-                            'style_ranges': style_ranges
-                        })
                         print(f"Queued plain replace for: '{plain_original_text[:60]}...' (with {len(style_ranges)} style ranges)")
                         print(f"  → Will format: '{plain_updated_text[:60]}...'")
                         print(f"  → Updated text (with tags): '{updated_text[:80]}...'")
@@ -1462,9 +1499,9 @@ def apply_json_replacements_to_doc(docs_service, document_id, replacements_json,
 
         print("✓ Text replacements applied successfully")
 
-        # Now apply formatting if we have marker specs
+        # Now apply formatting / normalization if we have marker specs
         if marker_specs_all:
-            print(f"\n🎨 Applying bold/italic formatting using Google Docs API structure...")
+            print(f"\n🎨 Applying formatting normalization using Google Docs API structure...")
             print(f"📋 Debug: marker_specs_all contains {len(marker_specs_all)} items:")
             for i, spec in enumerate(marker_specs_all):
                 print(f"  {i+1}. Text: '{spec['text'][:60]}...'")
@@ -1560,6 +1597,20 @@ def apply_json_replacements_to_doc(docs_service, document_id, replacements_json,
                     print(f"⚠️  Could not determine document index for: '{target_text[:50]}...'")
                     continue
 
+                # Force NO bold on replaced text (user preference), then apply
+                # any explicit italic ranges.
+                format_requests.append({
+                    'updateTextStyle': {
+                        'range': {
+                            'startIndex': found_start_index,
+                            'endIndex': found_start_index + len(target_text)
+                        },
+                        'textStyle': {'bold': False},
+                        'fields': 'bold'
+                    }
+                })
+                print(f"  Unbold: '{target_text[:60]}' at [{found_start_index}, {found_start_index + len(target_text)})")
+
                 # Apply each style range within this text
                 for style_range in style_ranges:
                     range_start = found_start_index + style_range['start']
@@ -1568,40 +1619,9 @@ def apply_json_replacements_to_doc(docs_service, document_id, replacements_json,
                     # Extract the text to be formatted
                     text_to_format = target_text[style_range['start']:style_range['end']]
 
-                    if style_range['bold']:
-                        # Check if text starts with numeric data (digits, percentages, etc.)
-                        # Google Docs API has issues recognizing digits, so we shift the start index
-                        # Example: "95%" → shift by 3, "~80%" → shift by 4, "1500+" → shift by 5
-                        numeric_match = re.match(r'^[~]?\d+[+%kKmMbB]?\s*', text_to_format)
-                        
-                        if numeric_match:
-                            # Shift start index by the length of numeric portion
-                            numeric_length = len(numeric_match.group(0))
-                            # Bold the entire text INCLUDING numbers (numbers should be bold too!)
-                            format_requests.append({
-                                'updateTextStyle': {
-                                    'range': {
-                                        'startIndex': range_start,
-                                        'endIndex': range_end
-                                    },
-                                    'textStyle': {'bold': True},
-                                    'fields': 'bold'
-                                }
-                            })
-                            print(f"  Bold (including numbers): '{text_to_format}' at [{range_start}, {range_end})")
-                        else:
-                            # No numeric prefix, apply bold normally
-                            format_requests.append({
-                                'updateTextStyle': {
-                                    'range': {
-                                        'startIndex': range_start,
-                                        'endIndex': range_end
-                                    },
-                                    'textStyle': {'bold': True},
-                                    'fields': 'bold'
-                                }
-                            })
-                            print(f"  Bold: '{text_to_format}' at [{range_start}, {range_end})")
+                    if style_range.get('bold'):
+                        # Bold styling intentionally disabled for now.
+                        continue
 
                     if style_range['italic']:
                         # Same workaround for italic with numeric prefixes
@@ -1811,8 +1831,17 @@ OTHER CRITICAL RULES:
 - Use EXACT text matches from resume (ignore [metadata] annotations)
 - Respect char_buffer limits (max chars you can add per line)
 - No generic phrases, headers, or contact info changes
-- Use <b> and <i> tags for styling if needed
+- Never modify link/contact tokens in any replacement:
+  * URLs/domains/emails
+  * github/... or linkedin/... handles
+  * pipe-delimited link fragments (e.g., "Project | github.com/x")
+- Do NOT use bold styling; use plain text (or <i> only if absolutely needed)
 - Max 8-10 high-impact replacements
+- Preserve the writer's style and pattern in each line:
+  * Keep the same tone (concise/technical) and grammatical person
+  * Keep original bullet punctuation style (period/no-period) for that line
+  * Keep tense consistent with the source line (past/present)
+  * Keep section ordering and line grouping unchanged
 
 {format_constraints}
 
@@ -1924,9 +1953,11 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
             print(f"Error fetching document name: {error}")
             original_doc_name = "Resume"
 
-        # Create a copy of the document with custom naming: Resume_CompanyName
-        clean_company = ''.join(c if c.isalnum() or c == '_' else '_' for c in company)
-        copied_doc_title = f"Resume_{clean_company}"
+        # Create a copy of the document with user/company naming:
+        # <First_Last>_Resume_<Actual_Company>
+        name_token = _sanitize_doc_token(user_full_name or "Resume", "Resume")
+        company_token = _sanitize_doc_token(company or "Company", "Company")
+        copied_doc_title = f"{name_token}_Resume_{company_token}"
         print(f"Creating tailored resume: '{copied_doc_title}'")
         copied_doc_id = copy_google_doc(drive_service, original_doc_id, copied_doc_title)
         if not copied_doc_id:
@@ -1971,7 +2002,7 @@ def tailor_resume_and_return_url(original_resume_url, job_description, job_title
             # Extract document structure and metadata
             print("Extracting document structure and formatting metadata...")
             try:
-                line_metadata = extract_document_structure(docs_service, original_doc_id)
+                line_metadata = extract_document_structure(docs_service, copied_doc_id)
                 print(f"Extracted metadata for {len(line_metadata)} lines")
 
                 # Save metadata to file for debugging (only if directory exists)

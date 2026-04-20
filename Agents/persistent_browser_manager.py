@@ -6,6 +6,8 @@ Creates and manages user-specific browser profiles that persist across sessions
 import os
 import json
 import logging
+import platform
+import subprocess
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -35,6 +37,33 @@ def _clear_stale_contexts_if_new_loop() -> None:
             logger.info(f"🔄 New event loop - discarding {len(_active_contexts)} stale browser context(s)")
         _active_contexts = {}
         _active_contexts_loop_id = current
+
+
+async def close_all_active_browsers() -> int:
+    """
+    Properly close every active persistent browser context and remove it
+    from the registry.  For persistent contexts, closing the context also
+    terminates the underlying Chrome process — this is the correct way to
+    prevent stale Chrome processes from blocking the next launch.
+
+    Call this at the end of any batch operation so the next run always
+    starts with a clean slate.
+
+    Returns the number of contexts that were successfully closed.
+    """
+    closed = 0
+    for user_id, ctx in list(_active_contexts.items()):
+        try:
+            await ctx.close()
+            logger.info(f"🔒 Closed browser context for user {user_id}")
+            closed += 1
+        except Exception as e:
+            logger.debug(f"Could not close context for {user_id}: {e}")
+        finally:
+            _active_contexts.pop(user_id, None)
+    if closed:
+        logger.info(f"✅ Closed {closed} browser context(s) after batch")
+    return closed
 
 
 class PersistentBrowserManager:
@@ -155,13 +184,73 @@ class PersistentBrowserManager:
             playwright = await async_playwright().start()
             created_playwright = True
         
-        # Launch persistent context (this is the magic!)
-        context = await playwright.chromium.launch_persistent_context(
-            user_data_dir=str(profile_path),
-            headless=headless,
-            args=args,
-            **context_options
-        )
+        import asyncio
+
+        # Minimal flag set that works reliably across environments
+        safer_args = [
+            '--disable-blink-features=AutomationControlled',
+            '--disable-dev-shm-usage',
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--start-maximized',
+            '--force-device-scale-factor=1',
+        ]
+
+        # ── Pre-launch cleanup ────────────────────────────────────────────────
+        pre_killed = self._kill_stale_playwright_chrome(profile_path)
+        if pre_killed > 0:
+            logger.info("🧹 Pre-launch: terminated %s stale Playwright Chrome process(es)", pre_killed)
+            await asyncio.sleep(1.5)
+        self._cleanup_stale_profile_locks(profile_path)
+
+        # ── Attempt 1 ────────────────────────────────────────────────────────
+        try:
+            context = await playwright.chromium.launch_persistent_context(
+                user_data_dir=str(profile_path),
+                headless=headless,
+                args=args,
+                **context_options
+            )
+        except Exception as first_error:
+            logger.warning(
+                "Persistent browser launch failed (attempt 1) for profile %s: %s",
+                profile_path,
+                first_error,
+            )
+
+            killed1 = self._kill_stale_playwright_chrome(profile_path)
+            if killed1 > 0:
+                logger.info("🧹 Killed %s orphaned Playwright Chrome process(es) after attempt 1", killed1)
+            self._cleanup_stale_profile_locks(profile_path)
+            await asyncio.sleep(2.0)
+
+            # ── Attempt 2 (safer flags) ───────────────────────────────────────
+            try:
+                logger.info("🔁 Retrying persistent browser launch with safer Chromium flags (attempt 2)")
+                context = await playwright.chromium.launch_persistent_context(
+                    user_data_dir=str(profile_path),
+                    headless=headless,
+                    args=safer_args,
+                    **context_options
+                )
+            except Exception as second_error:
+                logger.warning(
+                    "Persistent browser launch failed (attempt 2) for profile %s: %s",
+                    profile_path,
+                    second_error,
+                )
+                killed2 = self._kill_stale_playwright_chrome(profile_path)
+                if killed2 > 0:
+                    logger.info("🧹 Killed %s orphaned Playwright Chrome process(es) after attempt 2", killed2)
+                self._cleanup_stale_profile_locks(profile_path)
+                await asyncio.sleep(3.0)
+                logger.info("🔁 Final retry after extended stale-process cleanup (attempt 3)")
+                context = await playwright.chromium.launch_persistent_context(
+                    user_data_dir=str(profile_path),
+                    headless=headless,
+                    args=safer_args,
+                    **context_options
+                )
         
         # Store playwright instance for cleanup (only if we created it)
         if created_playwright:
@@ -184,6 +273,177 @@ class PersistentBrowserManager:
         logger.info(f"✓ Persistent browser launched for user {user_id} (stored for reuse)")
         
         return context
+
+    def _cleanup_stale_profile_locks(self, profile_path: Path) -> None:
+        """
+        Clean up stale Chromium lock artifacts AND session-recovery files.
+
+        Session recovery files are the most common cause of Chrome crashing
+        with STATUS_BREAKPOINT (exit code 0x80000003) immediately on startup.
+        When Playwright force-kills Chrome at the end of a session, files like
+        Last Session / Last Tabs are left in a partial, inconsistent state.
+        The next Chrome launch tries to restore that session, hits an internal
+        DCHECK assertion, and dies before establishing the CDP pipe — which
+        Playwright reports as "Target page, context or browser has been closed".
+
+        Deleting those files (not cookies / local-storage / login data) is safe:
+        the only side-effect is that Chrome opens a blank tab instead of
+        restoring the previous tab list.  Persistent login sessions are kept.
+        """
+        removed = 0
+        default_dir = profile_path / "Default"
+
+        # ── 1. Singleton lock files (both profile root and Default/) ───────────
+        lock_names = (
+            "SingletonLock", "SingletonCookie", "SingletonSocket",
+            "lockfile", ".parentlock",
+        )
+        for d in [profile_path, default_dir]:
+            for name in lock_names:
+                p = d / name
+                try:
+                    if p.exists():
+                        p.unlink()
+                        removed += 1
+                        logger.debug(f"Removed lock: {p}")
+                except Exception as e:
+                    logger.debug(f"Could not remove {p}: {e}")
+
+        # ── 2. Session-recovery files (the main crash trigger) ─────────────────
+        # Chrome reads these on startup to restore the previous session.
+        # If Chrome was force-killed they are incomplete → DCHECK crash.
+        session_files = ("Last Session", "Last Tabs", "Current Session", "Current Tabs")
+        for fname in session_files:
+            p = default_dir / fname
+            try:
+                if p.exists():
+                    p.unlink()
+                    removed += 1
+                    logger.debug(f"Removed session file: {p}")
+            except Exception as e:
+                logger.debug(f"Could not remove {p}: {e}")
+
+        # ── 3. SQLite WAL journal files left by a crashed session ──────────────
+        # An open -journal file causes SQLite to run recovery on next open.
+        # If the journal is corrupt Chrome can crash during early DB initialisation.
+        try:
+            if default_dir.exists():
+                for jf in default_dir.glob("*-journal"):
+                    try:
+                        jf.unlink()
+                        removed += 1
+                        logger.debug(f"Removed journal: {jf}")
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.debug(f"Journal scan error: {e}")
+
+        if removed > 0:
+            logger.info(f"🧹 Removed {removed} stale profile artifact(s) (locks + session files)")
+
+    def _kill_stale_playwright_chrome(self, profile_path: Path) -> int:
+        """
+        Kill ALL chrome.exe processes that belong to Playwright's own managed
+        Chromium installation (located under ms-playwright in AppData).
+
+        Uses cmd.exe native tools (tasklist + wmic + taskkill) instead of
+        PowerShell because they are faster, simpler, and not blocked by
+        execution policy restrictions.  Two complementary methods are run:
+
+        1. WMIC query on ExecutablePath — finds every chrome.exe whose binary
+           lives under ms-playwright, including orphaned sandbox/GPU helpers
+           that carry no --user-data-dir flag.  Uses /T to kill child trees.
+
+        2. WMIC query on CommandLine — catches any chrome not matched by path
+           (edge case) that has the specific --user-data-dir in its cmdline.
+        """
+        if platform.system().lower() != "windows":
+            return 0
+
+        killed = 0
+        profile_str = str(profile_path)
+
+        # ── Method 1: kill by ExecutablePath (catches all, including helpers) ──
+        # Use /format:value which outputs one "Field=Value" per line — no CSV
+        # quoting issues even when paths contain commas.
+        try:
+            pids_result = subprocess.run(
+                [
+                    "wmic", "process",
+                    "where", "name='chrome.exe'",
+                    "get", "ProcessId,ExecutablePath",
+                    "/format:value",
+                ],
+                capture_output=True, text=True, timeout=15,
+            )
+            current_pid = None
+            current_path = None
+            for raw_line in pids_result.stdout.splitlines():
+                line = raw_line.strip()
+                if line.startswith("ExecutablePath="):
+                    current_path = line[len("ExecutablePath="):]
+                elif line.startswith("ProcessId="):
+                    current_pid = line[len("ProcessId="):]
+                if current_pid and current_path is not None:
+                    if "ms-playwright" in current_path.lower() and current_pid.isdigit():
+                        try:
+                            subprocess.run(
+                                ["taskkill", "/PID", current_pid, "/T", "/F"],
+                                capture_output=True, timeout=8,
+                            )
+                            killed += 1
+                            logger.debug(f"Killed Playwright chrome PID {current_pid}")
+                        except Exception:
+                            pass
+                    # Reset for next process block
+                    current_pid = None
+                    current_path = None
+        except Exception as e:
+            logger.debug(f"WMIC path-based chrome kill failed: {e}")
+
+        # ── Method 2: kill by --user-data-dir in CommandLine (fallback) ──
+        # Catches the browser process that still holds the profile path.
+        # Note: orphaned sandbox helper processes (GPU, renderer) have NO
+        # --user-data-dir in their CommandLine — only the main browser does.
+        try:
+            cmdline_result = subprocess.run(
+                [
+                    "wmic", "process",
+                    "where", "name='chrome.exe'",
+                    "get", "ProcessId,CommandLine",
+                    "/format:value",
+                ],
+                capture_output=True, text=True, timeout=15,
+            )
+            current_pid = None
+            current_cmdline = None
+            for raw_line in cmdline_result.stdout.splitlines():
+                line = raw_line.strip()
+                if line.startswith("CommandLine="):
+                    current_cmdline = line[len("CommandLine="):]
+                elif line.startswith("ProcessId="):
+                    current_pid = line[len("ProcessId="):]
+                if current_pid and current_cmdline is not None:
+                    if profile_str in current_cmdline and current_pid.isdigit():
+                        try:
+                            subprocess.run(
+                                ["taskkill", "/PID", current_pid, "/T", "/F"],
+                                capture_output=True, timeout=8,
+                            )
+                            killed += 1
+                            logger.debug(f"Killed profile-locked chrome PID {current_pid}")
+                        except Exception:
+                            pass
+                    current_pid = None
+                    current_cmdline = None
+        except Exception as e:
+            logger.debug(f"WMIC cmdline-based chrome kill failed: {e}")
+
+        # IMPORTANT: do not kill all chrome.exe processes.
+        # Users may have active work in personal/work Chrome profiles.
+        # We only terminate processes that can be confidently identified as
+        # Playwright-managed or profile-specific.
+        return killed
     
     async def _inject_anti_detection(self, context: BrowserContext):
         """Inject JavaScript to hide automation detection"""
@@ -385,7 +645,7 @@ class PersistentBrowserManager:
             try:
                 import asyncio
                 await asyncio.sleep(99999)  # Wait indefinitely
-            except (KeyboardInterrupt, Exception):
+            except (KeyboardInterrupt, asyncio.CancelledError, Exception):
                 print("\n✓ Profile setup completed!")
         
         return context

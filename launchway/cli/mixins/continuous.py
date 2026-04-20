@@ -238,6 +238,9 @@ class ContinuousApplyMixin:
         }
 
         try:
+            # ATS compatibility check — informs but never blocks automated mode.
+            self._show_ats_confidence_check(job_url, auto_mode=True)
+
             self.print_info("🤖 Starting automated application...")
             self.print_info(f"   Tailor Resume: {'✓ Enabled' if tailor_resume else '✗ Disabled'}")
             self._mark_job_tracking_status(

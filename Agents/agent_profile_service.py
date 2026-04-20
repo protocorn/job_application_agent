@@ -170,22 +170,7 @@ class AgentProfileService:
 
     @staticmethod
     def get_latest_user_profile() -> Optional[Dict[str, Any]]:
-        """Get the most recently created user's profile (for backward compatibility)"""
-        db = SessionLocal()
-        try:
-            # Get the most recently created user
-            latest_user = db.query(User).order_by(User.created_at.desc()).first()
-            if not latest_user:
-                logging.error("No users found in database")
-                return None
-
-            return AgentProfileService.get_profile_by_user_id(latest_user.id)
-
-        except Exception as e:
-            logging.error(f"Error getting latest user profile: {e}")
-            return None
-        finally:
-            db.close()
+        return None
 
     @staticmethod
     def validate_profile_completeness(profile_data: Dict[str, Any]) -> Dict[str, Any]:

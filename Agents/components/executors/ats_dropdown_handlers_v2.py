@@ -78,53 +78,64 @@ class ATSDropdownHandlerV2:
         """
         try:
             logger.debug(f"🔢 Selecting '{value}' in multi-select '{field_label}'")
-            
-            # Get the page/frame context
-            page_or_frame = element.page
-            
-            # Step 1: Focus and click the input to open dropdown (if not already open)
+
+            # Resolve frame + page contexts (works for iframe and non-iframe forms)
+            page = element.page
+            owner_frame = None
+            try:
+                handle = await element.element_handle()
+                if handle:
+                    owner_frame = await handle.owner_frame()
+            except Exception:
+                owner_frame = None
+
+            contexts = []
+            if owner_frame:
+                contexts.append(owner_frame)
+            contexts.append(page)
+
+            listbox_id = await element.get_attribute('aria-controls')
+
+            # Step 1: Focus and click the input to open dropdown
             await element.focus(timeout=1500)
             await asyncio.sleep(0.1)
-            
-            # Check if menu is already visible
-            try:
-                menu_visible = await page_or_frame.locator('[class*="select__menu"]').first.is_visible(timeout=500)
-            except:
-                menu_visible = False
-            
-            if not menu_visible:
-                await element.click(timeout=1500)
-                await asyncio.sleep(0.2)
-            
+            await element.click(timeout=1500)
+            await asyncio.sleep(0.2)
+
             # Step 2: Type the value to filter options
             await element.fill('', timeout=1000)  # Clear any existing text
             await asyncio.sleep(0.05)
             await element.type(value, delay=30)
             logger.debug(f"  Typing: '{value}'")
-            
-            # Step 3: Wait for menu to appear with options (longer wait for dynamic loading)
-            await asyncio.sleep(0.6)  # Increased wait for options to load
-            
-            # Step 4: Find the menu
+
+            # Step 3: Wait for options to render
+            await asyncio.sleep(0.6)
+
+            # Step 4: Find matching option, prioritizing the specific listbox.
             try:
-                menu = await page_or_frame.locator('[class*="select__menu"]').first.wait_for(state='visible', timeout=2000)
-                logger.debug(f"  ✓ Found menu with selector: [class*=\"select__menu\"]")
-            except Exception as e:
-                logger.warning(f"  ✗ Menu not found: {e}")
-                return False
-            
-            # Step 5: Find matching option
-            logger.debug(f"  Searching for options in menu context...")
-            option_selector = '[class*="select__option"]'
-            
-            try:
-                option_elements = await page_or_frame.locator(option_selector).all()
-                logger.debug(f"    Found {len(option_elements)} elements with selector: {option_selector}")
-                
+                option_elements = []
+                for ctx in contexts:
+                    try:
+                        if listbox_id:
+                            lb = ctx.locator(f'#{listbox_id}')
+                            if await lb.count() > 0:
+                                option_elements = await lb.first.locator(
+                                    '[role="option"], [class*="select__option"], [id*="-option-"]'
+                                ).all()
+                        if not option_elements:
+                            option_elements = await ctx.locator(
+                                '[id^="react-select-"][id*="-option-"], [class*="select__option"]'
+                            ).all()
+                    except Exception:
+                        continue
+                    if option_elements:
+                        break
+
+                logger.debug(f"    Found {len(option_elements)} option elements")
                 if not option_elements:
-                    logger.warning(f"  ✗ No options found")
+                    logger.warning("  ✗ No options found")
                     return False
-                
+
                 # Collect visible options
                 visible_options = []
                 for opt in option_elements:
@@ -133,58 +144,58 @@ class ATSDropdownHandlerV2:
                             opt_text = await opt.inner_text(timeout=300)
                             visible_options.append((opt, opt_text.strip()))
                             logger.debug(f"      Option: '{opt_text.strip()}'")
-                    except:
+                    except Exception:
                         continue
-                
+
                 if not visible_options:
                     logger.warning(f"  ✗ No visible options")
                     return False
-                
+
                 logger.debug(f"    ✓ Collected {len(visible_options)} visible options")
-                
+
                 # Step 6: Find best match
                 best_match = None
                 best_score = 0
-                
+
                 for opt_element, opt_text in visible_options:
                     # Exact match
                     if opt_text.lower() == value.lower():
                         best_match = (opt_element, opt_text, 1.0)
                         break
-                    
+
                     # Partial match
                     if value.lower() in opt_text.lower() or opt_text.lower() in value.lower():
                         score = len(value) / max(len(opt_text), len(value))
                         if score > best_score:
                             best_score = score
                             best_match = (opt_element, opt_text, score)
-                
+
                 if best_match:
                     match_element, match_text, score = best_match
                     if score == 1.0:
                         logger.info(f"  ✅ Exact match found: '{match_text}'")
                     else:
                         logger.info(f"  ✅ Partial match found (score: {score:.2f}): '{match_text}'")
-                    
+
                     # Click the option
                     await match_element.click(timeout=1500)
                     await asyncio.sleep(0.2)
-                    
+
                     # If this is the last value, close the dropdown by clicking away
                     if is_last:
                         # Press Escape to close the dropdown
                         await element.press('Escape', timeout=1000)
                         await asyncio.sleep(0.1)
-                    
+
                     return True
                 else:
                     logger.warning(f"  ✗ No match found for '{value}'")
                     return False
-                    
+
             except Exception as e:
                 logger.warning(f"  ✗ Error finding option: {e}")
                 return False
-            
+
         except Exception as e:
             logger.warning(f"❌ Multi-select fill failed for '{field_label}': {e}")
             return False
@@ -266,9 +277,21 @@ class ATSDropdownHandlerV2:
         logger.debug(f"⚡ Fast fill Greenhouse dropdown: '{field_label}' = '{value}'")
 
         try:
-            # Get page context (React Select often renders menus in portals at page level)
+            # Resolve both contexts so this works in iframe and non-iframe setups.
             page = element.page
-            
+            owner_frame = None
+            try:
+                handle = await element.element_handle()
+                if handle:
+                    owner_frame = await handle.owner_frame()
+            except Exception:
+                owner_frame = None
+
+            contexts = []
+            if owner_frame:
+                contexts.append(owner_frame)
+            contexts.append(page)
+
             # Step 0: Close any already-open dropdowns (to avoid conflicts)
             try:
                 # Check if dropdown is already expanded
@@ -277,63 +300,95 @@ class ATSDropdownHandlerV2:
                     logger.debug(f"  Dropdown already open, closing first...")
                     await element.press('Escape')
                     await asyncio.sleep(0.2)
-            except:
+            except Exception:
                 pass
-            
+
             # Wait for DOM to stabilize before interacting
             await asyncio.sleep(0.2)
-            
+
             # Step 1: Focus the input first
             await element.focus(timeout=1500)
             await asyncio.sleep(0.1)
-            
+
             # Step 2: Clear any existing value using keyboard shortcuts
             # Select all and delete (works better for React Select than fill(''))
             await element.press('Control+A')
             await asyncio.sleep(0.05)
             await element.press('Backspace')
             await asyncio.sleep(0.1)
-            
+
             # Step 3: Wait for element to be stable, then click to ensure menu opens
             try:
                 # Wait for element to stop changing (become stable)
                 await element.wait_for(state='attached', timeout=1000)
                 await asyncio.sleep(0.1)
-            except:
+            except Exception:
                 pass
-            
+
             await element.click(timeout=1200)  # Increased timeout for stability
             await asyncio.sleep(0.2)  # Increased wait for menu animation
-            
+
+            listbox_id = await element.get_attribute('aria-controls')
+
             # ── Helpers ──────────────────────────────────────────────────────────
             #
             # NOTE: _scan_options / _best_match / _ask_ai_from_options are defined
             # here as closures so they share the surrounding page/field_label context.
 
             _menu_selectors = [
+                f'#{listbox_id}' if listbox_id else '',
                 '[class*="select__menu"]',
                 '[id*="react-select"][id*="listbox"]',
                 'div[class*="MenuList"]',
                 '[class*="menu"][class*="select"]',
                 '[role="listbox"]',
-                'div[class*="option"]',
             ]
             _option_selectors = [
+                '[id^="react-select-"][id*="-option-"]',
                 '[class*="select__option"]',
+                '[role="option"][id*="react-select"]',
                 'div[class*="option"]:not([class*="placeholder"]):not([class*="input"])',
-                '[role="option"]',
                 '[id*="react-select"][id*="option"]',
                 'div[class*="Option"]',
-                'li[role="option"]',
             ]
+
+            # Sensitive EEO fields — never force-fill with a wrong answer
+            _EEO_KEYWORDS = {'race', 'ethnicity', 'disability', 'veteran', 'gender', 'sex',
+                             'pronouns', 'orientation', 'religion', 'national origin'}
+            _is_eeo_field = any(kw in field_label.lower() for kw in _EEO_KEYWORDS)
+
+            # Opt-out phrases that mean "I prefer not to answer"
+            # Include contraction variants (don't, won't, etc.)
+            _OPT_OUT_PHRASES = {
+                'prefer not', 'decline', 'choose not', 'do not wish', "don't wish",
+                'not to say', 'not to answer', 'not to disclose', 'not to identify',
+                'i do not', "i don't", 'i choose not', 'i prefer', 'no answer',
+                'self identify', 'self-identify', 'wish to answer', 'no response',
+            }
+
+            def _is_opt_out(text: str) -> bool:
+                t = text.lower()
+                return any(p in t for p in _OPT_OUT_PHRASES)
 
             async def _ask_ai_from_options(target: str, options: list) -> str:
                 """
-                Ask gemini-2.0-flash-lite which option best matches `target`.
-                Returns the exact option text chosen, or empty string on failure.
+                Ask Gemini which option best matches `target`.
+                Returns the exact option text chosen, or empty string for NO_MATCH.
                 """
                 option_texts = [t for _, t in options]
                 logger.info(f"  🤖 Asking AI to pick from {len(option_texts)} options for '{target}': {option_texts}")
+
+                # Fast path: if target is an opt-out phrase, look for an equivalent in the list first
+                if _is_opt_out(target):
+                    for _, opt_text in options:
+                        if _is_opt_out(opt_text):
+                            logger.info(f"  ✅ Opt-out match found: '{opt_text}'")
+                            return opt_text
+                    # No opt-out option available — skip EEO field, keep trying for others
+                    if _is_eeo_field:
+                        logger.info(f"  ℹ️ No opt-out option in EEO field '{field_label}' — skipping")
+                        return ""
+
                 try:
                     from google import genai as _genai
                     import os as _os
@@ -345,10 +400,12 @@ class ATSDropdownHandlerV2:
                         f'Available options (you MUST pick exactly one from this list):\n'
                         + "\n".join(f"- {t}" for t in option_texts)
                         + '\n\nRules:\n'
-                        '- Reply with ONLY the exact option text as listed above.\n'
-                        '- For race/ethnicity fields, if the profile says Indian/South Asian/Asian select the closest broader term.\n'
-                        '- For disability fields, select the option that best reflects the profile value.\n'
-                        '- If truly nothing matches, reply with NO_MATCH.'
+                        '- Reply with ONLY the exact option text as listed above (no quotes, no extra text).\n'
+                        '- If the desired value is an opt-out/decline/prefer-not-to-say, find an equivalent '
+                        'opt-out option in the list. Do NOT substitute an actual value.\n'
+                        '- Only pick a race/ethnicity/disability/veteran option if the desired value '
+                        'explicitly names one (e.g. "Asian", "Hispanic"). Never infer from unrelated context.\n'
+                        '- If nothing genuinely matches, reply with exactly: NO_MATCH'
                     )
                     resp = _client.models.generate_content(
                         model="gemini-2.0-flash-lite",
@@ -358,10 +415,50 @@ class ATSDropdownHandlerV2:
                     logger.info(f"  AI chose: '{chosen}'")
                     if chosen == "NO_MATCH":
                         return ""
+                    # Safety check: if EEO field and chosen doesn't appear in options list, reject
+                    if _is_eeo_field and chosen not in option_texts:
+                        logger.warning(f"  AI returned '{chosen}' which is not in options list — rejecting")
+                        return ""
                     return chosen
                 except Exception as ai_err:
                     logger.warning(f"  AI option-pick error: {ai_err}")
                     return ""
+
+            async def _ask_ai_for_search_terms(target: str, options_so_far: list) -> list[str]:
+                """
+                When the desired value isn't in the visible options, ask Gemini what
+                keywords to type into the search box to surface the right option.
+                Returns a list of short search terms to try (empty on failure).
+                """
+                option_texts = [t for _, t in options_so_far] if options_so_far else []
+                try:
+                    from google import genai as _genai
+                    import os as _os
+                    _client = _genai.Client(api_key=_os.getenv('GOOGLE_API_KEY'))
+                    prompt = (
+                        f'You are filling a job application form dropdown.\n'
+                        f'Field: "{field_label}"\n'
+                        f'Desired value: "{target}"\n'
+                        + (f'Options visible so far: {option_texts}\n' if option_texts else '')
+                        + '\nThe desired option was NOT found in the visible list.\n'
+                        'Suggest 1-3 SHORT search terms (1-2 words each) that could be typed into the '
+                        'dropdown search box to reveal an option matching the desired value.\n'
+                        'Reply with ONLY the search terms, one per line, no numbering, no explanation.\n'
+                        'If no useful search terms exist, reply with: NONE'
+                    )
+                    resp = _client.models.generate_content(
+                        model="gemini-2.0-flash-lite",
+                        contents=prompt
+                    )
+                    lines = [l.strip() for l in resp.text.strip().splitlines() if l.strip()]
+                    if lines == ['NONE'] or not lines:
+                        return []
+                    terms = [l for l in lines if l != 'NONE'][:3]
+                    logger.info(f"  AI search terms for '{target}': {terms}")
+                    return terms
+                except Exception as e:
+                    logger.warning(f"  AI search-term error: {e}")
+                    return []
 
             async def _click_ai_chosen(chosen: str, options: list) -> bool:
                 """Find and click the AI-chosen option from the options list."""
@@ -384,19 +481,25 @@ class ATSDropdownHandlerV2:
                 """Return list of (locator, text) for all currently visible options."""
                 found = []
                 menu_loc = None
-                for sel in _menu_selectors:
-                    try:
-                        m = page.locator(sel).first
-                        if await m.count() > 0 and await m.is_visible(timeout=300):
-                            menu_loc = m
-                            break
-                    except Exception:
-                        pass
+                for ctx in contexts:
+                    for sel in _menu_selectors:
+                        if not sel:
+                            continue
+                        try:
+                            m = ctx.locator(sel).first
+                            if await m.count() > 0 and await m.is_visible(timeout=300):
+                                menu_loc = m
+                                break
+                        except Exception:
+                            pass
+                    if menu_loc:
+                        break
 
                 search_ctxs = []
                 if menu_loc:
                     search_ctxs.append(menu_loc)
-                search_ctxs.append(page.locator('body'))
+                for ctx in contexts:
+                    search_ctxs.append(ctx.locator('body'))
 
                 for ctx in search_ctxs:
                     for sel in _option_selectors:
@@ -476,9 +579,32 @@ class ATSDropdownHandlerV2:
             selected = False
 
             # ── Step 4: Short-list fast path (no typing needed) ──────────────────
-            # If the dropdown already exposes ≤ 15 options on open, ask AI directly.
+            # If the dropdown already exposes options on open, ask AI directly.
+            # React Select may need a short render delay — retry once if empty.
             initial_options = await _scan_options()
-            if initial_options and 0 < len(initial_options) <= 15:
+            if not initial_options:
+                await asyncio.sleep(0.4)
+                initial_options = await _scan_options()
+
+            # ── Step 4a: Opt-out EEO fast path ───────────────────────────────────
+            # When the target is an opt-out phrase (e.g. "Prefer not to say") and
+            # the dropdown shows no options yet, try clearing the input and rescanning
+            # to surface the full option list.  This prevents us from typing "Prefer"
+            # (which matches no race option) and then bailing out with fill=False.
+            if _is_opt_out(value) and _is_eeo_field and not initial_options:
+                logger.info(
+                    f"  🔍 Opt-out EEO field '{field_label}': clearing input to surface all options"
+                )
+                try:
+                    await element.press('Control+A')
+                    await asyncio.sleep(0.05)
+                    await element.press('Backspace')
+                    await asyncio.sleep(0.5)
+                    initial_options = await _scan_options()
+                except Exception:
+                    pass
+
+            if initial_options and 0 < len(initial_options) <= 30:
                 logger.info(
                     f"📋 Short dropdown ({len(initial_options)} options) for '{field_label}' - "
                     f"asking AI directly"
@@ -486,6 +612,39 @@ class ATSDropdownHandlerV2:
                 chosen = await _ask_ai_from_options(value, initial_options)
                 if chosen:
                     selected = await _click_ai_chosen(chosen, initial_options)
+                if not selected:
+                    # AI said NO_MATCH — try the search-term strategy before fuzzy matching
+                    search_terms = await _ask_ai_for_search_terms(value, initial_options)
+                    for term in search_terms:
+                        logger.info(f"  🔍 Trying search term: '{term}'")
+                        await element.press('Control+A')
+                        await asyncio.sleep(0.05)
+                        await element.press('Backspace')
+                        await asyncio.sleep(0.1)
+                        await element.type(term, delay=30)
+                        await asyncio.sleep(0.5)
+                        term_options = await _scan_options()
+                        if term_options:
+                            chosen2 = await _ask_ai_from_options(value, term_options)
+                            if chosen2:
+                                selected = await _click_ai_chosen(chosen2, term_options)
+                                if selected:
+                                    break
+                    # Fuzzy only for non-EEO fields (EEO fields must not get a wrong answer)
+                    if not selected and not _is_eeo_field:
+                        best_loc, best_text, best_score = _best_match(value, initial_options, threshold=0.5)
+                        if best_loc:
+                            logger.info(
+                                f"✅ Short-list fuzzy fallback: '{best_text}' (score: {best_score:.2f})"
+                            )
+                            if await self._click_greenhouse_option(best_loc, best_text):
+                                await asyncio.sleep(0.1)
+                                selected = True
+                    elif not selected and _is_eeo_field:
+                        logger.info(
+                            f"⏭️ EEO field '{field_label}': no matching option for '{value}' — skipping to avoid wrong answer"
+                        )
+                        return False
 
             # ── Step 5: Word-by-word progressive typing ───────────────────────────
             if not selected:
@@ -516,6 +675,17 @@ class ATSDropdownHandlerV2:
                             selected = await _click_ai_chosen(chosen, options_found)
                             if selected:
                                 break
+                        if not selected and not _is_eeo_field:
+                            best_loc, best_text, best_score = _best_match(value, options_found, threshold=0.5)
+                            if best_loc:
+                                logger.info(
+                                    f"✅ Short-list fuzzy fallback after '{cumulative}': "
+                                    f"'{best_text}' (score: {best_score:.2f})"
+                                )
+                                if await self._click_greenhouse_option(best_loc, best_text):
+                                    await asyncio.sleep(0.1)
+                                    selected = True
+                                    break
                         continue
 
                     # Longer list → fuzzy match
@@ -552,6 +722,20 @@ class ATSDropdownHandlerV2:
                     chosen = await _ask_ai_from_options(value, all_options)
                     if chosen:
                         selected = await _click_ai_chosen(chosen, all_options)
+                    if not selected and not _is_eeo_field:
+                        best_loc, best_text, best_score = _best_match(value, all_options, threshold=0.5)
+                        if best_loc:
+                            logger.info(
+                                f"✅ AI-fallback fuzzy selected: '{best_text}' (score: {best_score:.2f})"
+                            )
+                            if await self._click_greenhouse_option(best_loc, best_text):
+                                await asyncio.sleep(0.1)
+                                selected = True
+                    elif not selected and _is_eeo_field:
+                        logger.info(
+                            f"⏭️ EEO field '{field_label}': no matching option for '{value}' in step-6 — skipping"
+                        )
+                        return False
 
             # ── Step 7: Enter key last resort ─────────────────────────────────────
             if not selected:

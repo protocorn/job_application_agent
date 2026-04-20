@@ -199,13 +199,32 @@ class GeminiFieldMapper:
                 full_auto_mode=full_auto_mode,
                 user_context=user_context,
             )
-            
+
+            # Always log prompt + response for debugging; reporter captures them
+            logger.debug(
+                f"[GEMINI BATCH PROMPT]\n{'='*60}\n{prompt}\n{'='*60}"
+            )
+
             model = genai.GenerativeModel(self.model_name)
             response = model.generate_content(prompt)
-            
+            response_text = response.text or ""
+
+            logger.debug(
+                f"[GEMINI BATCH RESPONSE]\n{'='*60}\n{response_text}\n{'='*60}"
+            )
+
+            # Feed into debug reporter if active
+            try:
+                import fill_debug_reporter as _fdr
+                rptr = _fdr.get_reporter()
+                if rptr:
+                    rptr.record_gemini_batch(prompt, response_text)
+            except Exception:
+                pass
+
             # Parse the AI response into structured mapping
-            return self._parse_comprehensive_mapping_response(response.text, field_catalog, profile)
-            
+            return self._parse_comprehensive_mapping_response(response_text, field_catalog, profile)
+
         except Exception as e:
             logger.error(f"❌ Error getting AI field mapping: {e}")
             return {}
@@ -269,11 +288,12 @@ MANDATORY FILLS in full auto mode (NEVER use NEEDS_HUMAN_INPUT for these):
    - Any privacy policy, data usage consent → SIMPLE: true
 3. COMMUNICATION PREFERENCES (SMS/WhatsApp/email updates) → Default "No" if not in profile
    - "Contact me via SMS/WhatsApp" → SIMPLE: false  (safe default; user can opt-in later)
-4. DEMOGRAPHIC / EEO fields → ALWAYS infer from profile; never leave blank
+4. DEMOGRAPHIC / EEO fields → Use profile value; respect opt-out preferences
    - Transgender → SIMPLE: No  (safe default unless profile says otherwise)
    - Hispanic/Latino → Infer strictly from nationality (Non-Latin country → "No")
-   - Race/Ethnicity → Infer from nationality as documented in the standard rules above
-   - Gender → Use profile gender value; never "prefer not to say" unless profile says so
+   - Race/Ethnicity → Use EXACTLY what the profile says. If profile says "Prefer not to say",
+     use that — do NOT infer from nationality or any other profile data.
+   - Gender → Use profile gender value exactly as stored
    - Disability → Use profile value; default "No" if not specified
    - Veteran → Use profile value; default "No" if not specified
 5. EXPERIENCE / QUALIFICATION YES-NO questions → Answer truthfully from profile data
@@ -291,9 +311,34 @@ MANDATORY FILLS in full auto mode (NEVER use NEEDS_HUMAN_INPUT for these):
 
         # Build the user-context block only when there are extra entries
         if user_context:
+            # Sanitise URL-type context entries — previous sessions may have cached
+            # malformed URLs (e.g. "https://github.com/www.github.com/protocorn").
+            # Validate them here so Gemini never gets a bad cached URL.
+            _URL_LABEL_KEYWORDS = {
+                'website', 'url', 'linkedin', 'github', 'portfolio',
+                'personal site', 'personal website', 'link',
+            }
+            cleaned_ctx: Dict[str, str] = {}
+            for label, value in user_context.items():
+                if not value:
+                    continue
+                label_lower = label.lower()
+                if any(kw in label_lower for kw in _URL_LABEL_KEYWORDS):
+                    try:
+                        from components.validators.field_value_validator import FieldValueValidator
+                        cleaned = FieldValueValidator.validate_and_clean(value, label, 'url')
+                        if cleaned and cleaned != value:
+                            logger.debug(
+                                f"[ctx_url_clean] '{label}': '{value}' → '{cleaned}'"
+                            )
+                        value = cleaned or value
+                    except Exception:
+                        pass
+                cleaned_ctx[label] = value
+
             ctx_lines = "\n".join(
                 f'  - "{label}": "{value}"'
-                for label, value in user_context.items()
+                for label, value in cleaned_ctx.items()
                 if value
             )
             user_context_block = f"""
@@ -345,19 +390,14 @@ Use the profile data with CONFIDENCE. If the profile contains information, USE I
      * The agent will TYPE this value and select the matching option - you don't need to worry about exact option matching
      * Use SIMPLE or DROPDOWN format - both work for these fields
    - CONFIDENT MAPPING FOR DEMOGRAPHICS (USE PROFILE DATA WHEN AVAILABLE):
-     * GENDER: If profile has gender="Male" -> SELECT "Male", "M", "Man" (NEVER "Prefer not to say")
-     * RACE/ETHNICITY: **ALWAYS INFER** from nationality when not explicitly provided:
-       - Indian → "Asian" or "South Asian"
-       - Chinese, Japanese, Korean, Vietnamese, Thai → "Asian" or "East Asian"
-       - Mexican, Colombian, Brazilian → "Hispanic or Latino" or "Latin American"
-       - British, German, French, Italian → "White" or "Caucasian"
-       - Nigerian, Kenyan, South African → "Black or African American" (if US form) or "African"
-       - Use nationality + name patterns to make educated inferences
-       - **ONLY use "Prefer not to say" if NO nationality/name data exists**
-     * HISPANIC/LATINO: **ALWAYS INFER** from nationality:
+     * GENDER: Use profile.gender exactly as stored.
+     * RACE/ETHNICITY: **USE EXACTLY WHAT THE PROFILE SAYS — no inference from nationality.**
+       - If profile.race_ethnicity = "Prefer not to say" → return that opt-out value AS-IS.
+       - If profile.race_ethnicity is blank/missing → THEN you may look for an opt-out/decline option.
+       - NEVER substitute a concrete race value when the user has explicitly chosen to decline.
+     * HISPANIC/LATINO: Infer ONLY when profile has no hispanic_latino field:
        - Latin American countries (Mexico, Colombia, Brazil, Argentina, etc.) → "Yes" or "Hispanic"
        - All other countries → "No" or "Non-Hispanic"
-       - **CONFIDENT inference based on nationality**
      * DISABILITY: If not specified in profile -> Use "No" (students/young professionals rarely have disabilities)
      * VETERAN: If not specified in profile -> Use "No" (for students/recent grads), "Prefer not to say" for experienced professionals
      * VISA/WORK AUTH: Use visa_status (e.g., F-1, H-1B, Green Card, Citizen) + require_sponsorship from profile with confidence
@@ -428,19 +468,19 @@ Use the profile data with CONFIDENCE. If the profile contains information, USE I
      * "How would you describe your gender identity? (mark all that apply)" → MULTISELECT: Man, Cisgender
      * "How would you describe your racial/ethnic background? (mark all that apply)" → MULTISELECT: Asian
      * "Select your pronouns (mark all that apply)" → MULTISELECT: He/Him
-   - **ALWAYS INFER FROM PROFILE** for demographic multi-select fields:
-     * Gender identity: Use profile.gender → "Man" or "Woman" or "Non-binary", optionally add "Cisgender" if appropriate
-     * Race/ethnicity: Use nationality → Indian → "Asian" or "South Asian", Chinese → "Asian" or "East Asian", etc.
+   - **USE PROFILE VALUES** for demographic multi-select fields:
+     * Gender identity: Use profile.gender exactly as stored.
+     * Race/ethnicity: Use profile.race_ethnicity EXACTLY. If it says "Prefer not to say", select
+       the closest opt-out/decline option. NEVER infer a concrete race from nationality.
      * Pronouns: Infer from gender → Male → "He/Him", Female → "She/Her"
-   - **CRITICAL**: For diversity questions, **NEVER respond with "Prefer not to say", "Not specified", or "Decline to answer"**
-   - **ALWAYS confidently infer** from profile data (nationality, name, age, education context)
-   - **NEVER use NEEDS_HUMAN_INPUT for multi-select demographic fields** - always infer from profile
-   - Examples of good inferences:
-     * Indian nationality → MULTISELECT: Asian (NOT "Prefer not to say")
-     * Chinese nationality → MULTISELECT: Asian
-     * Male gender → MULTISELECT: Man, Cisgender (NOT "Not specified")
+   - **CRITICAL**: If the profile explicitly stores an opt-out value (Prefer not to say, Decline,
+     Choose not to disclose), SELECT the matching opt-out option from the form. Do not override.
+   - NEVER use NEEDS_HUMAN_INPUT for multi-select demographic fields — always provide a value.
+   - Examples:
+     * profile.race_ethnicity = "Prefer not to say" → MULTISELECT: Prefer not to say (or closest opt-out)
+     * profile.race_ethnicity = "Asian" → MULTISELECT: Asian
+     * Male gender → MULTISELECT: Man, Cisgender
      * Female gender → MULTISELECT: Woman, Cisgender
-   - If truly uncertain, select ONE best-guess relevant option based on statistical likelihood
 
 2.5. MULTISELECT SKILLS: For Workday multiselect fields (skills, technologies, tools)
    - Map to relevant skills from profile skill categories
@@ -493,8 +533,12 @@ CRITICAL RULES - CONFIDENCE-BASED APPROACH:
   * Specific company questions requiring insider knowledge → ONLY THEN use NEEDS_HUMAN_INPUT
 - For fields WITH profile data or inferable data - USE WITH CONFIDENCE:
   * Gender: Use profile.gender value → SELECT matching option confidently
-  * Race/Ethnicity: Infer from profile.nationality → SELECT appropriate race option confidently
-  * Hispanic: Infer from profile.nationality → SELECT "Yes"/"No" confidently
+  * Race/Ethnicity: **USE EXACTLY WHAT profile.race_ethnicity SAYS — NEVER infer from nationality.**
+    - profile.race_ethnicity = "Prefer not to say" → find the closest opt-out option on the form
+    - profile.race_ethnicity = blank/missing → THEN look for an opt-out/decline option
+    - NEVER substitute a concrete race/ethnicity when the user has explicitly declined
+  * Hispanic/Latino: Infer ONLY when profile has no hispanic_latino field:
+    - Latin American countries → "Yes" or "Hispanic"; all others → "No" or "Non-Hispanic"
   * Disability/Veteran: If not in profile → "No" (not "prefer not to say")
   * Work Authorization: Use profile.visa_status + require_sponsorship confidently
   * Education/Skills: Use education and skills arrays from profile
@@ -523,11 +567,11 @@ ID: id:notice_period -> NEEDS_HUMAN_INPUT: Notice period not specified in profil
 ID: id:salary_expectations -> NEEDS_HUMAN_INPUT: Salary not specified in profile
 ID: id:start_date -> NEEDS_HUMAN_INPUT: Start date preference not provided
 
-# Demographic fields (use profile data confidently - include profile field)
+# Demographic fields (use profile data — NEVER infer race from nationality)
 ID: id:gender -> DROPDOWN: <profile.gender> | PROFILE_FIELD: gender
-ID: id:race -> DROPDOWN: <infer from profile.nationality> | PROFILE_FIELD: race_ethnicity
-ID: id:hispanic -> DROPDOWN: <infer from profile.nationality> | PROFILE_FIELD: race_ethnicity
-ID: id:disability -> DROPDOWN: <profile.disability_status or "Prefer not to say"> | PROFILE_FIELD: disability_status
+ID: id:race -> DROPDOWN: <profile.race_ethnicity exactly — if opt-out phrase, use closest opt-out option on form> | PROFILE_FIELD: race_ethnicity
+ID: id:hispanic -> DROPDOWN: <infer Yes/No from profile.nationality ONLY if no hispanic_latino field> | PROFILE_FIELD: race_ethnicity
+ID: id:disability -> DROPDOWN: <profile.disability_status or "No disability"> | PROFILE_FIELD: disability_status
 ID: id:veteran -> DROPDOWN: <profile.veteran_status or "No" for students/recent grads> | PROFILE_FIELD: veteran_status
 
 # Work authorization (use profile fields - include profile field)
@@ -973,9 +1017,11 @@ Your response (exact option text only):"""
             context_parts.append("Gender: Not specified (decline appropriate)")
         
         if profile.get('race_ethnicity'):
-            context_parts.append(f"Race/Ethnicity: {profile['race_ethnicity']} (USE THIS - do not decline)")
+            race_val = profile['race_ethnicity']
+            # Respect opt-out: if the user said "Prefer not to say", that IS their preference
+            context_parts.append(f"Race/Ethnicity: {race_val} (USE THIS EXACT VALUE — if it is an opt-out phrase, select the closest opt-out option on the form)")
         else:
-            context_parts.append("Race/Ethnicity: Not specified (decline appropriate)")
+            context_parts.append("Race/Ethnicity: Not specified (select a decline/opt-out option)")
         
         if profile.get('veteran_status'):
             context_parts.append(f"Veteran Status: {profile['veteran_status']} (USE THIS - do not decline)")
