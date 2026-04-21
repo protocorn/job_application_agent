@@ -1,0 +1,588 @@
+{
+  "session_id": "ce74a6a4-89b8-40b7-852e-c67c199d9b9f",
+  "current_url": "https://job-boards.greenhouse.io/figma/jobs/5552580004?gh_jid=5552580004&gh_src=28109e334us&source=LinkedIn",
+  "actions": [
+    {
+      "type": "navigate",
+      "timestamp": 1776786817.5621133,
+      "selector": null,
+      "value": null,
+      "url": "https://job-boards.greenhouse.io/figma/jobs/5552580004?gh_jid=5552580004&gh_src=28109e334us&source=LinkedIn",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776786822.0580158,
+      "selector": null,
+      "value": null,
+      "url": "https://job-boards.greenhouse.io/figma/jobs/5552580004?gh_jid=5552580004&gh_src=28109e334us&source=LinkedIn",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "click",
+      "timestamp": 1776786830.15183,
+      "selector": "button.btn",
+      "value": null,
+      "url": null,
+      "element_text": "element",
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776786835.2665055,
+      "selector": null,
+      "value": null,
+      "url": "https://job-boards.greenhouse.io/figma/jobs/5552580004?gh_jid=5552580004&gh_src=28109e334us&source=LinkedIn",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "upload_file",
+      "timestamp": 1776786856.9597526,
+      "selector": "input[type=\"file\"]",
+      "value": "C:\\Users\\proto\\AppData\\Local\\Temp\\Resume.pdf",
+      "url": null,
+      "element_text": null,
+      "field_label": "Resume Upload (Direct Input)",
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "upload_method": "direct_input",
+        "interaction_type": "file_upload"
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776786862.9873052,
+      "selector": "aria_label:First Name",
+      "value": "Sahil",
+      "url": null,
+      "element_text": null,
+      "field_label": "First Name",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:First Name",
+          "label": "First Name",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "Sahil",
+        "verification": {
+          "expected": "Sahil",
+          "actual": "Sahil",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776786863.3329306,
+      "selector": "aria_label:Last Name",
+      "value": "Chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "Last Name",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:Last Name",
+          "label": "Last Name",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "Chordia",
+        "verification": {
+          "expected": "Chordia",
+          "actual": "Chordia",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776786863.6738846,
+      "selector": "aria_label:Email",
+      "value": "chordiasahil24@gmail.com",
+      "url": null,
+      "element_text": null,
+      "field_label": "Email",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:Email",
+          "label": "Email",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "chordiasahil24@gmail.com",
+        "verification": {
+          "expected": "chordiasahil24@gmail.com",
+          "actual": "chordiasahil24@gmail.com",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776786869.3127198,
+      "selector": "label_hash:59716c97",
+      "value": "United States of America",
+      "url": null,
+      "element_text": null,
+      "field_label": "Country",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:59716c97",
+          "label": "Country",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "United States of America",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776786869.673701,
+      "selector": "aria_label:Phone",
+      "value": "2406101453",
+      "url": null,
+      "element_text": null,
+      "field_label": "Phone",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:Phone",
+          "label": "Phone",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "javascript_injection",
+        "element_attributes": {},
+        "final_value": "(240) 610-1453",
+        "verification": {
+          "expected": "2406101453",
+          "actual": "(240) 610-1453",
+          "passed": false
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776786869.9836988,
+      "selector": "aria_label:LinkedIn Profile",
+      "value": "https://www.linkedin.com/in/sahil–chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "LinkedIn Profile",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:LinkedIn Profile",
+          "label": "LinkedIn Profile",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "https://www.linkedin.com/in/sahil–chordia",
+        "verification": {
+          "expected": "https://www.linkedin.com/in/sahil–chordia",
+          "actual": "https://www.linkedin.com/in/sahil–chordia",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776786875.0197465,
+      "selector": "label_hash:6fef588a",
+      "value": "Yes",
+      "url": null,
+      "element_text": null,
+      "field_label": "Are you authorized to work in the country for which you applied?",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:6fef588a",
+          "label": "Are you authorized to work in the country for which you applied?",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "Yes",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776786879.9106545,
+      "selector": "label_hash:8f7b3368",
+      "value": "No",
+      "url": null,
+      "element_text": null,
+      "field_label": "Have you ever worked for Figma before, as an employee or a contractor/consultant?",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:8f7b3368",
+          "label": "Have you ever worked for Figma before, as an employee or a contractor/consultant?",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "No",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776786884.9589527,
+      "selector": "label_hash:019ec313",
+      "value": "Male",
+      "url": null,
+      "element_text": null,
+      "field_label": "Gender",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:019ec313",
+          "label": "Gender",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "Male",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776786890.3861952,
+      "selector": "label_hash:e38adc7f",
+      "value": "Not a veteran",
+      "url": null,
+      "element_text": null,
+      "field_label": "Veteran Status",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:e38adc7f",
+          "label": "Veteran Status",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "Not a veteran",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776786896.322865,
+      "selector": "label_hash:7352ba9f",
+      "value": "No disability",
+      "url": null,
+      "element_text": null,
+      "field_label": "Disability Status",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:7352ba9f",
+          "label": "Disability Status",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "No disability",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776786929.0925164,
+      "selector": "aria_label:Preferred First Name",
+      "value": "Sahil",
+      "url": null,
+      "element_text": null,
+      "field_label": "Preferred First Name",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:Preferred First Name",
+          "label": "Preferred First Name",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "Sahil",
+        "verification": {
+          "expected": "Sahil",
+          "actual": "Sahil",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776786948.5552883,
+      "selector": "label_hash:e781fe3f",
+      "value": "College Park",
+      "url": null,
+      "element_text": null,
+      "field_label": "Location (City)",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:e781fe3f",
+          "label": "Location (City)",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "College Park",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776786948.9742334,
+      "selector": "aria_label:Other Website",
+      "value": "https://launchway.app, https://mimikree.com",
+      "url": null,
+      "element_text": null,
+      "field_label": "Other Website",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:Other Website",
+          "label": "Other Website",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "https://launchway.app, https://mimikree.com",
+        "verification": {
+          "expected": "https://launchway.app, https://mimikree.com",
+          "actual": "https://launchway.app, https://mimikree.com",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776786955.407963,
+      "selector": "aria_label:Why do you want to join Figma?",
+      "value": "I am deeply inspired by Figma's transformative impact on creative collaboration and its dedication to building accessible, powerful design tools. My background as a Data Science student, coupled with hands-on experience in Generative AI, LLM Systems, and Machine Learning, aligns perfectly with Figma's innovative approach to empowering users, especially as AI continues to reshape design workflows.\n\nI am eager to apply my proficiency in Python, PyTorch, LangChain, and robust backend development to enhance Figma's platform. I believe my ability to build and deploy sophisticated AI-powered applications and work with complex data systems would be invaluable in advancing Figma’s mission and contributing to its future groundbreaking features.",
+      "url": null,
+      "element_text": null,
+      "field_label": "Why do you want to join Figma?",
+      "field_type": "textarea",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:Why do you want to join Figma?",
+          "label": "Why do you want to join Figma?",
+          "field_category": "textarea",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "textarea_fill",
+        "element_attributes": {},
+        "final_value": "I am deeply inspired by Figma's transformative impact on creative collaboration and its dedication to building accessible, powerful design tools. My background as a Data Science student, coupled with hands-on experience in Generative AI, LLM Systems, and Machine Learning, aligns perfectly with Figma's innovative approach to empowering users, especially as AI continues to reshape design workflows.\n\nI am eager to apply my proficiency in Python, PyTorch, LangChain, and robust backend development to enhance Figma's platform. I believe my ability to build and deploy sophisticated AI-powered applications and work with complex data systems would be invaluable in advancing Figma’s mission and contributing to its future groundbreaking features.",
+        "verification": {
+          "expected": "I am deeply inspired by Figma's transformative impact on creative collaboration and its dedication to building accessible, powerful design tools. My background as a Data Science student, coupled with hands-on experience in Generative AI, LLM Systems, and Machine Learning, aligns perfectly with Figma's innovative approach to empowering users, especially as AI continues to reshape design workflows.\n\nI am eager to apply my proficiency in Python, PyTorch, LangChain, and robust backend development to enhance Figma's platform. I believe my ability to build and deploy sophisticated AI-powered applications and work with complex data systems would be invaluable in advancing Figma’s mission and contributing to its future groundbreaking features.",
+          "actual": "I am deeply inspired by Figma's transformative impact on creative collaboration and its dedication to building accessible, powerful design tools. My background as a Data Science student, coupled with hands-on experience in Generative AI, LLM Systems, and Machine Learning, aligns perfectly with Figma's innovative approach to empowering users, especially as AI continues to reshape design workflows.\n\nI am eager to apply my proficiency in Python, PyTorch, LangChain, and robust backend development to enhance Figma's platform. I believe my ability to build and deploy sophisticated AI-powered applications and work with complex data systems would be invaluable in advancing Figma’s mission and contributing to its future groundbreaking features.",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776786961.6642344,
+      "selector": "label_hash:07ef66b8",
+      "value": "He/Him",
+      "url": null,
+      "element_text": null,
+      "field_label": "Pronouns",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:07ef66b8",
+          "label": "Pronouns",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "He/Him",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776786972.877647,
+      "selector": "aria_label:Additional Information",
+      "value": "Beyond my academic pursuits as a Master's Data Science student at the University of Maryland (3.74 GPA), I possess hands-on experience in building and deploying AI-powered applications. My ongoing AI Intern role at Raising The Floor involves significant contributions to assistive technology and HCI research. I have a proven track record in Generative AI and LLM Systems, leveraging frameworks like LangChain, HuggingFace, and PyTorch, alongside backend expertise with FastAPI and AWS. My personal projects, including launchway.app and mimikree.com, further demonstrate my proficiency in translating complex data science concepts into practical, impactful solutions. I am eager to apply this blend of research, development, and deployment skills to your team.",
+      "url": null,
+      "element_text": null,
+      "field_label": "Additional Information",
+      "field_type": "textarea",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:Additional Information",
+          "label": "Additional Information",
+          "field_category": "textarea",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "textarea_fill",
+        "element_attributes": {},
+        "final_value": "Beyond my academic pursuits as a Master's Data Science student at the University of Maryland (3.74 GPA), I possess hands-on experience in building and deploying AI-powered applications. My ongoing AI Intern role at Raising The Floor involves significant contributions to assistive technology and HCI research. I have a proven track record in Generative AI and LLM Systems, leveraging frameworks like LangChain, HuggingFace, and PyTorch, alongside backend expertise with FastAPI and AWS. My personal projects, including launchway.app and mimikree.com, further demonstrate my proficiency in translating complex data science concepts into practical, impactful solutions. I am eager to apply this blend of research, development, and deployment skills to your team.",
+        "verification": {
+          "expected": "Beyond my academic pursuits as a Master's Data Science student at the University of Maryland (3.74 GPA), I possess hands-on experience in building and deploying AI-powered applications. My ongoing AI Intern role at Raising The Floor involves significant contributions to assistive technology and HCI research. I have a proven track record in Generative AI and LLM Systems, leveraging frameworks like LangChain, HuggingFace, and PyTorch, alongside backend expertise with FastAPI and AWS. My personal projects, including launchway.app and mimikree.com, further demonstrate my proficiency in translating complex data science concepts into practical, impactful solutions. I am eager to apply this blend of research, development, and deployment skills to your team.",
+          "actual": "Beyond my academic pursuits as a Master's Data Science student at the University of Maryland (3.74 GPA), I possess hands-on experience in building and deploying AI-powered applications. My ongoing AI Intern role at Raising The Floor involves significant contributions to assistive technology and HCI research. I have a proven track record in Generative AI and LLM Systems, leveraging frameworks like LangChain, HuggingFace, and PyTorch, alongside backend expertise with FastAPI and AWS. My personal projects, including launchway.app and mimikree.com, further demonstrate my proficiency in translating complex data science concepts into practical, impactful solutions. I am eager to apply this blend of research, development, and deployment skills to your team.",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776786978.1640222,
+      "selector": "label_hash:764cdf33",
+      "value": "No",
+      "url": null,
+      "element_text": null,
+      "field_label": "Are you Hispanic/Latino?",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:764cdf33",
+          "label": "Are you Hispanic/Latino?",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "No",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776787013.5565412,
+      "selector": "label_hash:01a9cb6b",
+      "value": "Asian",
+      "url": null,
+      "element_text": null,
+      "field_label": "Please identify your race",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:01a9cb6b",
+          "label": "Please identify your race",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "Asian",
+        "verification": {}
+      }
+    }
+  ],
+  "total_actions": 24,
+  "successful_actions": 24,
+  "last_recorded": 1776787027.522822
+}

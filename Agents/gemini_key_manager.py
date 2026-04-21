@@ -109,12 +109,18 @@ class GeminiKeyManager:
             from google import genai as _genai
             client = _genai.Client(api_key=api_key)
             return client.models.generate_content(model=model, contents=contents, **kwargs)
-        except Exception:
-            # Also try legacy SDK path (google.generativeai) as a fallback
-            import google.generativeai as _legacy_genai
-            _legacy_genai.configure(api_key=api_key)
-            model_obj = _legacy_genai.GenerativeModel(model)
-            return model_obj.generate_content(contents, **kwargs)
+        except ImportError:
+            pass  # new SDK not installed, fall through to legacy below
+
+        # Legacy SDK fallback (only reached when google.genai is not installed)
+        import google.generativeai as _legacy_genai
+        _legacy_genai.configure(api_key=api_key)
+        model_obj = _legacy_genai.GenerativeModel(model)
+        # Legacy SDK uses generation_config= instead of config=
+        legacy_kwargs = {k: v for k, v in kwargs.items() if k != "config"}
+        if "config" in kwargs:
+            legacy_kwargs["generation_config"] = kwargs["config"]
+        return model_obj.generate_content(contents, **legacy_kwargs)
 
     # ── public synchronous interface ─────────────────────────────────────────
 

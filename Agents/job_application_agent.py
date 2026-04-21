@@ -974,7 +974,15 @@ class RefactoredJobAgent:
     async def _state_ai_guided_navigation(self, state: ApplicationState) -> Optional[str]:
         """AI-guided navigation that analyzes the current page and determines the next best action."""
         logger.info(">>> State: AI_GUIDED_NAVIGATION")
-        
+
+        # UNIVERSAL CHECK 0: If we have already started the application, check for success
+        # IMMEDIATELY before doing any other work.  This catches confirmation pages the moment
+        # we land on them so we never accidentally try to re-fill or re-navigate after submission.
+        if state.context.get('has_clicked_apply', False):
+            if await self._verify_application_success(state):
+                logger.info("🎉 Universal Check 0: Success indicators found — application complete!")
+                return 'success'
+
         # UNIVERSAL CHECK 1: Always check for popups first - they can appear at ANY time
         logger.info("🔍 Universal Check 1: Detecting popups...")
         popup_result = await self.popup_detector.detect()
@@ -1102,6 +1110,24 @@ class RefactoredJobAgent:
         Returns the next state if confidently determined, None if uncertain.
         """
         try:
+            # Check 0: Success/confirmation page — always look for this FIRST so we never
+            # mistake a post-submission page (which may still have incidental inputs) for an
+            # unfilled form.  Only bother once we have actually started the application.
+            if state.context.get('has_clicked_apply', False):
+                current_url = self.page.url.lower()
+                conservative_success_url_patterns = [
+                    '/success', '/submitted', '/thank', '/confirmation',
+                    'thank-you', 'application-confirmation',
+                ]
+                if any(kw in current_url for kw in conservative_success_url_patterns):
+                    if await self._verify_application_success(state):
+                        logger.info("✅ Deterministic: URL and page content indicate success page")
+                        return 'success'
+                # Also check page content directly (without requiring a matching URL)
+                if await self._verify_application_success(state):
+                    logger.info("✅ Deterministic: Page content indicates success")
+                    return 'success'
+
             # Check 1: Look for form fields - if found, go to fill_form
             if hasattr(self.form_filler, 'interactor') and hasattr(self.form_filler.interactor, 'get_all_form_fields'):
                 form_fields = await self.form_filler.interactor.get_all_form_fields(extract_options=False)
@@ -1137,21 +1163,6 @@ class RefactoredJobAgent:
                     return None  # Let AI decide
             except:
                 pass
-
-            # Check 4: URL-based detection (success/confirmation pages)
-            current_url = self.page.url.lower()
-            conservative_success_url_patterns = [
-                '/success',
-                '/submitted',
-                '/thank',
-                '/confirmation',
-                'thank-you',
-                'application-confirmation',
-            ]
-            if any(keyword in current_url for keyword in conservative_success_url_patterns):
-                if await self._verify_application_success(state):
-                    logger.info("✅ Deterministic: URL and page content indicate success page")
-                    return 'success'
 
             # If we can't determine confidently, return None to trigger AI
             logger.info("❓ Deterministic: Cannot confidently determine page state")

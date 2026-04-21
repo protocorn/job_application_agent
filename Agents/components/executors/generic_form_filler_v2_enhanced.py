@@ -522,19 +522,29 @@ class GenericFormFillerV2Enhanced:
             result["iterations"] = iteration + 1
             logger.info(f"📝 Form filling iteration {iteration + 1}/{self.MAX_ITERATIONS}")
 
-            # Step 0: Try to upload resume if not already done (first iteration only)
+            # Step 0: Try to upload resume if not already done (first iteration only).
+            # Check for an actual <input type="file"> first so we never waste a round-trip
+            # attempting an upload on pages that have no file control (e.g. confirmation pages,
+            # company career listing pages, etc.).
             if iteration == 0:
                 resume_path = profile.get('resume_path')
                 if resume_path:
-                    print(f"  Uploading resume: {os.path.basename(resume_path)}...")
-                    logger.info(f"📄 Attempting resume upload: {resume_path}")
-                    upload_success = await self.interactor.upload_resume_if_present(resume_path)
-                    if upload_success:
-                        print("  ✓ Resume uploaded successfully")
-                        logger.info("✅ Resume uploaded successfully")
+                    try:
+                        file_inputs = await self.interactor.page.locator('input[type="file"]').all()
+                    except Exception:
+                        file_inputs = []
+                    if file_inputs:
+                        print(f"  Uploading resume: {os.path.basename(resume_path)}...")
+                        logger.info(f"📄 Attempting resume upload: {resume_path}")
+                        upload_success = await self.interactor.upload_resume_if_present(resume_path)
+                        if upload_success:
+                            print("  ✓ Resume uploaded successfully")
+                            logger.info("✅ Resume uploaded successfully")
+                        else:
+                            print("  [WARN] Resume upload: no file-upload control found on this page")
+                            logger.warning("⚠️ Resume upload skipped - no matching upload control found on this page")
                     else:
-                        print("  [WARN] Resume upload: no file-upload control found on this page")
-                        logger.warning("⚠️ Resume upload skipped - no matching upload control found on this page")
+                        logger.debug("📄 No <input type='file'> on page — skipping resume upload attempt")
 
             # Step 1: Detect fields (NO option extraction - fill immediately!)
             all_fields = await self.interactor.get_all_form_fields(extract_options=False)
