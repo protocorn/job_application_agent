@@ -434,7 +434,7 @@ def process_resume_with_llm(resume_text: str) -> Dict[str, Any]:
 
     try:
         response = _key_mgr.generate_content(
-            "gemini-2.0-flash",
+            "gemini-2.5-flash",
             prompt,
             config={"response_mime_type": "application/json"},
         )
