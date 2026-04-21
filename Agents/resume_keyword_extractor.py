@@ -22,9 +22,9 @@ def _get_key_manager():
     return GeminiKeyManager
 
 # Lightweight model for fast, cheap keyword extraction.
-# gemini-2.0-flash-lite is the stable default; swap to gemini-2.5-flash-lite
+# gemini-2.5-flash is the stable default
 # when it becomes generally available via the API.
-_DEFAULT_MODEL = os.getenv("KEYWORD_EXTRACTION_MODEL", "gemini-2.0-flash-lite")
+_DEFAULT_MODEL = os.getenv("KEYWORD_EXTRACTION_MODEL", "gemini-2.5-flash")
 _FALLBACK_MODEL = "gemini-1.5-flash"
 
 _EXTRACT_PROMPT = """\

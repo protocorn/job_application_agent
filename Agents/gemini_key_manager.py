@@ -15,7 +15,7 @@ Usage (sync or async; both thin wrappers are provided):
         custom_api_key="AIza...",
         launchway_api_key=os.getenv("GOOGLE_API_KEY"),
     )
-    response = mgr.generate_content("gemini-2.0-flash", "Hello world")
+    response = mgr.generate_content("gemini-2.5-flash", "Hello world")
 """
 
 import asyncio

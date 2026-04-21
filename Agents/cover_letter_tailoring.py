@@ -27,7 +27,7 @@ def tailor_cover_letter(template, job_description, company_name, job_title, user
         Tailored cover letter text
     """
     try:
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        model = genai.GenerativeModel('gemini-2.5-flash')
 
         # Get current date
         current_date = datetime.now().strftime("%B %d, %Y")

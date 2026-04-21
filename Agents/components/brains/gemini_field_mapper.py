@@ -9,7 +9,7 @@ class GeminiFieldMapper:
     """Uses Gemini Flash model to intelligently map form fields to profile schema."""
     
     def __init__(self):
-        self.model_name = "gemini-2.0-flash"  # Using the fast, lite model
+        self.model_name = "gemini-2.5-flash"
         self._configure_gemini()
         
         # Our profile schema - what data we have available (matching actual profile structure)
@@ -226,7 +226,13 @@ class GeminiFieldMapper:
             return self._parse_comprehensive_mapping_response(response_text, field_catalog, profile)
 
         except Exception as e:
-            logger.error(f"❌ Error getting AI field mapping: {e}")
+            err_str = str(e)
+            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                msg = f"[WARN] Gemini rate limit hit (429) for model '{self.model_name}' — AI field mapping skipped. Try again in a moment."
+                print(msg)
+                logger.warning(msg)
+            else:
+                logger.error(f"❌ Error getting AI field mapping: {e}")
             return {}
 
     def _create_comprehensive_mapping_prompt(
@@ -505,8 +511,12 @@ Use the profile data with CONFIDENCE. If the profile contains information, USE I
    - **DO NOT USE** for:
      * **Dropdowns (ANY TYPE)** - including Greenhouse, Workday, Lever, etc. - provide the value and agent will handle it!
      * Demographic questions (ALWAYS infer from nationality/name/age/education)
+     * Sexual orientation — always select "Prefer not to answer" / "Decline to self-identify"
+     * Hispanic/Latino — always infer from nationality (non-Latin country = "No")
+     * Work authorization — always infer from visa_status in profile context
      * Yes/No questions (use logical defaults)
      * Work location (infer from current location/city in profile)
+     * Office attendance questions (infer from preferred_locations in profile)
      * Start date/availability (infer: students → "Upon graduation", others → "Immediately" or "2 weeks notice")
      * Notice period (infer: students → "Immediately", others → "2 weeks")
      * Education fields (school, degree, major) - use profile.education array
@@ -524,6 +534,9 @@ CRITICAL RULES - CONFIDENCE-BASED APPROACH:
   * "Do you require visa sponsorship?" → Use require_sponsorship from profile
   * "Have you applied to this position before?" → Usually "No" unless specified
   * "Are you willing to relocate?" → Use willing_to_relocate from profile
+  * "Are you able to work in our [City] office X days per week?" → Check preferred_locations; if that city is listed, answer "Yes"; otherwise answer "Yes" if willing_to_relocate, else "No"
+  * "What is your preferred sexual orientation?" / "sexual orientation" → Select "Prefer not to answer" or "Decline to self-identify" — NEVER use NEEDS_HUMAN_INPUT
+  * "Are you Hispanic/Latino?" → Infer from nationality (Latin American country = Yes, all others = No); NEVER use NEEDS_HUMAN_INPUT
 - For fields WITHOUT explicit profile data - **USE SMART INFERENCE**:
   * Notice period → INFER: Students/recent grads → "Immediately" or "Upon graduation", Others → "2 weeks" or "Negotiable"
   * Work location/Intended work location → INFER from current city/state in profile
@@ -655,6 +668,16 @@ YOUR RESPONSE:
                         action_value = action_value.strip()
 
                         if action_type == 'SIMPLE':
+                            # Intercept SIMPLE: NEEDS_HUMAN_INPUT — AI should use the proper action type
+                            if action_value.upper() == 'NEEDS_HUMAN_INPUT':
+                                result[id_part] = {
+                                    'type': 'needs_human_input',
+                                    'reason': 'AI returned NEEDS_HUMAN_INPUT as SIMPLE value',
+                                    'label': field_catalog.get(id_part, {}).get('label', ''),
+                                    'requires_human_review': True
+                                }
+                                logger.debug(f"Intercepted SIMPLE: NEEDS_HUMAN_INPUT for {id_part} → treated as needs_human_input")
+                                continue
                             # Validate that simple fields have reasonable values
                             validated_value = self._validate_simple_field_value(action_value, field_catalog.get(id_part, {}))
                             if validated_value:  # If validation passed
@@ -990,11 +1013,7 @@ Your response (exact option text only):"""
         if profile.get('other_links'): context_parts.append(f"Other Links: {', '.join(profile['other_links'])}")
         if profile.get('summary'): context_parts.append(f"Summary: {profile['summary']}")
         
-        # Work Authorization
-        context_parts.append("\n=== WORK AUTHORIZATION ===")
-        if profile.get('visa_status'): context_parts.append(f"Visa Status: {profile['visa_status']}")
-        if profile.get('require_sponsorship'): context_parts.append(f"Requires Sponsorship: {profile['require_sponsorship']}")
-        if profile.get('work_authorization'): context_parts.append(f"Work Authorization: {profile['work_authorization']}")
+        # Work Authorization — full block further below combines visa_status + require_sponsorship
         
         # Skills and Technical Information
         context_parts.append("\n=== SKILLS AND TECHNICAL ===")
@@ -1032,17 +1051,43 @@ Your response (exact option text only):"""
             context_parts.append(f"Disability Status: {profile['disability_status']} (USE THIS - do not decline)")
         else:
             context_parts.append("Disability Status: Not specified (assume 'No' if no disability)")
-        
-        # Work Authorization
+
+        # Hispanic/Latino inference from nationality (kept brief to avoid filter issues)
+        if profile.get('hispanic_latino'):
+            context_parts.append(f"Hispanic/Latino: {profile['hispanic_latino']} (USE THIS)")
+        else:
+            nationality = (profile.get('nationality') or '').lower()
+            latin_keywords = ('mexican', 'colombian', 'brazilian', 'argentinian', 'peruvian',
+                              'venezuelan', 'chilean', 'ecuadorian', 'cuban', 'dominican',
+                              'guatemalan', 'honduran', 'salvadoran', 'bolivian',
+                              'paraguayan', 'uruguayan', 'nicaraguan', 'latin', 'hispanic')
+            is_latin = any(kw in nationality for kw in latin_keywords)
+            hl_val = 'Yes' if is_latin else 'No'
+            context_parts.append(f"Hispanic/Latino: {hl_val} (inferred from nationality)")
+
+        # Work Authorization derived from visa_status + require_sponsorship
         context_parts.append("\n=== WORK AUTHORIZATION ===")
-        if profile.get('work_authorization'):
-            context_parts.append(f"Work Authorization: {profile['work_authorization']}")
-        elif profile.get('visa sponsorship'):
-            if profile['visa sponsorship'].lower() == 'required':
-                context_parts.append("Work Authorization: Requires visa sponsorship - choose 'No' for US work authorization")
+        visa_status = profile.get('visa_status', '')
+        require_sponsorship = profile.get('require_sponsorship', '')
+        work_auth_explicit = profile.get('work_authorization', '')
+        if work_auth_explicit:
+            context_parts.append(f"Work Authorization: {work_auth_explicit}")
+        elif visa_status:
+            if visa_status in ('F-1', 'F1', 'OPT', 'CPT'):
+                context_parts.append(
+                    f"Visa Status: {visa_status}. "
+                    "Has current legal US work authorization via OPT. "
+                    "Answer Yes to work-auth questions. "
+                    f"Requires sponsorship: {require_sponsorship or 'Yes'} (needs H-1B)."
+                )
+            elif visa_status in ('H1B', 'H-1B', 'H1-B'):
+                context_parts.append(f"Visa Status: {visa_status}. Authorized to work in the US.")
+            elif visa_status in ('Green Card', 'Permanent Resident'):
+                context_parts.append(f"Visa Status: {visa_status}. Fully authorized, no sponsorship needed.")
+            elif visa_status in ('US Citizen', 'Citizen'):
+                context_parts.append(f"Visa Status: {visa_status}. Fully authorized, no sponsorship needed.")
             else:
-                context_parts.append("Work Authorization: Has work authorization - choose 'Yes'")
-        
+                context_parts.append(f"Visa Status: {visa_status}. Requires Sponsorship: {require_sponsorship}.")
         else:
             context_parts.append("Work Authorization: Not specified in profile - use NEEDS_HUMAN_INPUT if asked")
         
@@ -1327,6 +1372,11 @@ Return ONLY valid JSON, no other text:
             return ""
         
         value = value.strip()
+
+        # Never allow "NEEDS_HUMAN_INPUT" as a literal field value
+        if value.upper() == 'NEEDS_HUMAN_INPUT':
+            return ""
+
         label = field_info.get('label', '').lower()
         
         # Check for common problematic patterns

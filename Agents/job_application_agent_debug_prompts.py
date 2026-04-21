@@ -3001,7 +3001,7 @@ IMPORTANT:
 
             # Send screenshot + prompt to Gemini
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 contents=[
                     {
                         "role": "user",
@@ -3091,7 +3091,7 @@ IMPORTANT:
             # Convert screenshot to base64
             screenshot_b64 = base64.b64encode(screenshot_bytes).decode('utf-8')
             
-            model = genai.GenerativeModel("gemini-2.0-flash")
+            model = genai.GenerativeModel("gemini-2.5-flash")
             
             prompt = """
             You are analyzing a screenshot of a webpage that has a popup blocking the job application process.

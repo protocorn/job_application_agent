@@ -98,6 +98,7 @@ class AgentProfileService:
                 },
                 "summary": profile.summary if profile and profile.summary else "",
                 "disabilities": profile.disabilities if profile and profile.disabilities else [],
+                "race_ethnicity": profile.race_ethnicity if profile and profile.race_ethnicity else "",
                 "veteran status": profile.veteran_status if profile and profile.veteran_status else "",
                 "visa status": profile.visa_status if profile and profile.visa_status else "",
                 "visa sponsorship": profile.visa_sponsorship if profile and profile.visa_sponsorship else "",

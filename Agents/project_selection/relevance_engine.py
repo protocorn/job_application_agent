@@ -29,7 +29,7 @@ class ProjectRelevanceEngine:
         """
         if gemini_api_key:
             genai.configure(api_key=gemini_api_key)
-            self.model = genai.GenerativeModel("gemini-2.0-flash-lite")
+            self.model = genai.GenerativeModel("gemini-2.5-flash")
         else:
             self.model = None
         self.logger = logger

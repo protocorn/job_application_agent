@@ -1,0 +1,538 @@
+{
+  "session_id": "ae26d784-eabe-4000-bf1e-cd14b2385c3f",
+  "current_url": "https://triplelift.com/careers-posts/?gh_jid=7833624",
+  "actions": [
+    {
+      "type": "navigate",
+      "timestamp": 1776728883.7453976,
+      "selector": null,
+      "value": null,
+      "url": "https://triplelift.com/careers-posts/?gh_jid=7833624",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776728894.217432,
+      "selector": null,
+      "value": null,
+      "url": "https://triplelift.com/careers-posts/?gh_jid=7833624",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "click",
+      "timestamp": 1776728933.091883,
+      "selector": "button.btn",
+      "value": null,
+      "url": null,
+      "element_text": "element",
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776728938.3590577,
+      "selector": null,
+      "value": null,
+      "url": "https://triplelift.com/careers-posts/?gh_jid=7833624",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "upload_file",
+      "timestamp": 1776728974.1858685,
+      "selector": "input[type=\"file\"]",
+      "value": "C:\\Users\\proto\\AppData\\Local\\Temp\\Resume.pdf",
+      "url": null,
+      "element_text": null,
+      "field_label": "Resume Upload (Direct Input)",
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "upload_method": "direct_input",
+        "interaction_type": "file_upload"
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776728998.7659454,
+      "selector": "aria_label:First Name",
+      "value": "Sahil",
+      "url": null,
+      "element_text": null,
+      "field_label": "First Name",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:First Name",
+          "label": "First Name",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "Sahil",
+        "verification": {
+          "expected": "Sahil",
+          "actual": "Sahil",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776728999.354933,
+      "selector": "aria_label:Last Name",
+      "value": "Chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "Last Name",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:Last Name",
+          "label": "Last Name",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "Chordia",
+        "verification": {
+          "expected": "Chordia",
+          "actual": "Chordia",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776728999.860273,
+      "selector": "aria_label:Email",
+      "value": "chordiasahil24@gmail.com",
+      "url": null,
+      "element_text": null,
+      "field_label": "Email",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:Email",
+          "label": "Email",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "chordiasahil24@gmail.com",
+        "verification": {
+          "expected": "chordiasahil24@gmail.com",
+          "actual": "chordiasahil24@gmail.com",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776729012.4677804,
+      "selector": "label_hash:59716c97_0",
+      "value": "United States of America",
+      "url": null,
+      "element_text": null,
+      "field_label": "Country",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:59716c97_0",
+          "label": "Country",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "United States of America",
+        "verification": {
+          "expected": "United States of America",
+          "actual": "United States of America",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776729012.5296779,
+      "selector": "aria_label:Phone",
+      "value": "2406101453",
+      "url": null,
+      "element_text": null,
+      "field_label": "Phone",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:Phone",
+          "label": "Phone",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "2406101453",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776729013.9001436,
+      "selector": "aria_label:LinkedIn Profile URL",
+      "value": "https://www.linkedin.com/in/sahil–chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "LinkedIn Profile URL",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:LinkedIn Profile URL",
+          "label": "LinkedIn Profile URL",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "https://www.linkedin.com/in/sahil–chordia",
+        "verification": {
+          "expected": "https://www.linkedin.com/in/sahil–chordia",
+          "actual": "https://www.linkedin.com/in/sahil–chordia",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776729020.1932695,
+      "selector": "label_hash:019ec313",
+      "value": "Male",
+      "url": null,
+      "element_text": null,
+      "field_label": "Gender",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:019ec313",
+          "label": "Gender",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "Male",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776729030.1609623,
+      "selector": "label_hash:e38adc7f",
+      "value": "Not a veteran",
+      "url": null,
+      "element_text": null,
+      "field_label": "Veteran Status",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:e38adc7f",
+          "label": "Veteran Status",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "Not a veteran",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776729036.0081034,
+      "selector": "label_hash:7352ba9f",
+      "value": "No disability",
+      "url": null,
+      "element_text": null,
+      "field_label": "Disability Status",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:7352ba9f",
+          "label": "Disability Status",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "No disability",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776729047.4144356,
+      "selector": "label_hash:764cdf33",
+      "value": "Indian",
+      "url": null,
+      "element_text": null,
+      "field_label": "Are you Hispanic/Latino?",
+      "field_type": "greenhouse_dropdown",
+      "success": false,
+      "error": "Field 'Are you Hispanic/Latino?' (greenhouse_dropdown): Fast fill failed - needs AI fallback",
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:764cdf33",
+          "label": "Are you Hispanic/Latino?",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": null,
+        "element_attributes": {},
+        "final_value": "None",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776729073.3302476,
+      "selector": "label_hash:009bc8ea_0",
+      "value": "NEEDS_HUMAN_INPUT",
+      "url": null,
+      "element_text": null,
+      "field_label": "Do you currently have legal US work authorization?",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:009bc8ea_0",
+          "label": "Do you currently have legal US work authorization?",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "NEEDS_HUMAN_INPUT",
+        "verification": {
+          "expected": "NEEDS_HUMAN_INPUT",
+          "actual": "NEEDS_HUMAN_INPUT",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776729079.525611,
+      "selector": "label_hash:81783063_0",
+      "value": "Yes",
+      "url": null,
+      "element_text": null,
+      "field_label": "Will you, now or in the future, require the support of TripleLift to maintain that authorization?",
+      "field_type": "text_input",
+      "success": false,
+      "error": "Field 'Will you, now or in the future, require the support of TripleLift to maintain that authorization?' (text_input): Timeout after 5000ms | Failed: standard_click",
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:81783063_0",
+          "label": "Will you, now or in the future, require the support of TripleLift to maintain that authorization?",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": null,
+        "element_attributes": {},
+        "final_value": "None",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776729079.8467278,
+      "selector": "aria_label:What is your current mailing address?",
+      "value": "College Park, MD",
+      "url": null,
+      "element_text": null,
+      "field_label": "What is your current mailing address?",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:What is your current mailing address?",
+          "label": "What is your current mailing address?",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "College Park, MD",
+        "verification": {
+          "expected": "College Park, MD",
+          "actual": "College Park, MD",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776729080.2972608,
+      "selector": "aria_label:How did you hear about this position?",
+      "value": "linkedin",
+      "url": null,
+      "element_text": null,
+      "field_label": "How did you hear about this position?",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:How did you hear about this position?",
+          "label": "How did you hear about this position?",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "linkedin",
+        "verification": {
+          "expected": "linkedin",
+          "actual": "linkedin",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776729090.658703,
+      "selector": "label_hash:17d5ae8b_0",
+      "value": "NEEDS_HUMAN_INPUT",
+      "url": null,
+      "element_text": null,
+      "field_label": "With what gender do you most identify?",
+      "field_type": "text_input",
+      "success": false,
+      "error": "Field 'With what gender do you most identify?' (text_input): Timeout after 5000ms | Failed: standard_click",
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:17d5ae8b_0",
+          "label": "With what gender do you most identify?",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": null,
+        "element_attributes": {},
+        "final_value": "None",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776729099.5396445,
+      "selector": "label_hash:8808e50e",
+      "value": "No disability",
+      "url": null,
+      "element_text": null,
+      "field_label": "Do you have a disability or long-term condition? (Disability defined as a physical or mental impairment, i.e. one who has a history/record of such an impairment, or one perceived by others as having such an impairment. See www.ada.gov/ada_intro.htm)",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:8808e50e",
+          "label": "Do you have a disability or long-term condition? (Disability defined as a physical or mental impairment, i.e. one who has a history/record of such an impairment, or one perceived by others as having such an impairment. See www.ada.gov/ada_intro.htm)",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "No disability",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776729100.3670561,
+      "selector": "label_hash:8eb2fbf0_1",
+      "value": "NEEDS_HUMAN_INPUT",
+      "url": null,
+      "element_text": null,
+      "field_label": "How do you identify your race or ethnicity? (Please select all that apply.)",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:8eb2fbf0_1",
+          "label": "How do you identify your race or ethnicity? (Please select all that apply.)",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "NEEDS_HUMAN_INPUT",
+        "verification": {
+          "expected": "NEEDS_HUMAN_INPUT",
+          "actual": "NEEDS_HUMAN_INPUT",
+          "passed": true
+        }
+      }
+    }
+  ],
+  "total_actions": 22,
+  "successful_actions": 19,
+  "last_recorded": 1776729136.369892
+}

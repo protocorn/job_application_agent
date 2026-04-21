@@ -9,7 +9,7 @@ class GeminiButtonBrain:
     """AI-powered button detection using text-based Gemini input for better reliability."""
     
     def __init__(self):
-        self.model_name = "gemini-2.0-flash"
+        self.model_name = "gemini-2.5-flash"
         self._configure_gemini()
     
     def _configure_gemini(self):

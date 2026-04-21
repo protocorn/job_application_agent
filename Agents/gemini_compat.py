@@ -6,7 +6,7 @@ AND the new google.genai style (genai.Client), using google.genai internally.
 Usage in agent files:
     from gemini_compat import genai
     genai.configure(api_key=my_key)          # set global key
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash")
     response = model.generate_content(prompt)
     print(response.text)
 
@@ -16,11 +16,42 @@ Usage in agent files:
 
 import logging
 import os
+import random
+import time
 from typing import Any
 
 from google import genai as _genai_new
 
 logger = logging.getLogger(__name__)
+
+
+def _call_with_backoff(fn, *args, max_retries: int = 6, **kwargs) -> Any:
+    """
+    Call *fn(*args, **kwargs)* with exponential backoff on 429 / RESOURCE_EXHAUSTED.
+
+    Wait schedule (seconds): 2, 4, 8, 16, 32, 64  (+jitter ±0.5s each)
+    After max_retries attempts the last exception is re-raised.
+    """
+    for attempt in range(max_retries):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as exc:
+            err = str(exc)
+            if "429" in err or "RESOURCE_EXHAUSTED" in err:
+                if attempt == max_retries - 1:
+                    raise
+                wait = (2 ** (attempt + 1)) + random.uniform(-0.5, 0.5)
+                logger.warning(
+                    f"Gemini 429 rate-limit hit — backing off {wait:.1f}s "
+                    f"(attempt {attempt + 1}/{max_retries})"
+                )
+                print(
+                    f"[WARN] Gemini rate limit (429) — retrying in {wait:.1f}s "
+                    f"(attempt {attempt + 1}/{max_retries})"
+                )
+                time.sleep(wait)
+            else:
+                raise
 
 # Module-level key set via genai.configure()
 _API_KEY: str = ""
@@ -132,7 +163,7 @@ class GenerativeModel:
     is needed.
     """
 
-    def __init__(self, model_name: str = "gemini-2.0-flash", **kwargs):
+    def __init__(self, model_name: str = "gemini-2.5-flash", **kwargs):
         self.model_name = model_name
 
     def generate_content(self, contents: Any, **kwargs) -> _CompatResponse:
@@ -174,7 +205,7 @@ class GenerativeModel:
         call_kwargs = {"model": self.model_name, "contents": prompt}
         if gen_config is not None:
             call_kwargs["config"] = gen_config
-        raw = client.models.generate_content(**call_kwargs)
+        raw = _call_with_backoff(client.models.generate_content, **call_kwargs)
         return _CompatResponse(_extract_text(raw))
 
 

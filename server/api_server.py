@@ -227,7 +227,13 @@ def initialize_gemini():
     return genai.Client(api_key=api_key)
 
 def process_resume_with_llm(resume_text: str) -> Dict[str, Any]:
-    client = initialize_gemini()
+    from Agents.gemini_key_manager import GeminiKeyManager, GeminiQuotaExhaustedError
+    _key_mgr = GeminiKeyManager(
+        primary_mode="launchway",
+        secondary_mode=None,
+        launchway_api_key=os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"),
+        cooldown_seconds=15,
+    )
     profile_schema={
             "type": "object",
             "properties": {
@@ -427,12 +433,10 @@ def process_resume_with_llm(resume_text: str) -> Dict[str, Any]:
     logging.info("Sending resume text to Gemini for profile extraction")
 
     try:
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-            config={
-                "response_mime_type": "application/json"
-            }
+        response = _key_mgr.generate_content(
+            "gemini-2.0-flash",
+            prompt,
+            config={"response_mime_type": "application/json"},
         )
 
         # Clean the response text to extract JSON
@@ -464,6 +468,9 @@ def process_resume_with_llm(resume_text: str) -> Dict[str, Any]:
         except json.JSONDecodeError as json_err:
             logging.error(f"process_resume_with_llm: JSON parse error: {json_err}")
             return None
+    except GeminiQuotaExhaustedError as qe:
+        logging.error(f"process_resume_with_llm: Gemini quota exhausted after retries: {qe}")
+        return None
     except Exception as e:
         logging.error(f"process_resume_with_llm: Gemini error: {e}")
         return None

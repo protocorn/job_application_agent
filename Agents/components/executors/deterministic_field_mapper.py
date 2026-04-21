@@ -87,9 +87,20 @@ class DeterministicFieldMapper:
             'nationality': ['nationality', 'citizenship'],
 
             # Professional Details
-            'current_title': ['current title', 'current position', 'current role', 'job title'],
+            'current_title': [
+                'current title', 'current position', 'current role', 'job title',
+                'headline', 'professional headline', 'title', 'position title',
+                'professional title', 'your title', 'role title',
+            ],
             'current_company': ['current company', 'current employer', 'employer'],
             'years_experience': ['years of experience', 'years experience', 'experience years', 'total experience'],
+
+            # Professional summary / bio
+            'summary': [
+                'summary', 'professional summary', 'bio', 'biography', 'about me',
+                'about you', 'profile', 'professional profile', 'introduction',
+                'overview', 'professional overview', 'career summary',
+            ],
 
             # Education
             'university': ['university', 'school', 'college', 'institution', 'educational institution'],
@@ -262,11 +273,18 @@ class DeterministicFieldMapper:
             'veteran_status': {
                 'Yes': [
                     'Yes', 'Veteran', 'I am a veteran', 'Protected veteran',
-                    'Yes - I am a protected veteran', 'Military veteran'
+                    'Yes - I am a protected veteran', 'Military veteran',
+                    'I identify as one or more of the classifications of a protected veteran',
                 ],
                 'No': [
                     'No', 'Not a veteran', 'I am not a veteran', 'Not applicable',
-                    'No - I am not a protected veteran', 'Non-veteran'
+                    'No - I am not a protected veteran', 'Non-veteran',
+                    'I am not a protected veteran',
+                    'I am not a protected Veteran',
+                ],
+                'Prefer not to say': [
+                    "I don't wish to answer", "I don't wish to self-identify",
+                    'Prefer not to say', 'Decline to self identify',
                 ],
             },
             'disability_status': {
@@ -303,6 +321,9 @@ class DeterministicFieldMapper:
         """
         # Normalize the label
         normalized_label = field_label.lower().strip()
+        # Convert underscores/hyphens to spaces so name= attributes like
+        # "cover_letter", "first_name", "zip_code" match their human-readable forms
+        normalized_label = normalized_label.replace('_', ' ').replace('-', ' ')
         # Remove newlines and other whitespace within the label
         normalized_label = re.sub(r'\s+', ' ', normalized_label)
         # Remove trailing punctuation like *, :, etc.
@@ -581,6 +602,21 @@ class DeterministicFieldMapper:
             # Try space-separated version (e.g., 'first_name' → 'first name')
             space_key = profile_key.replace('_', ' ')
             value = profile.get(space_key)
+
+        # ── Special multi-key lookups for fields with several possible profile keys ──
+        if not value:
+            _multi_key_fallbacks = {
+                'summary': ['summary', 'bio', 'about', 'about_me', 'professional_summary',
+                            'profile_summary', 'career_summary', 'introduction'],
+                'cover_letter': ['cover_letter', 'cover_letter_text', 'cover_letter_path',
+                                 'covering_letter'],
+                'zip_code': ['zip_code', 'postal_code', 'postcode', 'zip'],
+                'current_title': ['current_title', 'headline', 'job_title', 'title', 'position'],
+            }
+            for fallback in _multi_key_fallbacks.get(profile_key, []):
+                value = profile.get(fallback)
+                if value:
+                    break
 
         # Unwrap single-element lists (e.g. disability_status stored as ['No disability'])
         if isinstance(value, list):

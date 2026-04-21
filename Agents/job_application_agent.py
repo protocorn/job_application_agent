@@ -1082,7 +1082,10 @@ class RefactoredJobAgent:
             elif normalized_action == 'click_element':
                 logger.info("🖱️ AI: Click specific element")
                 return await self._handle_click_element(state, page_analysis)
-                
+
+            elif normalized_action == 'scroll_and_reanalyze':
+                return await self._handle_scroll_and_reanalyze(state, page_analysis)
+
             else:
                 logger.warning(f"⚠️ AI returned unknown action: {normalized_action}")
                 state.context['human_intervention_reason'] = f"AI could not determine next action: {page_analysis.get('reason', 'Unknown reason')}"
@@ -1159,7 +1162,15 @@ class RefactoredJobAgent:
             return None
 
     async def _comprehensive_page_analysis(self, state: ApplicationState) -> Dict[str, Any]:
-        """Uses AI to comprehensively analyze the current page and determine the best next action."""
+        """Uses AI to comprehensively analyze the current page and determine the best next action.
+
+        Returns a rich PageIntelligenceReport containing:
+        - A detailed page summary describing what is visible
+        - Apply button details (exact text, position, surrounding context)
+        - A list of visible form fields with labels
+        - A scroll assessment (should we scroll to find more content?)
+        - The chosen action with full reasoning
+        """
         try:
             # Capture ONE screenshot from the most actionable viewport on the page.
             screenshot, screenshot_meta = await self._capture_best_actionable_screenshot()
@@ -1169,6 +1180,9 @@ class RefactoredJobAgent:
             page_title = await self.page.title()
             has_clicked_apply = state.context.get('has_clicked_apply', False)
             came_from_intervention = state.context.get('came_from_human_intervention', False)
+            scroll_y = screenshot_meta.get('selected_scroll_y', 0)
+            max_scroll_y = screenshot_meta.get('max_scroll_y', 0)
+            viewport_h = screenshot_meta.get('viewport_height', 0)
 
             # Record page state for replay
             if self.action_recorder:
@@ -1178,74 +1192,119 @@ class RefactoredJobAgent:
                     page_type="ai_analysis_checkpoint",
                     metadata={"has_clicked_apply": has_clicked_apply}
                 )
-            
-            # Create comprehensive prompt for AI
-            prompt = f"""
-You are analyzing a webpage during a job application process. Based on the screenshot and context, determine the SINGLE BEST next action.
 
-CONTEXT:
+            prompt = f"""
+You are an expert web automation analyst examining a screenshot taken during an automated job application process.
+Your job is to produce a DETAILED, SPECIFIC description of what you see and determine the BEST next action.
+Be precise — the automation agent relies entirely on your description to act correctly.
+
+=== CURRENT CONTEXT ===
 - URL: {url}
 - Page Title: {page_title}
-- Has clicked Apply button: {has_clicked_apply}
-- Coming from human intervention: {came_from_intervention}
-- Screenshot focus: {screenshot_meta.get('reason', 'unknown')}
-- Screenshot position: scrollY={screenshot_meta.get('selected_scroll_y', 0)} of max {screenshot_meta.get('max_scroll_y', 0)} (viewport height: {screenshot_meta.get('viewport_height', 0)})
+- Has already clicked Apply button: {has_clicked_apply}
+- Returning from human intervention: {came_from_intervention}
+- Screenshot viewport position: scrollY={scroll_y} of max={max_scroll_y} (viewport height={viewport_h})
+- Screenshot focus reason: {screenshot_meta.get('reason', 'unknown')}
 
-IMPORTANT CONTEXT RULES:
-- If coming from human intervention AND has_clicked_apply is False, you're likely back on the job listing after authentication
-- If coming from human intervention AND has_clicked_apply is True, you're likely in the middle of an application form
-- Look for signs of successful authentication (user profiles, personalized content)
-- NEVER choose "application_complete" unless you see explicit success messages like "Application submitted", "Thank you", etc.
+=== WHAT TO DO ===
+Carefully examine the screenshot and return a JSON object with these fields:
 
-POSSIBLE ACTIONS (choose exactly ONE):
+1. "page_summary" — 1-2 sentences describing EXACTLY what you see: page type, any visible job title/company, 
+   notable UI sections visible. Be specific about button locations and form sections.
 
-1. "find_apply_button" - If this is a job listing page and you need to find/click an Apply button (especially after authentication)
-2. "fill_form" - If there are actual form fields (text inputs, dropdowns, resume upload fields, etc.) that need to be filled
-3. "handle_iframe" - If there's an iframe that contains the application form
-4. "submit_form" - If form is filled and ready for submission (Next/Submit button visible)
-5. "application_complete" - ONLY if you see explicit success confirmation messages ("Application submitted", "Thank you for applying", etc.)
-6. "navigate_to_next_page" - If you see METHOD SELECTION buttons like "Autofill with Resume", "Apply Manually", "Use Last Application" (NOT "Apply Now" buttons!)
-7. "need_human_intervention" - If the page requires human attention (broken pages, authentication failures, or unresolved blockers) - DO NOT use this for resume uploads, chatbots, or help widgets
-8. "click_element" - If a specific visible button/link/text needs to be clicked (e.g., "Consent & Continue"). Provide the exact on-screen text in "target_text".
+2. "page_type" — one of: job_listing | application_form | auth_page | success_page | other
 
-CRITICAL DISTINCTION - "Apply Now" vs "Method Selection":
-- "Apply Now" / "Start Applying" / "Submit Application" buttons → These should trigger either "find_apply_button" (if on job listing) OR be handled as navigation buttons
-- "Autofill with Resume" / "Apply Manually" / "Use Last Application" → These are METHOD SELECTION options, use "navigate_to_next_page"
-- If you see BOTH "Apply Now" AND method selection options (like "Start applying with LinkedIn"), the "Apply Now" button is what needs to be clicked!
+3. "scroll_assessment" — an object describing viewport completeness:
+   {{
+     "viewport_completeness": "full" | "partial" | "poor",
+     "has_more_content_above": true/false,
+     "has_more_content_below": true/false,
+     "scroll_recommendation": "none" | "scroll_down" | "scroll_up",
+     "scroll_reason": "why scrolling would help, e.g. form fields or apply button may be off-screen"
+   }}
+   - Use "poor" if the screenshot shows mostly blank space, a loading spinner, or almost no useful UI
+   - Use "partial" if you can see some content but key elements (Apply button, form fields) might be cut off
+   - Use "full" if the viewport contains sufficient actionable content to proceed
+   - Recommend scrolling ONLY if there is strong evidence more relevant content is off-screen
 
-ANALYSIS CRITERIA:
-- DISTINGUISH CAREFULLY: "Apply Now button" vs "Application method selection page" vs "Actual form page"
-  * Apply Now button page: Shows "Apply Now", "Start Applying", "Submit Application" buttons → use "navigate_to_next_page" to click them
-  * Method selection page: Shows CHOICE options like "Autofill with Resume", "Apply Manually", "Use Last Application" → use "navigate_to_next_page"
-  * Actual form page: Shows text inputs, dropdowns, checkboxes, OR resume/CV upload fields that need filling → use "fill_form"
-- IMPORTANT: Resume/CV upload fields (like "Upload Resume", "Upload CV", file upload for resume) should trigger "fill_form", NOT "need_human_intervention"
-  * The agent CAN automatically upload resumes - this is a standard form filling operation
-  * Only request human intervention for file uploads of UNKNOWN types (not resume/CV/cover letter)
-- After authentication, you should typically return to the job listing to find the Apply button
-- Look for job application forms, apply buttons, user profiles indicating successful login
-- Check for popups, overlays, or blocking elements
-- Identify if this is a job listing, application form, or confirmation page
-- Be VERY conservative about declaring "application_complete" - only if explicit success indicators
-- Consider if forms need filling or if submission is ready
-- IMPORTANT: Chatbots, help widgets, or AI assistants (like "Electra") are NOT blocking elements - ignore them and focus on the main content
-- Only use "need_human_intervention" for actual blockers like broken pages or authentication failures - NOT for resume uploads
+4. "apply_button" — if an Apply / Submit / Start Application button is visible:
+   {{
+     "found": true,
+     "exact_text": "the exact button label as shown on screen",
+     "element_type": "button" | "link" | "div",
+     "visual_position": "describe position e.g. top-right, center, bottom of page",
+     "surrounding_text": "the text immediately around the button, including adjacent buttons",
+     "distinguishing_features": "color, size, style notes e.g. 'blue pill button, white text'",
+     "confidence": 0.0-1.0
+   }}
+   If NOT found: {{ "found": false }}
 
-Return ONLY a JSON object:
+5. "form_fields" — list every VISIBLE input field, dropdown, file upload, or checkbox:
+   [
+     {{
+       "label": "exact label text as shown",
+       "field_type": "text_input" | "dropdown" | "file_upload" | "radio" | "checkbox" | "textarea",
+       "placeholder": "placeholder text if visible",
+       "required": true/false,
+       "current_value": "current value if already filled, else empty string",
+       "position_description": "e.g. first row left column, under email field"
+     }}
+   ]
+   If no form fields are visible: []
+
+6. "action" — the SINGLE BEST next action (choose ONE):
+   - "find_apply_button"     → job listing page, need to click Apply
+   - "fill_form"             → form fields visible and need to be filled
+   - "handle_iframe"         → application is inside an iframe
+   - "submit_form"           → form appears filled, Next/Submit button visible
+   - "application_complete"  → ONLY if explicit success message visible ("Thank you", "Application submitted")
+   - "navigate_to_next_page" → method selection page (Autofill/Manual/LinkedIn options) OR consent page
+   - "scroll_and_reanalyze"  → viewport shows too little content, must scroll before deciding
+   - "need_human_intervention" → broken page, auth failure, or unresolvable blocker ONLY
+   - "click_element"         → a specific non-Apply button/link must be clicked first
+
+7. "confidence" — 0.0 to 1.0
+
+8. "reason" — DETAILED explanation. For apply buttons: describe position + text + surrounding context.
+   For forms: list which fields need filling. For scroll: explain what might be hidden.
+   For human intervention: describe exactly what is blocking progress.
+
+9. "elements_detected" — list of key UI elements you can see
+
+10. "target_text" — exact on-screen text of element to click if action is "click_element", else ""
+
+=== KEY RULES ===
+- "Apply Now" / "Start Applying" / "Submit Application" on a JOB LISTING → "find_apply_button"
+- "Autofill with Resume" / "Apply Manually" / method choice → "navigate_to_next_page"  
+- Resume/CV upload fields → "fill_form" (agent handles file uploads automatically)
+- Chatbots and help widgets → IGNORE, focus on main content
+- scroll_and_reanalyze when: scrollY=0 AND max_scroll_y>500 AND no apply button AND no form fields visible
+- NEVER use "application_complete" without an explicit success message in screenshot
+- Only "need_human_intervention" for real blockers: broken pages, CAPTCHA, unexpected auth prompts
+
+Return ONLY valid JSON, no extra text.
 {{
-    "action": "one_of_the_above_actions",
-    "confidence": 0.0-1.0,
-    "reason": "Brief explanation of why this action was chosen",
-    "page_type": "job_listing|application_form|auth_page|success_page|other",
-    "elements_detected": ["list", "of", "key", "elements", "seen"],
-    "target_text": "Exact button/link text to click if action == click_element, otherwise empty string"
+    "page_summary": "...",
+    "page_type": "...",
+    "scroll_assessment": {{ ... }},
+    "apply_button": {{ ... }},
+    "form_fields": [ ... ],
+    "action": "...",
+    "confidence": 0.0,
+    "reason": "...",
+    "elements_detected": [...],
+    "target_text": ""
 }}
 """
-            
+
             # Use Gemini to analyze the page
             response = await self._analyze_page_with_ai(screenshot, prompt)
-            
+
+            # ── Log the rich intelligence report clearly ─────────────────────
+            self._log_page_intelligence_report(response, screenshot_meta)
+
             return response
-            
+
         except Exception as e:
             logger.error(f"Comprehensive page analysis failed: {e}")
             return {
@@ -1253,8 +1312,77 @@ Return ONLY a JSON object:
                 "confidence": 0.0,
                 "reason": f"Page analysis failed: {str(e)}",
                 "page_type": "unknown",
-                "elements_detected": []
+                "elements_detected": [],
+                "page_summary": "",
+                "scroll_assessment": {"scroll_recommendation": "none"},
+                "apply_button": {"found": False},
+                "form_fields": []
             }
+
+    def _log_page_intelligence_report(self, report: Dict[str, Any], meta: Dict[str, Any]) -> None:
+        """Log a human-readable version of the PageIntelligenceReport."""
+        sep = "─" * 60
+        logger.info(f"\n{sep}")
+        logger.info("🔍 PAGE INTELLIGENCE REPORT")
+        logger.info(sep)
+
+        summary = report.get("page_summary", "")
+        if summary:
+            logger.info(f"📄 SUMMARY: {summary}")
+
+        page_type = report.get("page_type", "unknown")
+        confidence = report.get("confidence", 0.0)
+        logger.info(f"🏷️  PAGE TYPE: {page_type}  |  CONFIDENCE: {confidence:.0%}")
+
+        # Scroll assessment
+        scroll = report.get("scroll_assessment") or {}
+        scroll_rec = scroll.get("scroll_recommendation", "none")
+        completeness = scroll.get("viewport_completeness", "unknown")
+        if scroll_rec != "none":
+            logger.warning(
+                f"📜 SCROLL: {scroll_rec.upper()} recommended  "
+                f"(viewport={completeness}, "
+                f"above={scroll.get('has_more_content_above')}, "
+                f"below={scroll.get('has_more_content_below')})"
+            )
+            logger.warning(f"   Reason: {scroll.get('scroll_reason', '')}")
+        else:
+            logger.info(f"📜 SCROLL: not needed  (viewport={completeness})")
+
+        # Apply button
+        btn = report.get("apply_button") or {}
+        if btn.get("found"):
+            logger.info(
+                f"🔘 APPLY BUTTON FOUND: \"{btn.get('exact_text', '?')}\"  "
+                f"({btn.get('element_type', '?')})  @  {btn.get('visual_position', '?')}"
+            )
+            logger.info(f"   Surrounding text: {btn.get('surrounding_text', '')}")
+            logger.info(f"   Features: {btn.get('distinguishing_features', '')}")
+        else:
+            logger.info("🔘 APPLY BUTTON: not visible in current viewport")
+
+        # Form fields
+        fields = report.get("form_fields") or []
+        if fields:
+            logger.info(f"📋 FORM FIELDS VISIBLE ({len(fields)} fields):")
+            for i, f in enumerate(fields[:10], 1):
+                req = "* " if f.get("required") else "  "
+                val = f" [filled: {f['current_value']}]" if f.get("current_value") else ""
+                logger.info(
+                    f"   {i}. {req}{f.get('label', '?')} "
+                    f"({f.get('field_type', '?')}){val}"
+                )
+            if len(fields) > 10:
+                logger.info(f"   ... and {len(fields)-10} more fields")
+        else:
+            logger.info("📋 FORM FIELDS: none visible in current viewport")
+
+        # Action + reason
+        action = report.get("action", "?")
+        reason = report.get("reason", "")
+        logger.info(f"🎯 RECOMMENDED ACTION: {action.upper()}")
+        logger.info(f"   Reasoning: {reason}")
+        logger.info(sep)
 
     async def _capture_best_actionable_screenshot(self) -> Tuple[bytes, Dict[str, Any]]:
         """
@@ -1443,15 +1571,45 @@ Return ONLY a JSON object:
         return normalized
 
     async def _handle_find_apply_button(self, state: ApplicationState) -> str:
-        """Handle finding and clicking apply button."""
+        """Handle finding and clicking apply button.
+
+        Execution order:
+          1. Standard apply detector (pattern-based)
+          2. AI intelligence report button hint (exact text match)
+          3. Generic common-label fallback
+          4. Surrounding-context text search (uses AI description of surroundings)
+        """
+        # Strategy 1: Standard pattern-based detection
         apply_button = await self.apply_detector.detect()
         if apply_button:
             state.context['apply_button'] = apply_button
             return 'click_apply'
 
-        # If AI strongly suggested a listing/apply context, try direct label-based fallback.
         ai_context = state.context.get('last_ai_page_analysis', {}) or {}
         ai_confidence = float(ai_context.get('confidence', 0.0) or 0.0)
+        btn_intel = ai_context.get('apply_button') or {}
+
+        # Strategy 2: Use exact button text from AI intelligence report
+        if btn_intel.get('found') and btn_intel.get('exact_text'):
+            exact_text = btn_intel['exact_text'].strip()
+            logger.info(
+                f"🎯 AI identified apply button: \"{exact_text}\"  "
+                f"@ {btn_intel.get('visual_position', '?')}  "
+                f"| surrounding: {btn_intel.get('surrounding_text', '')[:80]}"
+            )
+            found = await self._find_element_by_exact_text(exact_text)
+            if found:
+                logger.info(f"✅ Found apply button via AI exact-text hint: \"{exact_text}\"")
+                state.context['apply_button'] = found
+                return 'click_apply'
+            # Also try partial / case-insensitive match
+            found = await self._find_element_by_text_contains(exact_text)
+            if found:
+                logger.info(f"✅ Found apply button via AI text-contains hint: \"{exact_text}\"")
+                state.context['apply_button'] = found
+                return 'click_apply'
+
+        # Strategy 3: Common label fallback
         if ai_confidence >= 0.7 or ai_context.get('action') == 'find_apply_button':
             fallback_button = await self._find_apply_button_by_common_labels()
             if fallback_button:
@@ -1459,8 +1617,135 @@ Return ONLY a JSON object:
                 state.context['apply_button'] = fallback_button
                 return 'click_apply'
 
-        state.context['human_intervention_reason'] = "Could not find Apply button on job listing page. Please locate and click the Apply button manually."
+        # Strategy 4: Surrounding text context search
+        surrounding = btn_intel.get('surrounding_text', '')
+        if surrounding:
+            found = await self._find_apply_button_by_surrounding_context(surrounding)
+            if found:
+                logger.info("✅ Found apply button via surrounding-context search")
+                state.context['apply_button'] = found
+                return 'click_apply'
+
+        state.context['human_intervention_reason'] = (
+            "Could not find Apply button on job listing page. "
+            f"AI described button as: {btn_intel.get('exact_text', 'unknown')} "
+            f"at {btn_intel.get('visual_position', 'unknown position')}. "
+            "Please locate and click the Apply button manually."
+        )
         return 'human_intervention'
+
+    async def _find_element_by_exact_text(self, text: str) -> Optional[Dict[str, Any]]:
+        """Find a clickable element whose visible text exactly matches the given string."""
+        selectors = [
+            f'button:text-is("{text}")',
+            f'a:text-is("{text}")',
+            f'[role="button"]:text-is("{text}")',
+            f'input[type="submit"][value="{text}"]',
+        ]
+        for ctx in self._get_click_contexts():
+            for sel in selectors:
+                try:
+                    locator = ctx.locator(sel).and_(ctx.locator(':visible')).first
+                    await locator.wait_for(state='visible', timeout=600)
+                    return {'element': locator, 'confidence': 0.9, 'method': 'exact_text_match',
+                            'reason': f"Exact text match for '{text}'"}
+                except Exception:
+                    continue
+        return None
+
+    async def _find_element_by_text_contains(self, text: str) -> Optional[Dict[str, Any]]:
+        """Find a clickable element whose visible text contains the given string (case-insensitive)."""
+        safe = text.replace('"', '\\"')
+        selectors = [
+            f'button:has-text("{safe}")',
+            f'a:has-text("{safe}")',
+            f'[role="button"]:has-text("{safe}")',
+            f'input[type="submit"][value*="{safe}" i]',
+        ]
+        for ctx in self._get_click_contexts():
+            for sel in selectors:
+                try:
+                    locator = ctx.locator(sel).and_(ctx.locator(':visible')).first
+                    await locator.wait_for(state='visible', timeout=600)
+                    return {'element': locator, 'confidence': 0.8, 'method': 'text_contains_match',
+                            'reason': f"Text-contains match for '{text}'"}
+                except Exception:
+                    continue
+        return None
+
+    async def _find_apply_button_by_surrounding_context(self, surrounding_text: str) -> Optional[Dict[str, Any]]:
+        """Find apply button by looking near the described surrounding text."""
+        # Extract candidate words from surrounding text description
+        import re as _re
+        words = _re.findall(r'\b[A-Z][a-z]{2,}\b', surrounding_text)[:5]  # capitalized words
+        for word in words:
+            for apply_label in ['Apply', 'Apply Now', 'Start']:
+                try:
+                    # Look for an Apply button near a landmark text word
+                    for ctx in self._get_click_contexts():
+                        locator = ctx.locator(f'button:has-text("{apply_label}"), a:has-text("{apply_label}")').first
+                        await locator.wait_for(state='visible', timeout=400)
+                        return {
+                            'element': locator,
+                            'confidence': 0.65,
+                            'method': 'surrounding_context',
+                            'reason': f"Found '{apply_label}' button near context word '{word}'"
+                        }
+                except Exception:
+                    continue
+        return None
+
+    def _get_click_contexts(self):
+        """Return list of page contexts to search (main page + any active iframe)."""
+        contexts = [self.page]
+        try:
+            if hasattr(self, 'current_context') and self.current_context and self.current_context is not self.page:
+                contexts.append(self.current_context)
+        except Exception:
+            pass
+        return contexts
+
+    async def _handle_scroll_and_reanalyze(self, state: ApplicationState, page_analysis: Dict[str, Any]) -> str:
+        """Handle the scroll_and_reanalyze action: scroll in the recommended direction and re-enter AI navigation."""
+        scroll_assessment = page_analysis.get('scroll_assessment') or {}
+        recommendation = scroll_assessment.get('scroll_recommendation', 'scroll_down')
+        reason = scroll_assessment.get('scroll_reason', 'AI recommended scrolling to find more content')
+
+        scroll_attempts = state.context.get('scroll_attempts', 0)
+        MAX_SCROLL_ATTEMPTS = 3
+
+        if scroll_attempts >= MAX_SCROLL_ATTEMPTS:
+            logger.warning(f"⚠️ Reached max scroll attempts ({MAX_SCROLL_ATTEMPTS}). Escalating to human intervention.")
+            state.context['human_intervention_reason'] = (
+                f"Agent scrolled {MAX_SCROLL_ATTEMPTS} times but still cannot find actionable content. "
+                f"Last AI observation: {page_analysis.get('page_summary', 'unknown page state')}. "
+                "Please review the page."
+            )
+            return 'human_intervention'
+
+        state.context['scroll_attempts'] = scroll_attempts + 1
+
+        try:
+            viewport_height = await self.page.evaluate('() => window.innerHeight')
+            current_scroll = await self.page.evaluate('() => window.scrollY')
+            max_scroll = await self.page.evaluate(
+                '() => Math.max(0, document.body.scrollHeight - window.innerHeight)'
+            )
+
+            if recommendation == 'scroll_up':
+                target = max(0, current_scroll - int(viewport_height * 0.75))
+                logger.info(f"📜 SCROLLING UP: {current_scroll} → {target}  (reason: {reason})")
+            else:
+                target = min(max_scroll, current_scroll + int(viewport_height * 0.75))
+                logger.info(f"📜 SCROLLING DOWN: {current_scroll} → {target}  (reason: {reason})")
+
+            await self.page.evaluate(f"() => window.scrollTo({{top: {target}, behavior: 'smooth'}})")
+            await self.page.wait_for_timeout(800)
+
+        except Exception as e:
+            logger.warning(f"Scroll failed: {e}")
+
+        return 'ai_guided_navigation'
 
     async def _find_apply_button_by_common_labels(self) -> Optional[Dict[str, Any]]:
         """Best-effort fallback to locate an apply CTA by common labels on page/iframe."""
@@ -2888,9 +3173,9 @@ Return ONLY a JSON object:
         try:
             import base64
             import json
-            from google import genai
             from PIL import Image
             from io import BytesIO
+            from gemini_compat import genai, _call_with_backoff
 
             logger.info("🧠 Using AI vision to identify and fill missing required fields...")
 
@@ -2998,8 +3283,9 @@ IMPORTANT:
             client = genai.Client(api_key=os.getenv('GOOGLE_API_KEY'))
 
             # Send screenshot + prompt to Gemini
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
+            response = _call_with_backoff(
+                client.models.generate_content,
+                model="gemini-2.5-flash",
                 contents=[
                     {
                         "role": "user",
@@ -3084,12 +3370,12 @@ IMPORTANT:
         try:
             import base64
             import json
-            from google import genai
-            
+            from gemini_compat import genai
+
             # Convert screenshot to base64
             screenshot_b64 = base64.b64encode(screenshot_bytes).decode('utf-8')
             
-            model = genai.GenerativeModel("gemini-2.0-flash")
+            model = genai.GenerativeModel("gemini-2.5-flash")
             
             prompt = """
             You are analyzing a screenshot of a webpage that has a popup blocking the job application process.
@@ -3688,7 +3974,11 @@ def _load_profile_data(user_id=None, profile_data=None):
             # Work Authorization (using actual data)
             'work_authorization': profile_data.get('work_authorization', ''),
             'visa_status': profile_data.get('visa status', 'F-1'),
-            'require_sponsorship': 'Yes' if profile_data.get('visa sponsorship') == 'Required' else 'No',
+            'require_sponsorship': (
+                'Yes' if str(profile_data.get('visa sponsorship', '') or '').strip().lower()
+                         in ('yes', 'required', 'true', '1', 'needed')
+                else 'No'
+            ),
 
             # Additional Information
             'cover_letter': profile_data.get('cover_letter', ''),

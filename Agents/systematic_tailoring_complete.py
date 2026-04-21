@@ -1882,7 +1882,7 @@ Return ONLY valid JSON, no markdown, no extra text."""
                 # Use lite model for fast bullet ranking
                 response = generate_content_with_retry(
                     client=self.genai_client,
-                    model='gemini-2.0-flash-lite',
+                    model='gemini-2.5-flash',
                     contents=prompt
                 )
                 

@@ -669,7 +669,7 @@ class HumanFillTracker:
             import os
             from gemini_compat import genai
 
-            model  = genai.GenerativeModel("gemini-2.0-flash")
+            model  = genai.GenerativeModel("gemini-2.5-flash")
             config = genai.GenerationConfig(temperature=0.0, max_output_tokens=256)
 
             import asyncio as _asyncio

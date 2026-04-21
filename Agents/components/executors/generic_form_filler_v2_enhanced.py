@@ -105,6 +105,14 @@ class GenericFormFillerV2Enhanced:
         self.pattern_recorder = PatternRecorder()        # Records AI successes → global table
         self.user_pattern_recorder = UserPatternRecorder()  # Records human fills → per-user table
 
+        # DOM structural pattern recorder — learns label↔field DOM structure per site domain
+        try:
+            from components.executors.dom_pattern_recorder import DomPatternRecorder
+            self._dom_recorder = DomPatternRecorder()
+        except Exception as _e:
+            logger.debug(f"DomPatternRecorder unavailable: {_e}")
+            self._dom_recorder = None
+
         # Pre-load successful DB labels as extra anchors for the semantic mapper.
         # This means "First Name" (seen in the DB) becomes part of the embedding index
         # for first_name, so novel phrasings are compared against real-world examples.
@@ -131,6 +139,64 @@ class GenericFormFillerV2Enhanced:
         # same field label+category, we stop retrying it (it most likely needs human input).
         self._field_failure_counts: dict = {}  # {page_key: {fingerprint: int}}
         self._MAX_FIELD_FAILURES = 3
+
+    # ── DOM structural pattern helpers ────────────────────────────────────
+
+    def _record_dom_structural_pattern(
+        self,
+        field: Dict[str, Any],
+        success: bool = True,
+    ) -> None:
+        """Record the DOM structural relationship for this field on the current site.
+
+        Derives the most likely relationship type from the field's attributes
+        and persists it so future visits can locate the field without AI help.
+        """
+        if not self._dom_recorder:
+            return
+        label = (field.get('label') or '').strip()
+        if not label or label.startswith('Field '):
+            return
+
+        # Derive relationship + extras from available attributes
+        field_id = field.get('id') or ''
+        aria_label = field.get('aria_label') or ''
+        name = field.get('name') or ''
+        placeholder = field.get('placeholder') or ''
+        field_type = field.get('input_type') or field.get('field_category') or 'text'
+
+        if field_id:
+            relationship = 'label_for'
+            extra = {'label_for_value': field_id, 'css_selector': f'#{field_id}'}
+        elif aria_label:
+            relationship = 'aria_label'
+            extra = {'aria_label_value': aria_label}
+        elif name:
+            relationship = 'ancestor_walk'
+            extra = {'name_attr': name}
+        elif placeholder:
+            relationship = 'placeholder'
+            extra = {'placeholder_text': placeholder}
+        else:
+            relationship = 'ancestor_walk'
+            extra = {}
+
+        try:
+            site_url = self.page.url if hasattr(self, 'page') else ''
+        except Exception:
+            site_url = ''
+
+        try:
+            self._dom_recorder.record(
+                site_domain=site_url,
+                label_text=label,
+                relationship=relationship,
+                field_type=str(field_type),
+                success=success,
+                extra=extra,
+            )
+        except Exception as e:
+            logger.debug(f"DOM pattern recording failed: {e}")
 
     # ── Semantic mapper: DB anchor loading ────────────────────────────────
 
@@ -960,6 +1026,31 @@ class GenericFormFillerV2Enhanced:
         """
         filled_count = 0
 
+        # PRE-FILTER: skip plain text_input duplicates that shadow a richer field type
+        # (e.g. Greenhouse phone widget: "Country greenhouse_dropdown" + "Country text_input"
+        #  where the text_input is really the phone-number box mislabelled as "Country")
+        richer_types = {'greenhouse_dropdown', 'dropdown', 'selection', 'radio_group'}
+        richer_labels: set = set()
+        for f in fields:
+            if (f.get('field_category', '') in richer_types):
+                richer_labels.add(f.get('label', '').strip().lower())
+        deduplicated: list = []
+        for f in fields:
+            lbl = f.get('label', '').strip().lower()
+            cat = f.get('field_category', '')
+            if cat == 'text_input' and lbl in richer_labels:
+                logger.debug(
+                    f"⏭️ Skipping duplicate text_input '{f.get('label')}' "
+                    f"(richer field type already present for this label)"
+                )
+                result['skipped_fields'].append({
+                    "field": f.get('label', ''),
+                    "reason": "Duplicate label — richer field type (dropdown) handles this"
+                })
+            else:
+                deduplicated.append(f)
+        fields = deduplicated
+
         # PHASE 1: Try deterministic on all fields first
         logger.info("📋 Phase 1: Attempting deterministic mapping for all fields...")
         fields_needing_learned = []
@@ -1319,6 +1410,8 @@ class GenericFormFillerV2Enhanced:
                         success=True,
                         user_id=self.user_id,
                     )
+                # Record DOM structural pattern (how label relates to field in DOM)
+                self._record_dom_structural_pattern(field, success=True)
                 return True
             else:
                 logger.debug(f"⏭️ Learned pattern fill failed for '{field_label}'")
@@ -1330,6 +1423,7 @@ class GenericFormFillerV2Enhanced:
                         success=False,
                         user_id=self.user_id,
                     )
+                self._record_dom_structural_pattern(field, success=False)
                 return False
 
         except Exception as e:
@@ -1417,6 +1511,7 @@ class GenericFormFillerV2Enhanced:
                     success=True,
                     user_id=self.user_id,
                 )
+                self._record_dom_structural_pattern(field, success=True)
                 return True
 
             logger.debug(f"⏭️ Semantic fill failed for '{field_label}'")
@@ -1658,6 +1753,8 @@ class GenericFormFillerV2Enhanced:
                                 user_id=self.user_id
                             )
                             logger.debug(f"📝 Recorded pattern: '{field_label}' → {profile_field}")
+                        # Record DOM structural pattern (label↔field relationship)
+                        self._record_dom_structural_pattern(field, success=True)
                 else:
                     logger.debug(f"⏭️ AI batch fill failed for '{field_label}'")
                     self._record_field_failure(field_label, field.get('field_category', ''))
@@ -1800,9 +1897,9 @@ class GenericFormFillerV2Enhanced:
 
         try:
             # Use Gemini to parse issues and suggest corrections
-            from google import genai
             import os
             import json
+            from gemini_compat import genai, _call_with_backoff
 
             client = genai.Client(api_key=os.getenv('GOOGLE_API_KEY'))
 
@@ -1850,8 +1947,9 @@ Respond in JSON format:
 If none of the flagged issues represent a true contradiction with the profile, return an empty corrections list.
 """
 
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
+            response = _call_with_backoff(
+                client.models.generate_content,
+                model="gemini-2.5-flash",
                 contents=prompt,
                 config={"response_mime_type": "application/json"}
             )
@@ -2050,7 +2148,7 @@ If everything looks correct, set approved=true with empty issues list.
 """
 
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 contents=prompt,
                 config={"response_mime_type": "application/json"}
             )
@@ -2534,7 +2632,7 @@ If GREEN SIGNAL (nothing can be done), set:
 - action: "stop"
 """
 
-            model = genai.GenerativeModel("gemini-2.0-flash")
+            model = genai.GenerativeModel("gemini-2.5-flash")
             response = model.generate_content([
                 prompt,
                 {

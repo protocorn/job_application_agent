@@ -28,7 +28,7 @@ class GeminiPageAnalyzer:
                 return
             genai.configure(api_key=api_key)
             # Use Gemini 2.0 Flash which supports image input
-            self.model = genai.GenerativeModel("gemini-2.0-flash")
+            self.model = genai.GenerativeModel("gemini-2.5-flash")
             logger.info("✅ Gemini Page Analyzer configured successfully.")
         except Exception as e:
             logger.error(f"❌ Failed to configure Gemini Page Analyzer: {e}")

@@ -1,0 +1,276 @@
+{
+  "session_id": "4214430d-fc84-439f-ab88-095b60f32f99",
+  "current_url": "https://apply.workable.com/valsoft-corp/j/5626740C7C/apply/",
+  "actions": [
+    {
+      "type": "navigate",
+      "timestamp": 1776699223.2581837,
+      "selector": null,
+      "value": null,
+      "url": "https://apply.workable.com/valsoft-corp/j/5626740C7C/apply/",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776699228.8809447,
+      "selector": null,
+      "value": null,
+      "url": "https://apply.workable.com/valsoft-corp/j/5626740C7C/apply/",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "click",
+      "timestamp": 1776699284.1371737,
+      "selector": "button.button--2de5X",
+      "value": null,
+      "url": null,
+      "element_text": "element",
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776699289.7864282,
+      "selector": null,
+      "value": null,
+      "url": "https://apply.workable.com/valsoft-corp/j/5626740C7C/apply/",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "upload_file",
+      "timestamp": 1776699317.9636142,
+      "selector": "input[type=\"file\"]",
+      "value": "C:\\Users\\proto\\AppData\\Local\\Temp\\Resume.pdf",
+      "url": null,
+      "element_text": null,
+      "field_label": "Resume Upload (Direct Input)",
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "upload_method": "direct_input",
+        "interaction_type": "file_upload"
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776699328.8391802,
+      "selector": "name:firstname",
+      "value": "Sahil",
+      "url": null,
+      "element_text": null,
+      "field_label": "firstname",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:firstname",
+          "label": "firstname",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "Sahil",
+        "verification": {
+          "expected": "Sahil",
+          "actual": "Sahil",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776699329.1689963,
+      "selector": "name:lastname",
+      "value": "Chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "lastname",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:lastname",
+          "label": "lastname",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "Chordia",
+        "verification": {
+          "expected": "Chordia",
+          "actual": "Chordia",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776699329.4966419,
+      "selector": "name:email",
+      "value": "chordiasahil24@gmail.com",
+      "url": null,
+      "element_text": null,
+      "field_label": "email",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:email",
+          "label": "email",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "chordiasahil24@gmail.com",
+        "verification": {
+          "expected": "chordiasahil24@gmail.com",
+          "actual": "chordiasahil24@gmail.com",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776699329.8483233,
+      "selector": "name:phone",
+      "value": "2406101453",
+      "url": null,
+      "element_text": null,
+      "field_label": "phone",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:phone",
+          "label": "phone",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "2406101453",
+        "verification": {
+          "expected": "2406101453",
+          "actual": "2406101453",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776699330.1628351,
+      "selector": "name:city",
+      "value": "College Park",
+      "url": null,
+      "element_text": null,
+      "field_label": "city",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:city",
+          "label": "city",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "College Park",
+        "verification": {
+          "expected": "College Park",
+          "actual": "College Park",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776699330.4592955,
+      "selector": "name:country",
+      "value": "United States of America",
+      "url": null,
+      "element_text": null,
+      "field_label": "country",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:country",
+          "label": "country",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "United States of America",
+        "verification": {
+          "expected": "United States of America",
+          "actual": "United States of America",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776699355.9487164,
+      "selector": "name:address",
+      "value": "College Park, MD",
+      "url": null,
+      "element_text": null,
+      "field_label": "address",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:address",
+          "label": "address",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "College Park, MD",
+        "verification": {}
+      }
+    }
+  ],
+  "total_actions": 12,
+  "successful_actions": 12,
+  "last_recorded": 1776699358.3729198
+}

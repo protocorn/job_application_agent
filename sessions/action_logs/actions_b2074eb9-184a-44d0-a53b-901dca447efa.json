@@ -1,0 +1,234 @@
+{
+  "session_id": "b2074eb9-184a-44d0-a53b-901dca447efa",
+  "current_url": "https://apply.workable.com/valsoft-corp/j/5626740C7C/apply/",
+  "actions": [
+    {
+      "type": "navigate",
+      "timestamp": 1776702478.6131308,
+      "selector": null,
+      "value": null,
+      "url": "https://apply.workable.com/valsoft-corp/j/5626740C7C/apply/",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776702483.130359,
+      "selector": null,
+      "value": null,
+      "url": "https://apply.workable.com/valsoft-corp/j/5626740C7C/apply/",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "upload_file",
+      "timestamp": 1776702562.4355028,
+      "selector": "input[type=\"file\"]",
+      "value": "C:\\Users\\proto\\AppData\\Local\\Temp\\Resume.pdf",
+      "url": null,
+      "element_text": null,
+      "field_label": "Resume Upload (Direct Input)",
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "upload_method": "direct_input",
+        "interaction_type": "file_upload"
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776702572.0316951,
+      "selector": "name:city",
+      "value": "College Park",
+      "url": null,
+      "element_text": null,
+      "field_label": "city",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:city",
+          "label": "city",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "College Park",
+        "verification": {
+          "expected": "College Park",
+          "actual": "College Park",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776702572.32741,
+      "selector": "name:country",
+      "value": "United States of America",
+      "url": null,
+      "element_text": null,
+      "field_label": "country",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:country",
+          "label": "country",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "United States of America",
+        "verification": {
+          "expected": "United States of America",
+          "actual": "United States of America",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776702602.4882038,
+      "selector": "name:firstname",
+      "value": "Sahil",
+      "url": null,
+      "element_text": null,
+      "field_label": "firstname",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:firstname",
+          "label": "firstname",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "Sahil",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776702602.5116813,
+      "selector": "name:lastname",
+      "value": "Chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "lastname",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:lastname",
+          "label": "lastname",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "Chordia",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776702602.5337229,
+      "selector": "name:email",
+      "value": "chordiasahil24@gmail.com",
+      "url": null,
+      "element_text": null,
+      "field_label": "email",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:email",
+          "label": "email",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "chordiasahil24@gmail.com",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776702602.5557427,
+      "selector": "name:phone",
+      "value": "2406101453",
+      "url": null,
+      "element_text": null,
+      "field_label": "phone",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:phone",
+          "label": "phone",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "2406101453",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776702602.5770147,
+      "selector": "name:address",
+      "value": "College Park, MD",
+      "url": null,
+      "element_text": null,
+      "field_label": "address",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:address",
+          "label": "address",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "College Park, MD",
+        "verification": {}
+      }
+    }
+  ],
+  "total_actions": 10,
+  "successful_actions": 10,
+  "last_recorded": 1776702605.4652393
+}

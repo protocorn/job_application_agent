@@ -6,9 +6,32 @@ import os
 import re
 import asyncio
 import hashlib
+import random
+import time
 from typing import Any, Dict, List, Optional, Tuple
 from playwright.async_api import Page, Frame, Locator
 from loguru import logger
+
+
+def _gemini_call(client_models, **kwargs):
+    """Call client.models.generate_content with exponential backoff on 429."""
+    max_retries = 6
+    for attempt in range(max_retries):
+        try:
+            return client_models.generate_content(**kwargs)
+        except Exception as exc:
+            err = str(exc)
+            if "429" in err or "RESOURCE_EXHAUSTED" in err:
+                if attempt == max_retries - 1:
+                    raise
+                wait = (2 ** (attempt + 1)) + random.uniform(-0.5, 0.5)
+                logger.warning(
+                    f"Gemini 429 rate-limit — backing off {wait:.1f}s "
+                    f"(attempt {attempt + 1}/{max_retries})"
+                )
+                time.sleep(wait)
+            else:
+                raise
 
 from components.exceptions.field_exceptions import (
     FieldInteractionError,
@@ -80,14 +103,23 @@ class FieldInteractorV2:
     VERIFICATION_TIMEOUT_MS = 2000  # 2 seconds for verification
     MAX_TOTAL_TIME_PER_FIELD_MS = 20000  # 20 seconds total max per field
 
-    def __init__(self, page: Page | Frame, action_recorder=None):
+    def __init__(self, page: Page | Frame, action_recorder=None, site_url: str = ""):
         self.page = page
         self.action_recorder = action_recorder
+        self.site_url = site_url
         self.dropdown_handler = get_dropdown_handler()  # Fast v2 handler
         self._cached_fields: Optional[List[Dict[str, Any]]] = None
         self.profile: Optional[Dict[str, Any]] = None  # Store profile for clean filenames
         self.created_clean_files: List[str] = []  # Track files created with clean names for cleanup
-        
+
+        # DOM structural pattern recorder — learns label↔field DOM relationships per site
+        try:
+            from components.executors.dom_pattern_recorder import DomPatternRecorder
+            self._dom_recorder: Optional[object] = DomPatternRecorder()
+        except Exception as e:
+            logger.debug(f"DomPatternRecorder unavailable: {e}")
+            self._dom_recorder = None
+
         # Import QuestionExtractor here to avoid circular imports
         try:
             from components.executors.question_extractor import QuestionExtractor
@@ -998,7 +1030,7 @@ class FieldInteractorV2:
                         f'Available options:\n' + "\n".join(f"- {t}" for t in option_texts)
                         + '\n\nReply with ONLY the exact option text. If nothing fits, reply NO_MATCH.'
                     )
-                    resp = _client.models.generate_content(model="gemini-2.0-flash-lite", contents=prompt)
+                    resp = _gemini_call(_client.models, model="gemini-2.5-flash", contents=prompt)
                     ai_choice = resp.text.strip().strip('"').strip("'")
                     logger.info(f"   AI radio pick: '{ai_choice}'")
                     if ai_choice != "NO_MATCH":
@@ -2182,6 +2214,80 @@ class FieldInteractorV2:
                         except:
                             pass
 
+                    # Method 5: ATS internal-ID rescue
+                    # If the label still looks like an opaque ATS field ID (e.g. Workable's
+                    # "QA_11314685" or "CA_29438"), the normal label extraction missed the
+                    # visible question text.  Do a wider DOM search specifically for these.
+                    _ATS_ID_PATTERN = re.compile(r'^([A-Z]{1,3}_\d{4,}|CA_\d+)$')
+                    if not label_text or _ATS_ID_PATTERN.match((label_text or '').strip()):
+                        try:
+                            rescued = await element.evaluate(r'''
+                                (el) => {
+                                    // Walk outward up to 10 levels looking for a label or
+                                    // heading element that contains readable question text.
+                                    function cleanText(t) {
+                                        return (t || '').replace(/\*/g, '').replace(/\s+/g, ' ').trim();
+                                    }
+                                    function isReadable(t) {
+                                        return t && t.length >= 4 && t.length <= 300
+                                            && !/^[A-Z]{1,3}_\d+$/.test(t);
+                                    }
+
+                                    // Check fieldset legend first (most semantic)
+                                    let node = el.parentElement;
+                                    for (let d = 0; d < 10; d++) {
+                                        if (!node || node === document.body) break;
+
+                                        // Legend inside fieldset
+                                        if (node.tagName === 'FIELDSET') {
+                                            const leg = node.querySelector('legend');
+                                            if (leg) { const t = cleanText(leg.textContent); if (isReadable(t)) return t; }
+                                        }
+
+                                        // label[for=id] at any ancestor level (Workable uses this pattern)
+                                        if (el.id) {
+                                            const lbl = document.querySelector(`label[for="${el.id}"]`);
+                                            if (lbl) { const t = cleanText(lbl.textContent); if (isReadable(t)) return t; }
+                                        }
+
+                                        // Any label/p/div/span that looks like a question heading
+                                        // and comes BEFORE this element in the container
+                                        const candidates = Array.from(node.querySelectorAll(
+                                            'label, legend, p[class*="label"], p[class*="question"], ' +
+                                            'div[class*="label"], div[class*="question"], ' +
+                                            'span[class*="label"], span[class*="question"], ' +
+                                            'div[class*="title"], span[class*="title"], ' +
+                                            'li[class*="label"], li[class*="question"]'
+                                        ));
+                                        for (const c of candidates) {
+                                            if (!c.contains(el)) {
+                                                const t = cleanText(c.textContent);
+                                                if (isReadable(t)) return t;
+                                            }
+                                        }
+
+                                        // data-testid attributes Workable adds to question containers
+                                        const tid = node.getAttribute('data-testid') || '';
+                                        if (tid.startsWith('field-')) {
+                                            // Try aria-label on the container
+                                            const al = node.getAttribute('aria-label');
+                                            if (al && isReadable(al)) return cleanText(al);
+                                        }
+
+                                        node = node.parentElement;
+                                    }
+                                    return null;
+                                }
+                            ''')
+                            if rescued and rescued.strip():
+                                rescued_clean = rescued.strip().replace('*', '').strip()
+                                logger.debug(
+                                    f"🔧 ATS-ID rescue: label '{label_text}' → '{rescued_clean[:60]}'"
+                                )
+                                label_text = rescued_clean
+                        except Exception:
+                            pass
+
                     # Extract options for dropdowns if requested
                     available_options = []
                     if extract_options and category == 'dropdown':
@@ -2854,7 +2960,7 @@ If no suitable upload element is found, return:
 Your response (JSON only):
 """
 
-            model = genai.GenerativeModel("gemini-2.0-flash")
+            model = genai.GenerativeModel("gemini-2.5-flash")
             response = model.generate_content(prompt)
 
             # Parse response

@@ -3,9 +3,32 @@ Enhanced V2 Dropdown Handlers with Iframe Support.
 Handles Greenhouse, Workday, Lever, and others with correct frame context.
 """
 import asyncio
+import random
+import time
 from typing import Any, Dict, List, Optional
 from playwright.async_api import Locator
 from loguru import logger
+
+
+def _gemini_call(client_models, **kwargs):
+    """Call client.models.generate_content with exponential backoff on 429."""
+    max_retries = 6
+    for attempt in range(max_retries):
+        try:
+            return client_models.generate_content(**kwargs)
+        except Exception as exc:
+            err = str(exc)
+            if "429" in err or "RESOURCE_EXHAUSTED" in err:
+                if attempt == max_retries - 1:
+                    raise
+                wait = (2 ** (attempt + 1)) + random.uniform(-0.5, 0.5)
+                logger.warning(
+                    f"Gemini 429 rate-limit — backing off {wait:.1f}s "
+                    f"(attempt {attempt + 1}/{max_retries})"
+                )
+                time.sleep(wait)
+            else:
+                raise
 
 from components.exceptions.field_exceptions import (
     DropdownInteractionError,
@@ -407,8 +430,9 @@ class ATSDropdownHandlerV2:
                         'explicitly names one (e.g. "Asian", "Hispanic"). Never infer from unrelated context.\n'
                         '- If nothing genuinely matches, reply with exactly: NO_MATCH'
                     )
-                    resp = _client.models.generate_content(
-                        model="gemini-2.0-flash-lite",
+                    resp = _gemini_call(
+                        _client.models,
+                        model="gemini-2.5-flash",
                         contents=prompt
                     )
                     chosen = resp.text.strip().strip('"').strip("'")
@@ -446,8 +470,9 @@ class ATSDropdownHandlerV2:
                         'Reply with ONLY the search terms, one per line, no numbering, no explanation.\n'
                         'If no useful search terms exist, reply with: NONE'
                     )
-                    resp = _client.models.generate_content(
-                        model="gemini-2.0-flash-lite",
+                    resp = _gemini_call(
+                        _client.models,
+                        model="gemini-2.5-flash",
                         contents=prompt
                     )
                     lines = [l.strip() for l in resp.text.strip().splitlines() if l.strip()]
@@ -943,7 +968,7 @@ class ATSDropdownHandlerV2:
     ):
         """
         Choose the best option from the Workday options list.
-        ≤ 15 options → ask AI (gemini-2.0-flash-lite).
+        ≤ 15 options → ask AI (gemini-2.5-flash).
         > 15 options → fuzzy/exact Python match.
         Returns (locator, text) or (None, None).
         """
@@ -970,7 +995,7 @@ class ATSDropdownHandlerV2:
                     + '\n\nReply with ONLY the exact option text as listed. '
                     'If truly nothing matches, reply NO_MATCH.'
                 )
-                resp = _client.models.generate_content(model="gemini-2.0-flash-lite", contents=prompt)
+                resp = _gemini_call(_client.models, model="gemini-2.5-flash", contents=prompt)
                 ai_choice = resp.text.strip().strip('"').strip("'")
                 logger.info(f"  AI chose: '{ai_choice}'")
                 if ai_choice != "NO_MATCH":
@@ -1338,7 +1363,7 @@ class ATSDropdownHandlerV2:
                         + "\n".join(f"- {t}" for t in option_texts)
                         + '\n\nReply with ONLY the exact option text. If nothing matches, reply NO_MATCH.'
                     )
-                    resp = _client.models.generate_content(model="gemini-2.0-flash-lite", contents=prompt)
+                    resp = _gemini_call(_client.models, model="gemini-2.5-flash", contents=prompt)
                     ai_choice = resp.text.strip().strip('"').strip("'")
                     logger.info(f"  AI chose: '{ai_choice}'")
                     if ai_choice != "NO_MATCH":
