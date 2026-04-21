@@ -436,7 +436,11 @@ def process_resume_with_llm(resume_text: str) -> Dict[str, Any]:
         response = _key_mgr.generate_content(
             "gemini-2.5-flash",
             prompt,
-            config={"response_mime_type": "application/json"},
+            config={
+                "response_mime_type": "application/json",
+                "thinking_config": {"thinking_budget": 0},
+                "max_output_tokens": 8192,
+            },
         )
 
         # Clean the response text to extract JSON
@@ -467,6 +471,7 @@ def process_resume_with_llm(resume_text: str) -> Dict[str, Any]:
             return validated_data
         except json.JSONDecodeError as json_err:
             logging.error(f"process_resume_with_llm: JSON parse error: {json_err}")
+            logging.debug(f"process_resume_with_llm: raw response text (first 500 chars): {response_text[:500]!r}")
             return None
     except GeminiQuotaExhaustedError as qe:
         logging.error(f"process_resume_with_llm: Gemini quota exhausted after retries: {qe}")
