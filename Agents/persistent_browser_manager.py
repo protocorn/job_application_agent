@@ -79,7 +79,17 @@ class PersistentBrowserManager:
     - Reuses same browser for multiple jobs (opens new tabs)
     """
     
-    def __init__(self, base_dir: str = "./browser_profiles"):
+    def __init__(self, base_dir: str = None):
+        if base_dir is None:
+            # Prefer an env var injected by the bootstrap so local-dev (cwd-relative)
+            # and installed-package (any cwd) both resolve to the same stable path.
+            # Falls back to ~/.launchway/browser_profiles/ so the profile survives
+            # across working-directory changes (the #1 cause of fresh-profile crashes
+            # when running via `pip install launchway`).
+            base_dir = os.environ.get(
+                "LAUNCHWAY_BROWSER_PROFILES_DIR",
+                str(Path.home() / ".launchway" / "browser_profiles"),
+            )
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Persistent browser manager initialized: {self.base_dir}")
@@ -245,12 +255,28 @@ class PersistentBrowserManager:
                 self._cleanup_stale_profile_locks(profile_path)
                 await asyncio.sleep(3.0)
                 logger.info("🔁 Final retry after extended stale-process cleanup (attempt 3)")
-                context = await playwright.chromium.launch_persistent_context(
-                    user_data_dir=str(profile_path),
-                    headless=headless,
-                    args=safer_args,
-                    **context_options
-                )
+                try:
+                    context = await playwright.chromium.launch_persistent_context(
+                        user_data_dir=str(profile_path),
+                        headless=headless,
+                        args=safer_args,
+                        **context_options
+                    )
+                except Exception as third_error:
+                    logger.warning(f"Attempt 3 failed: {third_error}. Profile may be fundamentally corrupted.")
+                    logger.info("🔄 Attempting to salvage profile by resetting cache while preserving logins...")
+                    
+                    # Attempt 4: Salvage profile
+                    self._salvage_corrupted_profile(profile_path)
+                    await asyncio.sleep(2.0)
+                    
+                    logger.info("🔁 Launching salvaged profile (attempt 4)")
+                    context = await playwright.chromium.launch_persistent_context(
+                        user_data_dir=str(profile_path),
+                        headless=headless,
+                        args=safer_args,
+                        **context_options
+                    )
         
         # Store playwright instance for cleanup (only if we created it)
         if created_playwright:
@@ -274,6 +300,75 @@ class PersistentBrowserManager:
         
         return context
 
+    def _salvage_corrupted_profile(self, profile_path: Path) -> None:
+        """
+        If a profile is fundamentally corrupted (e.g. Service Worker or Cache corruption
+        causing STATUS_BREAKPOINT on startup), we can salvage the user's logins by
+        renaming the profile to a backup, creating a fresh one, and copying ONLY the
+        essential login data (Cookies, Local Storage, Session Storage, Login Data,
+        Web Data, Preferences, and Local State).
+        """
+        import shutil
+        import time
+        
+        if not profile_path.exists():
+            return
+            
+        backup_path = profile_path.with_name(f"{profile_path.name}_corrupted_{int(time.time())}")
+        try:
+            profile_path.rename(backup_path)
+            logger.info(f"Renamed corrupted profile to {backup_path.name}")
+        except Exception as e:
+            logger.error(f"Could not rename corrupted profile: {e}")
+            return
+            
+        # Create fresh profile directory structure
+        profile_path.mkdir(parents=True, exist_ok=True)
+        default_dir = profile_path / "Default"
+        default_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Files/directories to copy from backup to fresh profile
+        # Local State is required to decrypt DPAPI-encrypted cookies on Windows
+        root_items = ["Local State", "profile_metadata.json"]
+        default_items = [
+            "Network",           # Contains Cookies
+            "Local Storage",     # Contains Local Storage
+            "Session Storage",   # Contains Session Storage
+            "Login Data",        # Contains Passwords
+            "Login Data For Account",
+            "Web Data",          # Contains Autofill
+            "Preferences",       # Contains Preferences
+        ]
+        
+        copied = 0
+        for item in root_items:
+            src = backup_path / item
+            dst = profile_path / item
+            if src.exists():
+                try:
+                    if src.is_dir():
+                        shutil.copytree(src, dst)
+                    else:
+                        shutil.copy2(src, dst)
+                    copied += 1
+                except Exception as e:
+                    logger.debug(f"Failed to copy {item}: {e}")
+                    
+        for item in default_items:
+            src = backup_path / "Default" / item
+            dst = default_dir / item
+            if src.exists():
+                try:
+                    if src.is_dir():
+                        shutil.copytree(src, dst)
+                    else:
+                        shutil.copy2(src, dst)
+                    copied += 1
+                except Exception as e:
+                    logger.debug(f"Failed to copy Default/{item}: {e}")
+                    
+        logger.info(f"Salvaged {copied} essential login/state files to fresh profile.")
+
     def _cleanup_stale_profile_locks(self, profile_path: Path) -> None:
         """
         Clean up stale Chromium lock artifacts AND session-recovery files.
@@ -296,7 +391,7 @@ class PersistentBrowserManager:
         # ── 1. Singleton lock files (both profile root and Default/) ───────────
         lock_names = (
             "SingletonLock", "SingletonCookie", "SingletonSocket",
-            "lockfile", ".parentlock",
+            "lockfile", ".parentlock", "LOCK",
         )
         for d in [profile_path, default_dir]:
             for name in lock_names:

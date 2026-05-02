@@ -1,0 +1,368 @@
+{
+  "session_id": "6d365ffc-991a-4be1-930a-2b02d1ef265c",
+  "current_url": "https://jobs.ashbyhq.com/baseten/508b792d-57a0-467e-9a89-76fe72e84433/application?utm_source=worNde4l4L",
+  "actions": [
+    {
+      "type": "navigate",
+      "timestamp": 1776831851.8986402,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/baseten/508b792d-57a0-467e-9a89-76fe72e84433/application?utm_source=worNde4l4L",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776831852.58904,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/baseten/508b792d-57a0-467e-9a89-76fe72e84433/application?utm_source=worNde4l4L",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "click",
+      "timestamp": 1776831913.2924514,
+      "selector": "button._button_8wvgw_29",
+      "value": null,
+      "url": null,
+      "element_text": "element",
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776831918.3625238,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/baseten/508b792d-57a0-467e-9a89-76fe72e84433/application?utm_source=worNde4l4L",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "upload_file",
+      "timestamp": 1776831937.8591697,
+      "selector": "input[type=\"file\"]",
+      "value": "C:\\Users\\proto\\AppData\\Local\\Temp\\Resume.pdf",
+      "url": null,
+      "element_text": null,
+      "field_label": "Resume Upload (Direct Input)",
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "upload_method": "direct_input",
+        "interaction_type": "file_upload"
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831942.3502436,
+      "selector": "name:7ddfeb40-1aea-4a19-ab70-1915f292c169",
+      "value": "2406101453",
+      "url": null,
+      "element_text": null,
+      "field_label": "Phone Number",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:7ddfeb40-1aea-4a19-ab70-1915f292c169",
+          "label": "Phone Number",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "2406101453",
+        "verification": {
+          "expected": "2406101453",
+          "actual": "2406101453",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831942.6778681,
+      "selector": "name:_systemfield_email",
+      "value": "chordiasahil24@gmail.com",
+      "url": null,
+      "element_text": null,
+      "field_label": "Email",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:_systemfield_email",
+          "label": "Email",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "chordiasahil24@gmail.com",
+        "verification": {
+          "expected": "chordiasahil24@gmail.com",
+          "actual": "chordiasahil24@gmail.com",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831943.1076734,
+      "selector": "label_hash:f1cefec9",
+      "value": "C:\\Users\\proto\\Job_Application_Agent\\Resumes\\resume_1LjfrE73FPZH4phWicUQOAKB3HBs6hGyeGJ2Yef9zAN0.pdf",
+      "url": null,
+      "element_text": null,
+      "field_label": "Resume",
+      "field_type": "file_upload",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:f1cefec9",
+          "label": "Resume",
+          "field_category": "file_upload",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "file_upload",
+        "element_attributes": {},
+        "final_value": "Sahil_Chordia_Resume.pdf",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831943.4060686,
+      "selector": "name:bc661585-ae31-4e40-963e-afafc464cc34",
+      "value": "https://www.linkedin.com/in/sahil--chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "LinkedIn Profile",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:bc661585-ae31-4e40-963e-afafc464cc34",
+          "label": "LinkedIn Profile",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "https://www.linkedin.com/in/sahil--chordia",
+        "verification": {
+          "expected": "https://www.linkedin.com/in/sahil--chordia",
+          "actual": "https://www.linkedin.com/in/sahil--chordia",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831943.730451,
+      "selector": "name:9643d331-f5ad-42da-8f0e-79d3428e634f",
+      "value": "Raising The Floor",
+      "url": null,
+      "element_text": null,
+      "field_label": "Current Company",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:9643d331-f5ad-42da-8f0e-79d3428e634f",
+          "label": "Current Company",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "Raising The Floor",
+        "verification": {
+          "expected": "Raising The Floor",
+          "actual": "Raising The Floor",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831944.1810133,
+      "selector": "ashby_yesno:c4e71b19-9e0e-4a2c-bdb6-dd4696b25b09",
+      "value": "Yes",
+      "url": null,
+      "element_text": null,
+      "field_label": "Will you now, or in the future, require employment-based visa sponsorship?",
+      "field_type": "ashby_yesno",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "ashby_yesno:c4e71b19-9e0e-4a2c-bdb6-dd4696b25b09",
+          "label": "Will you now, or in the future, require employment-based visa sponsorship?",
+          "field_category": "ashby_yesno",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "ashby_yesno",
+        "element_attributes": {},
+        "final_value": "Yes",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831946.3557901,
+      "selector": "radio_group:c4f7e492-1bca-47d4-8c5a-9f31532ac6df__systemfield_eeoc_gender",
+      "value": "Male",
+      "url": null,
+      "element_text": null,
+      "field_label": "Male",
+      "field_type": "radio_group",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "radio_group:c4f7e492-1bca-47d4-8c5a-9f31532ac6df__systemfield_eeoc_gender",
+          "label": "Male",
+          "field_category": "radio_group",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "radio_click",
+        "element_attributes": {},
+        "final_value": "Male",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831960.3843942,
+      "selector": "radio_group:c4f7e492-1bca-47d4-8c5a-9f31532ac6df__systemfield_eeoc_race",
+      "value": "Indian",
+      "url": null,
+      "element_text": null,
+      "field_label": "Hispanic or Latino",
+      "field_type": "radio_group",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "radio_group:c4f7e492-1bca-47d4-8c5a-9f31532ac6df__systemfield_eeoc_race",
+          "label": "Hispanic or Latino",
+          "field_category": "radio_group",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "radio_click",
+        "element_attributes": {},
+        "final_value": "Indian",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831961.1526666,
+      "selector": "radio_group:c4f7e492-1bca-47d4-8c5a-9f31532ac6df__systemfield_eeoc_veteran_status",
+      "value": "Not a veteran",
+      "url": null,
+      "element_text": null,
+      "field_label": "I identify as one or more of the classifications of protected veteran listed above",
+      "field_type": "radio_group",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "radio_group:c4f7e492-1bca-47d4-8c5a-9f31532ac6df__systemfield_eeoc_veteran_status",
+          "label": "I identify as one or more of the classifications of protected veteran listed above",
+          "field_category": "radio_group",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "radio_click",
+        "element_attributes": {},
+        "final_value": "Not a veteran",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831966.3389459,
+      "selector": "ashby_yesno:8cf49029-fcad-4e05-b28e-a41f908a45e9",
+      "value": "No",
+      "url": null,
+      "element_text": null,
+      "field_label": "Do you currently have unrestricted work authorization in the United States?",
+      "field_type": "ashby_yesno",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "ashby_yesno:8cf49029-fcad-4e05-b28e-a41f908a45e9",
+          "label": "Do you currently have unrestricted work authorization in the United States?",
+          "field_category": "ashby_yesno",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "ashby_yesno",
+        "element_attributes": {},
+        "final_value": "No",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831975.0227792,
+      "selector": "label_hash:49ee3087",
+      "value": "Sahil Chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "Name",
+      "field_type": "file_upload",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:49ee3087",
+          "label": "Name",
+          "field_category": "file_upload",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "Sahil Chordia",
+        "verification": {}
+      }
+    }
+  ],
+  "total_actions": 16,
+  "successful_actions": 16,
+  "last_recorded": 1776832049.1897147
+}

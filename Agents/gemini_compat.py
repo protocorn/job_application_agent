@@ -18,6 +18,9 @@ import logging
 import os
 import random
 import time
+import asyncio
+import base64
+from io import BytesIO
 from typing import Any
 
 from google import genai as _genai_new
@@ -166,6 +169,60 @@ class GenerativeModel:
     def __init__(self, model_name: str = "gemini-2.5-flash", **kwargs):
         self.model_name = model_name
 
+    def _pil_image_to_inline_data(self, image: Any) -> dict[str, Any]:
+        """Convert a PIL image into google-genai inline image data."""
+        buffer = BytesIO()
+        image_to_send = image
+        try:
+            if getattr(image, "mode", "RGB") not in ("RGB", "L"):
+                image_to_send = image.convert("RGB")
+        except Exception:
+            image_to_send = image
+        image_to_send.save(buffer, format="JPEG", quality=85)
+        return {
+            "inline_data": {
+                "mime_type": "image/jpeg",
+                "data": base64.b64encode(buffer.getvalue()).decode("ascii"),
+            }
+        }
+
+    def _content_item_to_part(self, item: Any) -> dict[str, Any]:
+        """Convert old google.generativeai-style items into google-genai parts."""
+        if isinstance(item, str):
+            return {"text": item}
+
+        if isinstance(item, dict):
+            if "inline_data" in item or "text" in item:
+                return item
+            if "mime_type" in item and "data" in item:
+                return {"inline_data": item}
+            return {"text": str(item.get("text", item))}
+
+        # PIL Image objects expose save(); the old SDK accepted these directly.
+        if hasattr(item, "save") and hasattr(item, "mode"):
+            return self._pil_image_to_inline_data(item)
+
+        if hasattr(item, "text"):
+            return {"text": str(item.text)}
+
+        return {"text": str(item)}
+
+    def _normalize_contents(self, contents: Any) -> Any:
+        """Normalize old SDK content shapes without dropping image payloads."""
+        if isinstance(contents, str):
+            return contents
+
+        if isinstance(contents, list):
+            # Already in google-genai content shape.
+            if contents and all(isinstance(item, dict) and "role" in item for item in contents):
+                return contents
+            return [{"role": "user", "parts": [self._content_item_to_part(item) for item in contents]}]
+
+        if isinstance(contents, dict) and "role" in contents:
+            return [contents]
+
+        return [{"role": "user", "parts": [self._content_item_to_part(contents)]}]
+
     def generate_content(self, contents: Any, **kwargs) -> _CompatResponse:
         api_key = _get_api_key()
         if not api_key:
@@ -174,24 +231,6 @@ class GenerativeModel:
                 "arguments. To use the Google Cloud API, provide (`vertexai`, `project` & "
                 "`location`) arguments."
             )
-
-        # Normalise contents to a plain string prompt
-        if isinstance(contents, str):
-            prompt = contents
-        elif isinstance(contents, list):
-            parts: list[str] = []
-            for item in contents:
-                if isinstance(item, str):
-                    parts.append(item)
-                elif hasattr(item, "text"):
-                    parts.append(str(item.text))
-                elif isinstance(item, dict):
-                    parts.append(str(item.get("text", item)))
-                else:
-                    parts.append(str(item))
-            prompt = "\n".join(parts)
-        else:
-            prompt = str(contents)
 
         client = _genai_new.Client(api_key=api_key)
         gen_config = None
@@ -202,11 +241,15 @@ class GenerativeModel:
             # If someone passed a native google.genai config, pass it through
             elif hasattr(raw_config, "__class__") and "GenerateContentConfig" in type(raw_config).__name__:
                 gen_config = raw_config
-        call_kwargs = {"model": self.model_name, "contents": prompt}
+        call_kwargs = {"model": self.model_name, "contents": self._normalize_contents(contents)}
         if gen_config is not None:
             call_kwargs["config"] = gen_config
         raw = _call_with_backoff(client.models.generate_content, **call_kwargs)
         return _CompatResponse(_extract_text(raw))
+
+    async def generate_content_async(self, contents: Any, **kwargs) -> _CompatResponse:
+        """Async compatibility wrapper for old google.generativeai callers."""
+        return await asyncio.to_thread(self.generate_content, contents, **kwargs)
 
 
 # ── Namespace object ─────────────────────────────────────────────────────────

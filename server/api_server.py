@@ -222,8 +222,17 @@ def initialize_production_infrastructure():
         logging.error(f"❌ Failed to initialize production infrastructure: {e}")
         raise
 
+def get_shared_gemini_api_key() -> str:
+    return (
+        os.getenv("LAUNCHWAY_GEMINI_API_KEY")
+        or os.getenv("GEMINI_API_KEY")
+        or os.getenv("GOOGLE_API_KEY")
+        or ""
+    )
+
+
 def initialize_gemini():
-    api_key = os.getenv('GOOGLE_API_KEY')
+    api_key = get_shared_gemini_api_key()
     return genai.Client(api_key=api_key)
 
 def process_resume_with_llm(resume_text: str) -> Dict[str, Any]:
@@ -231,7 +240,7 @@ def process_resume_with_llm(resume_text: str) -> Dict[str, Any]:
     _key_mgr = GeminiKeyManager(
         primary_mode="launchway",
         secondary_mode=None,
-        launchway_api_key=os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"),
+        launchway_api_key=get_shared_gemini_api_key(),
         cooldown_seconds=15,
     )
     profile_schema={

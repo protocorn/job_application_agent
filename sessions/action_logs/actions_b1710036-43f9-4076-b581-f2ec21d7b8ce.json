@@ -1,0 +1,315 @@
+{
+  "session_id": "b1710036-43f9-4076-b581-f2ec21d7b8ce",
+  "current_url": "https://jobs.workable.com/view/aKHygywetbdfy9kFREG3Vx/remote-ai-systems-engineer-in-new-york-at-trail-of-bits",
+  "actions": [
+    {
+      "type": "navigate",
+      "timestamp": 1776832052.7133012,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.workable.com/view/aKHygywetbdfy9kFREG3Vx/remote-ai-systems-engineer-in-new-york-at-trail-of-bits",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776832053.7431917,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.workable.com/view/aKHygywetbdfy9kFREG3Vx/remote-ai-systems-engineer-in-new-york-at-trail-of-bits",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "click",
+      "timestamp": 1776832060.7278538,
+      "selector": "button.button__button--2de5X",
+      "value": null,
+      "url": null,
+      "element_text": "element",
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776832064.8465676,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.workable.com/view/aKHygywetbdfy9kFREG3Vx/remote-ai-systems-engineer-in-new-york-at-trail-of-bits",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832155.5838695,
+      "selector": "name:CA_32181",
+      "value": "https://www.linkedin.com/in/sahil--chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "LinkedIn (Optional)",
+      "field_type": "text_input",
+      "success": false,
+      "error": "Field 'LinkedIn (Optional)' (text_input): Timeout after 5000ms | Failed: standard_click",
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:CA_32181",
+          "label": "LinkedIn (Optional)",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": null,
+        "element_attributes": {},
+        "final_value": "None",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832226.7292008,
+      "selector": "name:QA_10694566",
+      "value": "I noticed the significant inefficiency and time drain involved in tailoring resumes and completing repetitive forms for every job application. Recognizing this universal pain point, I decided to leverage my expertise in AI and automation to streamline the job search process, leading me to build the \"AI-Assisted Job Application Automation Platform\" (launchway.app).\n\nAfter developing this autonomous system, which combined AI resume tailoring, job relevance ranking, and Playwright-based ATS automation with human-in-the-loop safeguards, the results were compelling. It successfully processed over 650 applications for 12 beta users, achieving an 86% field-population success rate and dramatically reducing application time by approximately 87%, saving around 12 minutes per application.",
+      "url": null,
+      "element_text": null,
+      "field_label": "Tell us about something you built that nobody asked you to build. What problem did you notice, why did you decide to solve it, and what happened after you shipped it?",
+      "field_type": "textarea",
+      "success": false,
+      "error": "Field 'Tell us about something you built that nobody asked you to build. What problem did you notice, why did you decide to solve it, and what happened after you shipped it?' (textarea): Timeout after 5000ms | Failed: javascript_injection",
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:QA_10694566",
+          "label": "Tell us about something you built that nobody asked you to build. What problem did you notice, why did you decide to solve it, and what happened after you shipped it?",
+          "field_category": "textarea",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": null,
+        "element_attributes": {},
+        "final_value": "None",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832298.6979434,
+      "selector": "name:QA_10694567",
+      "value": "My philosophy prioritizes an iterative approach for internal tools: delivering a highly functional, \"good enough\" solution quickly to meet immediate needs and provide tangible value. This initial deployment allows for real-world feedback and agile refinement. For instance, in building the AI-Assisted Job Application Automation Platform, the focus was on rapid deployment to process 650+ applications for beta users, achieving an 87% reduction in application time, demonstrating quick, impactful value.\n\n\"Perfection\" is then pursued through continuous improvement, addressing edge cases and enhancing scalability based on user feedback, much like evolving an adaptive RAG pipeline in Mimikree's containerized microservices architecture. The trade-off means deploying a robust, impactful core rapidly, then systematically iterating towards a more comprehensive and optimized system, ensuring efficiency gains are realized without undue delay.",
+      "url": null,
+      "element_text": null,
+      "field_label": "What’s your philosophy on “good enough” vs “perfect” when building internal tools? How do you think about that trade-off?",
+      "field_type": "textarea",
+      "success": false,
+      "error": "Field 'What’s your philosophy on “good enough” vs “perfect” when building internal tools? How do you think about that trade-off?' (textarea): Timeout after 5000ms | Failed: javascript_injection",
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:QA_10694567",
+          "label": "What’s your philosophy on “good enough” vs “perfect” when building internal tools? How do you think about that trade-off?",
+          "field_category": "textarea",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": null,
+        "element_attributes": {},
+        "final_value": "None",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832418.2737978,
+      "selector": "name:QA_10694568",
+      "value": "https://One project I've shipped is Mimikree, a personalized AI assistant, available at mimikree.com. For Mimikree, I architected a robust containerized microservices architecture using Docker. A key technical decision was decoupling the Node.js orchestration layer from the high-performance FastAPI LLM service. This separation allowed for efficient asynchronous request handling, preventing bottlenecks in the LLM service and ensuring optimal responsiveness for users. It also enhanced scalability and maintainability, enabling independent development and deployment of each critical component to leverage their respective strengths. This design choice was pivotal in achieving a responsive and scalable AI assistant experience.",
+      "url": null,
+      "element_text": null,
+      "field_label": "Link us to one thing you've shipped. Briefly walk through one technical decision you made and why.",
+      "field_type": "textarea",
+      "success": false,
+      "error": "Field 'Link us to one thing you've shipped. Briefly walk through one technical decision you made and why.' (textarea): Timeout after 5000ms | Failed: javascript_injection",
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:QA_10694568",
+          "label": "Link us to one thing you've shipped. Briefly walk through one technical decision you made and why.",
+          "field_category": "textarea",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": null,
+        "element_attributes": {},
+        "final_value": "None",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832420.7689276,
+      "selector": "name:firstname",
+      "value": "Sahil",
+      "url": null,
+      "element_text": null,
+      "field_label": "firstname",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:firstname",
+          "label": "firstname",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "Sahil",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832420.7927268,
+      "selector": "name:lastname",
+      "value": "Chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "lastname",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:lastname",
+          "label": "lastname",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "Chordia",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832420.8139875,
+      "selector": "name:email",
+      "value": "chordiasahil24@gmail.com",
+      "url": null,
+      "element_text": null,
+      "field_label": "email",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:email",
+          "label": "email",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "chordiasahil24@gmail.com",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832420.833781,
+      "selector": "name:phone",
+      "value": "2406101453",
+      "url": null,
+      "element_text": null,
+      "field_label": "phone",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:phone",
+          "label": "phone",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "2406101453",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832420.8569872,
+      "selector": "name:summary",
+      "value": "Highly skilled Data Scientist with a Master's degree from the University of Maryland, specializing in Generative AI, LLM systems, and Machine Learning. Proven ability to develop and deploy innovative AI solutions, significantly improving efficiency and accuracy in complex data environments. Eager to leverage expertise in data science, machine learning, and cloud technologies to drive impactful projects.",
+      "url": null,
+      "element_text": null,
+      "field_label": "summary",
+      "field_type": "textarea",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:summary",
+          "label": "summary",
+          "field_category": "textarea",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "Highly skilled Data Scientist with a Master's degree from the University of Maryland, specializing in Generative AI, LLM systems, and Machine Learning. Proven ability to develop and deploy innovative AI solutions, significantly improving efficiency and accuracy in complex data environments. Eager to leverage expertise in data science, machine learning, and cloud technologies to drive impactful projects.",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832430.7371728,
+      "selector": "name:cover_letter",
+      "value": "As a highly skilled Data Scientist with a Master's degree from the University of Maryland, I bring specialized expertise in Generative AI, LLM systems, and Machine Learning. I excel at developing and deploying innovative AI solutions, evident in projects like my AI-Assisted Job Application Automation Platform, which processed over 650 applications and reduced application time by approximately 87%.\n\nMy technical proficiency extends to architecting sophisticated systems, such as Mimikree, where I implemented a containerized microservices architecture and an adaptive RAG pipeline with hybrid embeddings. I am adept with LangChain, HuggingFace, PyTorch, AWS, and Docker, and am eager to leverage my comprehensive skills to drive impactful projects immediately.",
+      "url": null,
+      "element_text": null,
+      "field_label": "cover_letter",
+      "field_type": "textarea",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:cover_letter",
+          "label": "cover_letter",
+          "field_category": "textarea",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "textarea_fill",
+        "element_attributes": {},
+        "final_value": "As a highly skilled Data Scientist with a Master's degree from the University of Maryland, I bring specialized expertise in Generative AI, LLM systems, and Machine Learning. I excel at developing and deploying innovative AI solutions, evident in projects like my AI-Assisted Job Application Automation Platform, which processed over 650 applications and reduced application time by approximately 87%.\n\nMy technical proficiency extends to architecting sophisticated systems, such as Mimikree, where I implemented a containerized microservices architecture and an adaptive RAG pipeline with hybrid embeddings. I am adept with LangChain, HuggingFace, PyTorch, AWS, and Docker, and am eager to leverage my comprehensive skills to drive impactful projects immediately.",
+        "verification": {
+          "expected": "As a highly skilled Data Scientist with a Master's degree from the University of Maryland, I bring specialized expertise in Generative AI, LLM systems, and Machine Learning. I excel at developing and deploying innovative AI solutions, evident in projects like my AI-Assisted Job Application Automation Platform, which processed over 650 applications and reduced application time by approximately 87%.\n\nMy technical proficiency extends to architecting sophisticated systems, such as Mimikree, where I implemented a containerized microservices architecture and an adaptive RAG pipeline with hybrid embeddings. I am adept with LangChain, HuggingFace, PyTorch, AWS, and Docker, and am eager to leverage my comprehensive skills to drive impactful projects immediately.",
+          "actual": "As a highly skilled Data Scientist with a Master's degree from the University of Maryland, I bring specialized expertise in Generative AI, LLM systems, and Machine Learning. I excel at developing and deploying innovative AI solutions, evident in projects like my AI-Assisted Job Application Automation Platform, which processed over 650 applications and reduced application time by approximately 87%.\n\nMy technical proficiency extends to architecting sophisticated systems, such as Mimikree, where I implemented a containerized microservices architecture and an adaptive RAG pipeline with hybrid embeddings. I am adept with LangChain, HuggingFace, PyTorch, AWS, and Docker, and am eager to leverage my comprehensive skills to drive impactful projects immediately.",
+          "passed": true
+        }
+      }
+    }
+  ],
+  "total_actions": 14,
+  "successful_actions": 10,
+  "last_recorded": 1776832636.5661378
+}

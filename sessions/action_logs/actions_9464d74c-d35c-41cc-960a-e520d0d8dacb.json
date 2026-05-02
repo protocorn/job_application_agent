@@ -1,0 +1,464 @@
+{
+  "session_id": "9464d74c-d35c-41cc-960a-e520d0d8dacb",
+  "current_url": "https://apply.workable.com/valsoft-corp/j/5626740C7C/apply/",
+  "actions": [
+    {
+      "type": "navigate",
+      "timestamp": 1776797354.0364769,
+      "selector": null,
+      "value": null,
+      "url": "https://apply.workable.com/valsoft-corp/j/5626740C7C/apply/",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776797389.642271,
+      "selector": null,
+      "value": null,
+      "url": "https://apply.workable.com/valsoft-corp/j/5626740C7C/apply/",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "click",
+      "timestamp": 1776797453.4192924,
+      "selector": "button.button--2de5X",
+      "value": null,
+      "url": null,
+      "element_text": "element",
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776797458.5445285,
+      "selector": null,
+      "value": null,
+      "url": "https://apply.workable.com/valsoft-corp/j/5626740C7C/apply/",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "upload_file",
+      "timestamp": 1776797490.7783232,
+      "selector": "input[type=\"file\"]",
+      "value": "C:\\Users\\proto\\AppData\\Local\\Temp\\Resume.pdf",
+      "url": null,
+      "element_text": null,
+      "field_label": "Resume Upload (Direct Input)",
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "upload_method": "direct_input",
+        "interaction_type": "file_upload"
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776797507.2991073,
+      "selector": "name:city",
+      "value": "College Park",
+      "url": null,
+      "element_text": null,
+      "field_label": "city",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:city",
+          "label": "city",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "College Park",
+        "verification": {
+          "expected": "College Park",
+          "actual": "College Park",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776797507.7058227,
+      "selector": "name:country",
+      "value": "United States of America",
+      "url": null,
+      "element_text": null,
+      "field_label": "country",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:country",
+          "label": "country",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "javascript_injection",
+        "element_attributes": {},
+        "final_value": "United States of America",
+        "verification": {
+          "expected": "United States of America",
+          "actual": "United States of America",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776797538.567935,
+      "selector": "name:postcode",
+      "value": "20740",
+      "url": null,
+      "element_text": null,
+      "field_label": "postcode",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:postcode",
+          "label": "postcode",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "20740",
+        "verification": {
+          "expected": "20740",
+          "actual": "20740",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776797548.901435,
+      "selector": "label_hash:cbe55e77",
+      "value": "C:\\Users\\proto\\AppData\\Local\\Temp\\Sahil_Chordia_CoverLetter.txt",
+      "url": null,
+      "element_text": null,
+      "field_label": "Choose file",
+      "field_type": "file_upload",
+      "success": false,
+      "error": "[WinError 32] The process cannot access the file because it is being used by another process",
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:cbe55e77",
+          "label": "Choose file",
+          "field_category": "file_upload",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": null,
+        "element_attributes": {},
+        "final_value": "None",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776797589.3617928,
+      "selector": "name:QA_11314685",
+      "value": "Yes, I have a strong working knowledge of AI, ML, LLMs, and agent frameworks. I extensively utilize LangChain, HuggingFace, PyTorch, and Ollama for development.",
+      "url": null,
+      "element_text": null,
+      "field_label": "Do you have a strong working knowledge of AI and machine learning tools, large language models, and agent frameworks? Please describe.",
+      "field_type": "text_input",
+      "success": false,
+      "error": "Field 'Do you have a strong working knowledge of AI and machine learning tools, large language models, and agent frameworks? Please describe.' (text_input): Timeout after 5000ms | Failed: standard_click",
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:QA_11314685",
+          "label": "Do you have a strong working knowledge of AI and machine learning tools, large language models, and agent frameworks? Please describe.",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": null,
+        "element_attributes": {},
+        "final_value": "None",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776798148.088663,
+      "selector": "name:QA_11483550",
+      "value": "Yes, I have a proven track record building AI products that went live. I developed the AI-Assisted Job Application Automation Platform (launchway.app), processing 650+ applications for beta users and reducing application time by 87%.",
+      "url": null,
+      "element_text": null,
+      "field_label": "Do you have a proven track record of building AI products, tools, projects, startups, or side projects that went live? Please describe.",
+      "field_type": "text_input",
+      "success": false,
+      "error": "Field 'Do you have a proven track record of building AI products, tools, projects, startups, or side projects that went live? Please describe.' (text_input): Timeout after 5000ms | Failed: standard_click",
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:QA_11483550",
+          "label": "Do you have a proven track record of building AI products, tools, projects, startups, or side projects that went live? Please describe.",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": null,
+        "element_attributes": {},
+        "final_value": "None",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776798151.6263754,
+      "selector": "radio_group:QA_11483555",
+      "value": "SVGs not supported by this browser. NO",
+      "url": null,
+      "element_text": null,
+      "field_label": "SVGs not supported by this browser. NO",
+      "field_type": "radio_group",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "radio_group:QA_11483555",
+          "label": "SVGs not supported by this browser. NO",
+          "field_category": "radio_group",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "radio_click_unverified",
+        "element_attributes": {},
+        "final_value": "SVGs not supported by this browser. NO",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776798171.2797291,
+      "selector": "name:firstname",
+      "value": "Sahil",
+      "url": null,
+      "element_text": null,
+      "field_label": "firstname",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:firstname",
+          "label": "firstname",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "Sahil",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776798171.336499,
+      "selector": "name:lastname",
+      "value": "Chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "lastname",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:lastname",
+          "label": "lastname",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "Chordia",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776798171.4418497,
+      "selector": "name:email",
+      "value": "chordiasahil24@gmail.com",
+      "url": null,
+      "element_text": null,
+      "field_label": "email",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:email",
+          "label": "email",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "chordiasahil24@gmail.com",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776798171.478896,
+      "selector": "name:headline",
+      "value": "AI Intern",
+      "url": null,
+      "element_text": null,
+      "field_label": "headline",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:headline",
+          "label": "headline",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "AI Intern",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776798171.505174,
+      "selector": "name:phone",
+      "value": "2406101453",
+      "url": null,
+      "element_text": null,
+      "field_label": "phone",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:phone",
+          "label": "phone",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "2406101453",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776798171.5348125,
+      "selector": "name:address",
+      "value": "College Park, MD",
+      "url": null,
+      "element_text": null,
+      "field_label": "address",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:address",
+          "label": "address",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "College Park, MD",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776798171.6807415,
+      "selector": "name:summary",
+      "value": "Highly skilled Data Scientist with a Master's degree from the University of Maryland, specializing in Generative AI, LLM systems, and Machine Learning. Proven ability to develop and deploy innovative AI solutions, significantly improving efficiency and accuracy in complex data environments. Eager to leverage expertise in data science, machine learning, and cloud technologies to drive impactful projects.",
+      "url": null,
+      "element_text": null,
+      "field_label": "summary",
+      "field_type": "textarea",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:summary",
+          "label": "summary",
+          "field_category": "textarea",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "Highly skilled Data Scientist with a Master's degree from the University of Maryland, specializing in Generative AI, LLM systems, and Machine Learning. Proven ability to develop and deploy innovative AI solutions, significantly improving efficiency and accuracy in complex data environments. Eager to leverage expertise in data science, machine learning, and cloud technologies to drive impactful projects.",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776798184.462207,
+      "selector": "name:cover_letter",
+      "value": "As a Data Scientist holding a Master's from the University of Maryland, I bring specialized expertise in Generative AI, LLM systems, and Machine Learning, with a proven track record in developing and deploying innovative AI solutions. My work includes architecting an AI-Assisted Job Application Automation Platform that processed over 650 applications, reducing application time by 87%, and developing Mimikree, a personalized AI assistant featuring an adaptive RAG pipeline and containerized microservices.\n\nI am adept with LangChain, HuggingFace, PyTorch, AWS, Docker, and advanced alignment techniques like DPO and QLoRA, as demonstrated in my Domain-Aligned Speculative Decoding research. Eager to contribute immediately, I am keen to apply my full-stack AI and cloud capabilities to drive impactful projects and achieve significant results.",
+      "url": null,
+      "element_text": null,
+      "field_label": "cover_letter",
+      "field_type": "textarea",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:cover_letter",
+          "label": "cover_letter",
+          "field_category": "textarea",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "As a Data Scientist holding a Master's from the University of Maryland, I bring specialized expertise in Generative AI, LLM systems, and Machine Learning, with a proven track record in developing and deploying innovative AI solutions. My work includes architecting an AI-Assisted Job Application Automation Platform that processed over 650 applications, reducing application time by 87%, and developing Mimikree, a personalized AI assistant featuring an adaptive RAG pipeline and containerized microservices.\n\nI am adept with LangChain, HuggingFace, PyTorch, AWS, Docker, and advanced alignment techniques like DPO and QLoRA, as demonstrated in my Domain-Aligned Speculative Decoding research. Eager to contribute immediately, I am keen to apply my full-stack AI and cloud capabilities to drive impactful projects and achieve significant results.",
+        "verification": {}
+      }
+    }
+  ],
+  "total_actions": 20,
+  "successful_actions": 17,
+  "last_recorded": 1776798188.212082
+}

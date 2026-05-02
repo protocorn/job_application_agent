@@ -658,7 +658,43 @@ class FieldInteractorV2:
 
         # JavaScript fallback for React-controlled textareas (Greenhouse, etc.)
         try:
-            # Get element identifier
+            # Strategy A: element.evaluate() — works for ANY textarea regardless of
+            # whether it has an id/name attribute (handles label_hash stable_ids).
+            try:
+                success = await element.evaluate("""
+                    (el, value) => {
+                        if (!el) return false;
+                        const nativeSetter = Object.getOwnPropertyDescriptor(
+                            window.HTMLTextAreaElement.prototype, 'value'
+                        ).set;
+                        nativeSetter.call(el, value);
+                        el.value = value;
+                        el.dispatchEvent(new Event('focus',   { bubbles: true }));
+                        el.dispatchEvent(new Event('input',   { bubbles: true }));
+                        el.dispatchEvent(new Event('change',  { bubbles: true }));
+                        el.dispatchEvent(new Event('blur',    { bubbles: true }));
+                        el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+                        el.dispatchEvent(new KeyboardEvent('keyup',   { bubbles: true }));
+                        return true;
+                    }
+                """, value)
+            except Exception:
+                success = False
+
+            if success:
+                await asyncio.sleep(0.3)
+                actual_value = await element.input_value()
+                result.update({
+                    "success": True,
+                    "method": "javascript_element_evaluate_textarea",
+                    "final_value": value,
+                    "verification": {"expected": value, "actual": actual_value, "passed": True}
+                })
+                logger.info(f"✅ '{field_label}' textarea filled via element.evaluate()")
+                return
+
+            # Strategy B: page.evaluate() via id/name for React portals where the
+            # element handle may be detached but the DOM node is still reachable.
             try:
                 element_id = await asyncio.wait_for(element.get_attribute('id'), timeout=2)
             except asyncio.TimeoutError:
@@ -669,83 +705,55 @@ class FieldInteractorV2:
             except asyncio.TimeoutError:
                 element_name = None
 
-            if not element_id and not element_name:
-                raise TimeoutExceededError(
-                    field_label=field_label,
-                    timeout_ms=5000,
-                    strategy=FieldInteractionStrategy.STANDARD_CLICK,
-                    field_type='textarea'
-                )
-
-            # Use JavaScript to fill directly and trigger all React events
-            success = await self.page.evaluate("""
-                ({elementId, elementName, value}) => {
-                    let element = null;
-
-                    // Try by ID first
-                    if (elementId) {
-                        element = document.getElementById(elementId);
+            if element_id or element_name:
+                success = await self.page.evaluate("""
+                    ({elementId, elementName, value}) => {
+                        let el = null;
+                        if (elementId) el = document.getElementById(elementId);
+                        if (!el && elementName) el = document.querySelector(`textarea[name="${elementName}"]`);
+                        if (!el) return false;
+                        const nativeSetter = Object.getOwnPropertyDescriptor(
+                            window.HTMLTextAreaElement.prototype, 'value'
+                        ).set;
+                        nativeSetter.call(el, value);
+                        el.value = value;
+                        el.dispatchEvent(new Event('focus',   { bubbles: true }));
+                        el.dispatchEvent(new Event('input',   { bubbles: true }));
+                        el.dispatchEvent(new Event('change',  { bubbles: true }));
+                        el.dispatchEvent(new Event('blur',    { bubbles: true }));
+                        el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+                        el.dispatchEvent(new KeyboardEvent('keyup',   { bubbles: true }));
+                        return true;
                     }
+                """, {"elementId": element_id, "elementName": element_name, "value": value})
 
-                    // Try by name if ID didn't work
-                    if (!element && elementName) {
-                        element = document.querySelector(`textarea[name="${elementName}"]`);
-                    }
+                if success:
+                    await asyncio.sleep(0.3)
+                    actual_value = await element.input_value()
+                    result.update({
+                        "success": True,
+                        "method": "javascript_injection_textarea",
+                        "final_value": value,
+                        "verification": {"expected": value, "actual": actual_value, "passed": True}
+                    })
+                    logger.info(f"✅ '{field_label}' textarea filled via JavaScript injection")
+                    return
 
-                    if (!element) return false;
+            raise TimeoutExceededError(
+                field_label=field_label,
+                timeout_ms=5000,
+                strategy=FieldInteractionStrategy.JAVASCRIPT_INJECTION,
+                field_type='textarea'
+            )
 
-                    // Set value using multiple methods to ensure React picks it up
-                    const nativeTextareaSetter = Object.getOwnPropertyDescriptor(
-                        window.HTMLTextAreaElement.prototype,
-                        'value'
-                    ).set;
-                    
-                    nativeTextareaSetter.call(element, value);
-                    
-                    // Also set directly (for non-React)
-                    element.value = value;
-
-                    // Trigger all events that React listens to
-                    element.dispatchEvent(new Event('focus', { bubbles: true }));
-                    element.dispatchEvent(new Event('input', { bubbles: true }));
-                    element.dispatchEvent(new Event('change', { bubbles: true }));
-                    element.dispatchEvent(new Event('blur', { bubbles: true }));
-
-                    // Some forms use keyup/keydown
-                    element.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
-                    element.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
-
-                    return true;
-                }
-            """, {"elementId": element_id, "elementName": element_name, "value": value})
-
-            if success:
-                # Wait a moment for React to process
-                await asyncio.sleep(0.3)
-                
-                # Verify via JavaScript too
-                actual_value = await element.input_value()
-                result.update({
-                    "success": True,
-                    "method": "javascript_injection_textarea",
-                    "final_value": value,  # Use expected value as we injected it
-                    "verification": {"expected": value, "actual": actual_value, "passed": True}
-                })
-                logger.info(f"✅ '{field_label}' textarea filled via JavaScript injection")
-            else:
-                raise TimeoutExceededError(
-                    field_label=field_label,
-                    timeout_ms=5000,
-                    strategy=FieldInteractionStrategy.STANDARD_CLICK,
-                    field_type='textarea'
-                )
-
+        except TimeoutExceededError:
+            raise
         except Exception as js_error:
             logger.error(f"JavaScript injection also failed for textarea '{field_label}': {js_error}")
             raise TimeoutExceededError(
                 field_label=field_label,
                 timeout_ms=5000,
-                strategy=FieldInteractionStrategy.STANDARD_CLICK,
+                strategy=FieldInteractionStrategy.JAVASCRIPT_INJECTION,
                 field_type='textarea'
             )
 

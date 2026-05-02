@@ -36,19 +36,25 @@ logger = logging.getLogger(__name__)
 # They can be overridden by the user's ~/.launchway/.env or system env vars.
 
 _PRODUCTION_DEFAULTS = {}
+_gemini_env_source = "none"  # none|user|cache|server
 
 
-def _set_gemini_env(key_value: str) -> None:
+def _set_gemini_env(key_value: str, *, override: bool = False, source: str = "server") -> None:
     """
-    Set both supported Gemini env var names unless the user explicitly set one.
+    Set both supported Gemini env var names.
+
+    User-provided env values must win over Launchway's shared key, but a freshly
+    fetched server key should replace an older Launchway key restored from cache.
     Many agent components look for GEMINI_API_KEY while others use GOOGLE_API_KEY.
     """
+    global _gemini_env_source
     if not key_value:
         return
-    if not os.getenv("GOOGLE_API_KEY"):
+    if override or not os.getenv("GOOGLE_API_KEY"):
         os.environ["GOOGLE_API_KEY"] = key_value
-    if not os.getenv("GEMINI_API_KEY"):
+    if override or not os.getenv("GEMINI_API_KEY"):
         os.environ["GEMINI_API_KEY"] = key_value
+    _gemini_env_source = source
 
 
 def _apply_env_defaults():
@@ -61,13 +67,19 @@ def _apply_env_defaults():
         if not os.getenv(key):
             os.environ[key] = default_value
 
+    # If the user configured a key in ~/.launchway/.env or their shell, keep it.
+    # Normalize a single explicit key into both env var names for legacy callers.
+    existing_gemini_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    if existing_gemini_key:
+        _set_gemini_env(existing_gemini_key, source="user")
+        return
+
     # Gemini key - user's own key takes priority; fall back to the server-provided
     # key that was cached the last time a full bundle fetch was performed.
-    if not os.getenv("GOOGLE_API_KEY") and not os.getenv("GEMINI_API_KEY"):
-        cached = _load_cached_gemini_key()
-        if cached:
-            _set_gemini_env(cached)
-            logger.debug("Restored Gemini API key env vars from local cache")
+    cached = _load_cached_gemini_key()
+    if cached:
+        _set_gemini_env(cached, override=True, source="cache")
+        logger.debug("Restored Gemini API key env vars from local cache")
 
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -76,6 +88,7 @@ _KEY_CACHE_PATH     = Path.home() / ".launchway" / ".rkey"
 _GEMINI_KEY_CACHE   = Path.home() / ".launchway" / ".gemini_key"
 _PERSISTENT_MODEL_CACHE = Path.home() / ".launchway" / ".model_cache"
 _KEY_MAX_AGE_SEC    = 24 * 3600   # refresh key every 24 hours
+_GEMINI_KEY_MAX_AGE_SEC = 3600     # refresh shared AI key more often
 _ENC_ROOT           = Path(__file__).parent / "encrypted_agents"
 _KEY_FINGERPRINT_FILE = _ENC_ROOT / "key_fingerprint.txt"
 
@@ -88,6 +101,7 @@ _bootstrap_diag: dict = {
     "model_cache_mode": "none",  # symlink|copy_sync|none
     "model_cache_path": "",
     "bundle_gemini_key": "",
+    "gemini_key_source": "none",
     "effective_google_api_key": "",
     "effective_gemini_api_key": "",
 }
@@ -238,6 +252,13 @@ def _load_cached_gemini_key() -> Optional[str]:
     return val if val else None
 
 
+def _cached_gemini_key_is_stale() -> bool:
+    """True when the shared Gemini key should be refreshed from the server."""
+    if not _GEMINI_KEY_CACHE.exists():
+        return True
+    return time.time() - _GEMINI_KEY_CACHE.stat().st_mtime > _GEMINI_KEY_MAX_AGE_SEC
+
+
 def _save_gemini_key(key: str) -> None:
     _GEMINI_KEY_CACHE.parent.mkdir(parents=True, exist_ok=True)
     _GEMINI_KEY_CACHE.write_text(key, encoding="utf-8")
@@ -370,14 +391,25 @@ def bootstrap_agents(api_client) -> bool:
     # We re-set them every bootstrap even on cache hit, because os.environ resets each process
     _apply_env_defaults()
 
-    if not key_bytes:
-        logger.debug("Key cache miss - fetching from server")
+    should_fetch_bundle = (
+        not key_bytes
+        or (_gemini_env_source != "user" and _cached_gemini_key_is_stale())
+    )
+
+    if should_fetch_bundle:
+        logger.debug("Fetching runtime bundle from server")
         try:
             bundle    = api_client.get_agent_key()   # returns dict with key + extras
             key_b64   = bundle if isinstance(bundle, str) else bundle.get("key", "")
-            key_bytes = key_b64.encode() if isinstance(key_b64, str) else key_b64
-            _save_key(key_bytes)
-            logger.debug("Runtime key fetched and cached")
+            fetched_key_bytes = key_b64.encode() if isinstance(key_b64, str) else key_b64
+            if fetched_key_bytes:
+                key_bytes = fetched_key_bytes
+                _save_key(key_bytes)
+                _bootstrap_diag["source"] = "server"
+                logger.debug("Runtime key fetched and cached")
+            elif not key_bytes:
+                logger.error("Runtime key missing/empty from server bundle")
+                return False
 
             # ── Inject service env vars from the bundle ──────────────────────
             # Only set each var if the user hasn't already configured their own.
@@ -388,12 +420,17 @@ def bootstrap_agents(api_client) -> bool:
                 _bootstrap_diag["bundle_gemini_key"] = gemini_key
                 if gemini_key:
                     _save_gemini_key(gemini_key)   # persist for future cache-hit runs
-                    _set_gemini_env(gemini_key)
-                    logger.debug("Set Gemini API key env vars from server bundle (Launchway AI)")
+                    if _gemini_env_source != "user":
+                        _set_gemini_env(gemini_key, override=True, source="server")
+                        logger.debug("Set Gemini API key env vars from server bundle (Launchway AI)")
+                    else:
+                        logger.debug("Preserved user-provided Gemini API key over server bundle")
 
         except Exception as e:
-            logger.error(f"Failed to fetch runtime key from server: {e}")
-            return False
+            if not key_bytes:
+                logger.error(f"Failed to fetch runtime key from server: {e}")
+                return False
+            logger.warning(f"Could not refresh runtime bundle; using local cache: {e}")
 
     # ── 2. Verify we have encrypted files ────────────────────────────────────
 
@@ -428,6 +465,35 @@ def bootstrap_agents(api_client) -> bool:
     runtime_agents_root = tmp_dir / "Agents"
     runtime_agents_root.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("LAUNCHWAY_MODEL_CACHE_DIR", str(_PERSISTENT_MODEL_CACHE))
+
+    # ── Browser profiles: always use a stable path independent of cwd ────────
+    # Running via `pip install launchway` the cwd changes every session, which
+    # meant PersistentBrowserManager("./browser_profiles") resolved to a fresh
+    # empty directory, causing Chrome to crash immediately with STATUS_BREAKPOINT.
+    _BROWSER_PROFILES_DIR = Path.home() / ".launchway" / "browser_profiles"
+    _BROWSER_PROFILES_DIR.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("LAUNCHWAY_BROWSER_PROFILES_DIR", str(_BROWSER_PROFILES_DIR))
+
+    # One-time migration: if user has profiles at the legacy cwd-relative path
+    # (./browser_profiles/user_*) and the stable path is still empty, copy them.
+    _legacy_dir = Path(os.getcwd()) / "browser_profiles"
+    if _legacy_dir.exists() and _legacy_dir != _BROWSER_PROFILES_DIR:
+        try:
+            migrated = 0
+            for old_profile in _legacy_dir.iterdir():
+                if old_profile.is_dir() and old_profile.name.startswith("user_"):
+                    new_profile = _BROWSER_PROFILES_DIR / old_profile.name
+                    if not new_profile.exists():
+                        shutil.copytree(old_profile, new_profile)
+                        migrated += 1
+                        logger.info(f"Migrated browser profile: {old_profile.name}")
+            if migrated:
+                logger.info(
+                    f"Migrated {migrated} browser profile(s) from {_legacy_dir} "
+                    f"to {_BROWSER_PROFILES_DIR}"
+                )
+        except Exception as _mig_err:
+            logger.debug(f"Browser profile migration skipped: {_mig_err}")
 
     cache_mode, cache_sync_pair = _prepare_runtime_model_cache(runtime_agents_root)
     _bootstrap_diag["model_cache_mode"] = cache_mode
@@ -561,6 +627,7 @@ engine = None
         atexit.register(_sync_runtime_model_cache, cache_sync_pair[0], cache_sync_pair[1])
 
     # Capture final effective env values for diagnostics
+    _bootstrap_diag["gemini_key_source"] = _gemini_env_source
     _bootstrap_diag["effective_google_api_key"] = os.getenv("GOOGLE_API_KEY", "")
     _bootstrap_diag["effective_gemini_api_key"] = os.getenv("GEMINI_API_KEY", "")
 

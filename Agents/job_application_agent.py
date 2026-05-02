@@ -181,10 +181,9 @@ class RefactoredJobAgent:
         # Use persistent profile if enabled (recommended for production)
         if self.use_persistent_profile and self.user_id:
             logger.info(f"🔒 Using persistent browser profile for user {self.user_id}")
-            print(f"[INFO] 🔒 Using persistent profile: browser_profiles/user_{self.user_id}/")
-            
-            # Initialize persistent browser manager
+            # Initialize persistent browser manager (resolves stable path from env var)
             browser_manager = PersistentBrowserManager()
+            print(f"[INFO] 🔒 Using persistent profile: {browser_manager.base_dir}/user_{self.user_id}/")
             
             # Launch persistent context (includes browser)
             # Pass the existing playwright instance to avoid conflicts

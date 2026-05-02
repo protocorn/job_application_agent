@@ -1,0 +1,388 @@
+{
+  "session_id": "3997180b-5236-4b72-9eac-81b6e37da6ee",
+  "current_url": "https://job-boards.greenhouse.io/lyratechgroup/jobs/5195593008?gh_src=g3na50bc8us&utm_source=LinkedIn&src=93c4f47a1us&mode=job&source=LinkedIn&__jvst=Job%2520Board&__jvsd=LinkedIn&iis=Job%2BBoard&iisn=LinkedIn",
+  "actions": [
+    {
+      "type": "navigate",
+      "timestamp": 1776832640.4315,
+      "selector": null,
+      "value": null,
+      "url": "https://job-boards.greenhouse.io/lyratechgroup/jobs/5195593008?gh_src=g3na50bc8us&utm_source=LinkedIn&src=93c4f47a1us&mode=job&source=LinkedIn&__jvst=Job%2520Board&__jvsd=LinkedIn&iis=Job%2BBoard&iisn=LinkedIn",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776832642.5888267,
+      "selector": null,
+      "value": null,
+      "url": "https://job-boards.greenhouse.io/lyratechgroup/jobs/5195593008?gh_src=g3na50bc8us&utm_source=LinkedIn&src=93c4f47a1us&mode=job&source=LinkedIn&__jvst=Job%2520Board&__jvsd=LinkedIn&iis=Job%2BBoard&iisn=LinkedIn",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "click",
+      "timestamp": 1776832675.840683,
+      "selector": "button.btn",
+      "value": null,
+      "url": null,
+      "element_text": "element",
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776832680.9441855,
+      "selector": null,
+      "value": null,
+      "url": "https://job-boards.greenhouse.io/lyratechgroup/jobs/5195593008?gh_src=g3na50bc8us&utm_source=LinkedIn&src=93c4f47a1us&mode=job&source=LinkedIn&__jvst=Job%2520Board&__jvsd=LinkedIn&iis=Job%2BBoard&iisn=LinkedIn",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "upload_file",
+      "timestamp": 1776832700.9416814,
+      "selector": "input[type=\"file\"]",
+      "value": "C:\\Users\\proto\\AppData\\Local\\Temp\\Resume.pdf",
+      "url": null,
+      "element_text": null,
+      "field_label": "Resume Upload (Direct Input)",
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "upload_method": "direct_input",
+        "interaction_type": "file_upload"
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832705.145001,
+      "selector": "aria_label:First Name",
+      "value": "Sahil",
+      "url": null,
+      "element_text": null,
+      "field_label": "First Name",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:First Name",
+          "label": "First Name",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "Sahil",
+        "verification": {
+          "expected": "Sahil",
+          "actual": "Sahil",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832705.4834564,
+      "selector": "aria_label:Last Name",
+      "value": "Chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "Last Name",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:Last Name",
+          "label": "Last Name",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "Chordia",
+        "verification": {
+          "expected": "Chordia",
+          "actual": "Chordia",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832705.8110065,
+      "selector": "aria_label:Email",
+      "value": "chordiasahil24@gmail.com",
+      "url": null,
+      "element_text": null,
+      "field_label": "Email",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:Email",
+          "label": "Email",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "chordiasahil24@gmail.com",
+        "verification": {
+          "expected": "chordiasahil24@gmail.com",
+          "actual": "chordiasahil24@gmail.com",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832711.6420639,
+      "selector": "label_hash:59716c97",
+      "value": "United States of America",
+      "url": null,
+      "element_text": null,
+      "field_label": "Country",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:59716c97",
+          "label": "Country",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "United States of America",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832712.0501535,
+      "selector": "aria_label:Phone",
+      "value": "2406101453",
+      "url": null,
+      "element_text": null,
+      "field_label": "Phone",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:Phone",
+          "label": "Phone",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "javascript_injection",
+        "element_attributes": {},
+        "final_value": "(240) 610-1453",
+        "verification": {
+          "expected": "2406101453",
+          "actual": "(240) 610-1453",
+          "passed": false
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832712.4615545,
+      "selector": "aria_label:LinkedIn Profile",
+      "value": "https://www.linkedin.com/in/sahil--chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "LinkedIn Profile",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:LinkedIn Profile",
+          "label": "LinkedIn Profile",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "https://www.linkedin.com/in/sahil--chordia",
+        "verification": {
+          "expected": "https://www.linkedin.com/in/sahil--chordia",
+          "actual": "https://www.linkedin.com/in/sahil--chordia",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832718.1855145,
+      "selector": "label_hash:d3cd0ec6",
+      "value": "Yes",
+      "url": null,
+      "element_text": null,
+      "field_label": "Are you legally authorized to work in the United States without sponsorship?",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:d3cd0ec6",
+          "label": "Are you legally authorized to work in the United States without sponsorship?",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "Yes",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832719.1236858,
+      "selector": "aria_label:Preferred First Name",
+      "value": "Sahil",
+      "url": null,
+      "element_text": null,
+      "field_label": "Preferred First Name",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:Preferred First Name",
+          "label": "Preferred First Name",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "Sahil",
+        "verification": {
+          "expected": "Sahil",
+          "actual": "Sahil",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832740.6771119,
+      "selector": "aria_label:This role is based out of our Naperville office on a hybrid schedule and requires 40–60% travel to client sites. Are you local to the Naperville area, and are you comfortable with that level of travel?",
+      "value": "While I am not currently local to Naperville, I am very enthusiastic about relocating to the Chicago area, one of my preferred locations. I am also fully comfortable with the required 40-60% travel to client sites, as I thrive in dynamic, client-facing environments.",
+      "url": null,
+      "element_text": null,
+      "field_label": "This role is based out of our Naperville office on a hybrid schedule and requires 40–60% travel to client sites. Are you local to the Naperville area, and are you comfortable with that level of travel?",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:This role is based out of our Naperville office on a hybrid schedule and requires 40–60% travel to client sites. Are you local to the Naperville area, and are you comfortable with that level of travel?",
+          "label": "This role is based out of our Naperville office on a hybrid schedule and requires 40–60% travel to client sites. Are you local to the Naperville area, and are you comfortable with that level of travel?",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "javascript_injection",
+        "element_attributes": {},
+        "final_value": "While I am not currently local to Naperville, I am very enthusiastic about relocating to the Chicago area, one of my preferred locations. I am also fully comfortable with the required 40-60% travel to client sites, as I thrive in dynamic, client-facing environments.",
+        "verification": {
+          "expected": "While I am not currently local to Naperville, I am very enthusiastic about relocating to the Chicago area, one of my preferred locations. I am also fully comfortable with the required 40-60% travel to client sites, as I thrive in dynamic, client-facing environments.",
+          "actual": "While I am not currently local to Naperville, I am very enthusiastic about relocating to the Chicago area, one of my preferred locations. I am also fully comfortable with the required 40-60% travel to client sites, as I thrive in dynamic, client-facing environments.",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832752.1673899,
+      "selector": "aria_label:Which AI frameworks have you used hands-on (LangChain, LangGraph, AutoGen, etc.)? Give one concrete example of what you built with each.",
+      "value": "I have extensive hands-on experience with AI frameworks, particularly LangChain for orchestrating complex LLM applications. For instance, in my **AI-Assisted Job Application Automation Platform**, I leveraged LangChain to build a multi-layer system for AI resume tailoring and job relevance ranking, automating over 650 applications. I also architected an adaptive RAG pipeline using principles often implemented in LangChain for my **Mimikree - Personalized AI Assistant** project, retrieving context from 450+ indexed documents. While not explicitly using LangGraph or AutoGen by name, my background in 'Agentic Workflows' and fine-tuning LLMs with HuggingFace (e.g., QLoRA + DPO for Phi-3 Mini) demonstrates a strong grasp of the underlying concepts and development patterns these frameworks facilitate.",
+      "url": null,
+      "element_text": null,
+      "field_label": "Which AI frameworks have you used hands-on (LangChain, LangGraph, AutoGen, etc.)? Give one concrete example of what you built with each.",
+      "field_type": "textarea",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:Which AI frameworks have you used hands-on (LangChain, LangGraph, AutoGen, etc.)? Give one concrete example of what you built with each.",
+          "label": "Which AI frameworks have you used hands-on (LangChain, LangGraph, AutoGen, etc.)? Give one concrete example of what you built with each.",
+          "field_category": "textarea",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "textarea_fill",
+        "element_attributes": {},
+        "final_value": "I have extensive hands-on experience with AI frameworks, particularly LangChain for orchestrating complex LLM applications. For instance, in my **AI-Assisted Job Application Automation Platform**, I leveraged LangChain to build a multi-layer system for AI resume tailoring and job relevance ranking, automating over 650 applications. I also architected an adaptive RAG pipeline using principles often implemented in LangChain for my **Mimikree - Personalized AI Assistant** project, retrieving context from 450+ indexed documents. While not explicitly using LangGraph or AutoGen by name, my background in 'Agentic Workflows' and fine-tuning LLMs with HuggingFace (e.g., QLoRA + DPO for Phi-3 Mini) demonstrates a strong grasp of the underlying concepts and development patterns these frameworks facilitate.",
+        "verification": {
+          "expected": "I have extensive hands-on experience with AI frameworks, particularly LangChain for orchestrating complex LLM applications. For instance, in my **AI-Assisted Job Application Automation Platform**, I leveraged LangChain to build a multi-layer system for AI resume tailoring and job relevance ranking, automating over 650 applications. I also architected an adaptive RAG pipeline using principles often implemented in LangChain for my **Mimikree - Personalized AI Assistant** project, retrieving context from 450+ indexed documents. While not explicitly using LangGraph or AutoGen by name, my background in 'Agentic Workflows' and fine-tuning LLMs with HuggingFace (e.g., QLoRA + DPO for Phi-3 Mini) demonstrates a strong grasp of the underlying concepts and development patterns these frameworks facilitate.",
+          "actual": "I have extensive hands-on experience with AI frameworks, particularly LangChain for orchestrating complex LLM applications. For instance, in my **AI-Assisted Job Application Automation Platform**, I leveraged LangChain to build a multi-layer system for AI resume tailoring and job relevance ranking, automating over 650 applications. I also architected an adaptive RAG pipeline using principles often implemented in LangChain for my **Mimikree - Personalized AI Assistant** project, retrieving context from 450+ indexed documents. While not explicitly using LangGraph or AutoGen by name, my background in 'Agentic Workflows' and fine-tuning LLMs with HuggingFace (e.g., QLoRA + DPO for Phi-3 Mini) demonstrates a strong grasp of the underlying concepts and development patterns these frameworks facilitate.",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832758.938774,
+      "selector": "aria_label:What experience do you have working directly with clients or in a consulting capacity?",
+      "value": "I have direct experience engaging with users to develop and deploy impactful AI solutions. Through my AI-Assisted Job Application Automation Platform, I worked closely with 12 beta users, understanding their needs to build an autonomous system that processed over 650 applications. This direct collaboration resulted in an 86% field-population success rate and reduced application time by approximately 87%. Additionally, architecting Mimikree, a personalized AI assistant, required a keen focus on user experience and delivering tailored functionality, further demonstrating my ability to create solutions that directly serve end-users and provide measurable value.",
+      "url": null,
+      "element_text": null,
+      "field_label": "What experience do you have working directly with clients or in a consulting capacity?",
+      "field_type": "textarea",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:What experience do you have working directly with clients or in a consulting capacity?",
+          "label": "What experience do you have working directly with clients or in a consulting capacity?",
+          "field_category": "textarea",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "textarea_fill",
+        "element_attributes": {},
+        "final_value": "I have direct experience engaging with users to develop and deploy impactful AI solutions. Through my AI-Assisted Job Application Automation Platform, I worked closely with 12 beta users, understanding their needs to build an autonomous system that processed over 650 applications. This direct collaboration resulted in an 86% field-population success rate and reduced application time by approximately 87%. Additionally, architecting Mimikree, a personalized AI assistant, required a keen focus on user experience and delivering tailored functionality, further demonstrating my ability to create solutions that directly serve end-users and provide measurable value.",
+        "verification": {
+          "expected": "I have direct experience engaging with users to develop and deploy impactful AI solutions. Through my AI-Assisted Job Application Automation Platform, I worked closely with 12 beta users, understanding their needs to build an autonomous system that processed over 650 applications. This direct collaboration resulted in an 86% field-population success rate and reduced application time by approximately 87%. Additionally, architecting Mimikree, a personalized AI assistant, required a keen focus on user experience and delivering tailored functionality, further demonstrating my ability to create solutions that directly serve end-users and provide measurable value.",
+          "actual": "I have direct experience engaging with users to develop and deploy impactful AI solutions. Through my AI-Assisted Job Application Automation Platform, I worked closely with 12 beta users, understanding their needs to build an autonomous system that processed over 650 applications. This direct collaboration resulted in an 86% field-population success rate and reduced application time by approximately 87%. Additionally, architecting Mimikree, a personalized AI assistant, required a keen focus on user experience and delivering tailored functionality, further demonstrating my ability to create solutions that directly serve end-users and provide measurable value.",
+          "passed": true
+        }
+      }
+    }
+  ],
+  "total_actions": 16,
+  "successful_actions": 16,
+  "last_recorded": 1776832767.669499
+}

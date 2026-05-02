@@ -1,0 +1,293 @@
+{
+  "session_id": "0610e7e2-7053-4dc2-80e1-fd0c4c1a0bfd",
+  "current_url": "https://jobs.ashbyhq.com/akur8/de383f61-deaa-49cc-ac08-493ab16fa852/application?utm_source=4OrPwmpJ1X",
+  "actions": [
+    {
+      "type": "navigate",
+      "timestamp": 1776832785.7730498,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/akur8/de383f61-deaa-49cc-ac08-493ab16fa852?utm_source=4OrPwmpJ1X",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776832787.4930956,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/akur8/de383f61-deaa-49cc-ac08-493ab16fa852?utm_source=4OrPwmpJ1X",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "click",
+      "timestamp": 1776832796.394049,
+      "selector": "a._container_j2da7_1",
+      "value": null,
+      "url": null,
+      "element_text": "element",
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776832801.476469,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/akur8/de383f61-deaa-49cc-ac08-493ab16fa852/application?utm_source=4OrPwmpJ1X",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "upload_file",
+      "timestamp": 1776832819.572298,
+      "selector": "input[type=\"file\"]",
+      "value": "C:\\Users\\proto\\AppData\\Local\\Temp\\Resume.pdf",
+      "url": null,
+      "element_text": null,
+      "field_label": "Resume Upload (Direct Input)",
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "upload_method": "direct_input",
+        "interaction_type": "file_upload"
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832822.9550238,
+      "selector": "name:_systemfield_email",
+      "value": "chordiasahil24@gmail.com",
+      "url": null,
+      "element_text": null,
+      "field_label": "Email",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:_systemfield_email",
+          "label": "Email",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "chordiasahil24@gmail.com",
+        "verification": {
+          "expected": "chordiasahil24@gmail.com",
+          "actual": "chordiasahil24@gmail.com",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832823.2552233,
+      "selector": "name:a96581f3-3e5c-4c55-8c6b-03256608a17d",
+      "value": "2406101453",
+      "url": null,
+      "element_text": null,
+      "field_label": "Phone number",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:a96581f3-3e5c-4c55-8c6b-03256608a17d",
+          "label": "Phone number",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "2406101453",
+        "verification": {
+          "expected": "2406101453",
+          "actual": "2406101453",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832823.680812,
+      "selector": "label_hash:f1cefec9",
+      "value": "C:\\Users\\proto\\Job_Application_Agent\\Resumes\\resume_1LjfrE73FPZH4phWicUQOAKB3HBs6hGyeGJ2Yef9zAN0.pdf",
+      "url": null,
+      "element_text": null,
+      "field_label": "Resume",
+      "field_type": "file_upload",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:f1cefec9",
+          "label": "Resume",
+          "field_category": "file_upload",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "file_upload",
+        "element_attributes": {},
+        "final_value": "Sahil_Chordia_Resume.pdf",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832835.8084073,
+      "selector": "name:_systemfield_name",
+      "value": "Sahil Chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "Full Name (First name + Last name)",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:_systemfield_name",
+          "label": "Full Name (First name + Last name)",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "Sahil Chordia",
+        "verification": {
+          "expected": "Sahil Chordia",
+          "actual": "Sahil Chordia",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832837.324124,
+      "selector": "placeholder:Start typing...",
+      "value": "University of Maryland",
+      "url": null,
+      "element_text": null,
+      "field_label": "Start typing...",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "placeholder:Start typing...",
+          "label": "Start typing...",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "University of Maryland",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832854.1632664,
+      "selector": "name:cf1aa512-7fbc-4612-8763-0c08cb6a1506",
+      "value": "The most impressive thing I've built is the AI-Assisted Job Application Automation Platform (launchway.app). I personally architected a robust 3-layer form-filling system and integrated AI for resume tailoring and job relevance ranking. The hardest technical challenge was developing the Playwright-based ATS automation to reliably navigate and accurately populate diverse, dynamic forms, while also ensuring human-in-the-loop safeguards. This involved complex parsing, mapping, and error recovery logic for maximum success rate across varied platforms. As a result, the platform processed over 650 applications for 12 beta users, achieving an 86% field-population success rate and reducing application time by approximately 87%, saving users ~12 minutes per application.",
+      "url": null,
+      "element_text": null,
+      "field_label": "Describe the most impressive thing you’ve built. Be specific about what you personally did, the hardest technical challenges, and the results.(~150–300 words)",
+      "field_type": "textarea",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:cf1aa512-7fbc-4612-8763-0c08cb6a1506",
+          "label": "Describe the most impressive thing you’ve built. Be specific about what you personally did, the hardest technical challenges, and the results.(~150–300 words)",
+          "field_category": "textarea",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "textarea_fill",
+        "element_attributes": {},
+        "final_value": "The most impressive thing I've built is the AI-Assisted Job Application Automation Platform (launchway.app). I personally architected a robust 3-layer form-filling system and integrated AI for resume tailoring and job relevance ranking. The hardest technical challenge was developing the Playwright-based ATS automation to reliably navigate and accurately populate diverse, dynamic forms, while also ensuring human-in-the-loop safeguards. This involved complex parsing, mapping, and error recovery logic for maximum success rate across varied platforms. As a result, the platform processed over 650 applications for 12 beta users, achieving an 86% field-population success rate and reducing application time by approximately 87%, saving users ~12 minutes per application.",
+        "verification": {
+          "expected": "The most impressive thing I've built is the AI-Assisted Job Application Automation Platform (launchway.app). I personally architected a robust 3-layer form-filling system and integrated AI for resume tailoring and job relevance ranking. The hardest technical challenge was developing the Playwright-based ATS automation to reliably navigate and accurately populate diverse, dynamic forms, while also ensuring human-in-the-loop safeguards. This involved complex parsing, mapping, and error recovery logic for maximum success rate across varied platforms. As a result, the platform processed over 650 applications for 12 beta users, achieving an 86% field-population success rate and reducing application time by approximately 87%, saving users ~12 minutes per application.",
+          "actual": "The most impressive thing I've built is the AI-Assisted Job Application Automation Platform (launchway.app). I personally architected a robust 3-layer form-filling system and integrated AI for resume tailoring and job relevance ranking. The hardest technical challenge was developing the Playwright-based ATS automation to reliably navigate and accurately populate diverse, dynamic forms, while also ensuring human-in-the-loop safeguards. This involved complex parsing, mapping, and error recovery logic for maximum success rate across varied platforms. As a result, the platform processed over 650 applications for 12 beta users, achieving an 86% field-population success rate and reducing application time by approximately 87%, saving users ~12 minutes per application.",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832854.6016376,
+      "selector": "ashby_yesno:c8c118a8-a238-487e-af1f-5a952abb2355",
+      "value": "Yes",
+      "url": null,
+      "element_text": null,
+      "field_label": "Are you fluent in English?",
+      "field_type": "ashby_yesno",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "ashby_yesno:c8c118a8-a238-487e-af1f-5a952abb2355",
+          "label": "Are you fluent in English?",
+          "field_category": "ashby_yesno",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "ashby_yesno",
+        "element_attributes": {},
+        "final_value": "Yes",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776832855.0359619,
+      "selector": "ashby_yesno:e3b7ac7a-e0c2-404b-8a50-5bbae986d7da",
+      "value": "Yes",
+      "url": null,
+      "element_text": null,
+      "field_label": "Have you worked as a software engineer on production systems used by real users or customers?",
+      "field_type": "ashby_yesno",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "ashby_yesno:e3b7ac7a-e0c2-404b-8a50-5bbae986d7da",
+          "label": "Have you worked as a software engineer on production systems used by real users or customers?",
+          "field_category": "ashby_yesno",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "ashby_yesno",
+        "element_attributes": {},
+        "final_value": "Yes",
+        "verification": {}
+      }
+    }
+  ],
+  "total_actions": 13,
+  "successful_actions": 13,
+  "last_recorded": 1776832868.2854002
+}

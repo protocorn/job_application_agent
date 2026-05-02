@@ -435,7 +435,11 @@ def handle_project_analysis(payload: Dict[str, Any]) -> Dict[str, Any]:
         from project_selection.relevance_engine import ProjectRelevanceEngine
         
         # Initialize services
-        gemini_api_key = os.getenv('GOOGLE_API_KEY')
+        gemini_api_key = (
+            os.getenv("LAUNCHWAY_GEMINI_API_KEY")
+            or os.getenv("GEMINI_API_KEY")
+            or os.getenv("GOOGLE_API_KEY")
+        )
         relevance_engine = ProjectRelevanceEngine(gemini_api_key)
         
         # Get user projects from database

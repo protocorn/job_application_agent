@@ -1,0 +1,95 @@
+{
+  "session_id": "dc3ad36d-c91e-4016-8ecc-b310a5a2612e",
+  "current_url": "https://jobs.ashbyhq.com/tenexlabs/804ccd47-203b-4b1b-a642-ff585285b3be/application?utm_source=4Ro3AnlBMJ",
+  "actions": [
+    {
+      "type": "navigate",
+      "timestamp": 1776832872.064053,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/tenexlabs/804ccd47-203b-4b1b-a642-ff585285b3be/application?utm_source=4Ro3AnlBMJ",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776832872.707055,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/tenexlabs/804ccd47-203b-4b1b-a642-ff585285b3be/application?utm_source=4Ro3AnlBMJ",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "click",
+      "timestamp": 1776832934.662056,
+      "selector": "button._button_8wvgw_29",
+      "value": null,
+      "url": null,
+      "element_text": "element",
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776832939.7419434,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/tenexlabs/804ccd47-203b-4b1b-a642-ff585285b3be/application?utm_source=4Ro3AnlBMJ",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "page_state",
+      "timestamp": 1776833026.041179,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/tenexlabs/804ccd47-203b-4b1b-a642-ff585285b3be/application?utm_source=4Ro3AnlBMJ",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "page_title": "Forward Deployed AI Engineer @ Tenex",
+        "page_type": "ai_analysis_checkpoint",
+        "has_clicked_apply": true
+      }
+    },
+    {
+      "type": "page_state",
+      "timestamp": 1776833099.2144737,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/tenexlabs/804ccd47-203b-4b1b-a642-ff585285b3be/application?utm_source=4Ro3AnlBMJ",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "page_title": "Forward Deployed AI Engineer @ Tenex",
+        "page_type": "ai_analysis_checkpoint",
+        "has_clicked_apply": true
+      }
+    }
+  ],
+  "total_actions": 6,
+  "successful_actions": 6,
+  "last_recorded": 1776833114.8721306
+}

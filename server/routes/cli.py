@@ -753,7 +753,12 @@ def create_cli_blueprint() -> Blueprint:
                 500,
             )
 
-        gemini_key = (os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or "").strip()
+        gemini_key = (
+            os.getenv("LAUNCHWAY_GEMINI_API_KEY")
+            or os.getenv("GEMINI_API_KEY")
+            or os.getenv("GOOGLE_API_KEY")
+            or ""
+        ).strip()
         shared_gemini_configured = bool(gemini_key)
         return (
             jsonify(

@@ -1,0 +1,526 @@
+{
+  "session_id": "c1400c0f-470f-41b7-9620-9f76eaa9a65d",
+  "current_url": "https://job-boards.greenhouse.io/scaleai/jobs/4514173005?gh_src=acad35425us",
+  "actions": [
+    {
+      "type": "navigate",
+      "timestamp": 1776831613.592786,
+      "selector": null,
+      "value": null,
+      "url": "https://job-boards.greenhouse.io/scaleai/jobs/4514173005?gh_src=acad35425us",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776831621.3738372,
+      "selector": null,
+      "value": null,
+      "url": "https://job-boards.greenhouse.io/scaleai/jobs/4514173005?gh_src=acad35425us",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "click",
+      "timestamp": 1776831629.3593206,
+      "selector": "button.btn",
+      "value": null,
+      "url": null,
+      "element_text": "element",
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776831634.4568703,
+      "selector": null,
+      "value": null,
+      "url": "https://job-boards.greenhouse.io/scaleai/jobs/4514173005?gh_src=acad35425us",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "upload_file",
+      "timestamp": 1776831655.2935598,
+      "selector": "input[type=\"file\"]",
+      "value": "C:\\Users\\proto\\AppData\\Local\\Temp\\Resume.pdf",
+      "url": null,
+      "element_text": null,
+      "field_label": "Resume Upload (Direct Input)",
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "upload_method": "direct_input",
+        "interaction_type": "file_upload"
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831660.6200082,
+      "selector": "aria_label:First Name",
+      "value": "Sahil",
+      "url": null,
+      "element_text": null,
+      "field_label": "First Name",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:First Name",
+          "label": "First Name",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "Sahil",
+        "verification": {
+          "expected": "Sahil",
+          "actual": "Sahil",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831660.94618,
+      "selector": "aria_label:Last Name",
+      "value": "Chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "Last Name",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:Last Name",
+          "label": "Last Name",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "Chordia",
+        "verification": {
+          "expected": "Chordia",
+          "actual": "Chordia",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831661.2714906,
+      "selector": "aria_label:Email",
+      "value": "chordiasahil24@gmail.com",
+      "url": null,
+      "element_text": null,
+      "field_label": "Email",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:Email",
+          "label": "Email",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "chordiasahil24@gmail.com",
+        "verification": {
+          "expected": "chordiasahil24@gmail.com",
+          "actual": "chordiasahil24@gmail.com",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831666.8841677,
+      "selector": "label_hash:59716c97",
+      "value": "United States of America",
+      "url": null,
+      "element_text": null,
+      "field_label": "Country",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:59716c97",
+          "label": "Country",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "United States of America",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831667.26461,
+      "selector": "aria_label:Phone",
+      "value": "2406101453",
+      "url": null,
+      "element_text": null,
+      "field_label": "Phone",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:Phone",
+          "label": "Phone",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "javascript_injection",
+        "element_attributes": {},
+        "final_value": "(240) 610-1453",
+        "verification": {
+          "expected": "2406101453",
+          "actual": "(240) 610-1453",
+          "passed": false
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831673.2515926,
+      "selector": "label_hash:aafa2998",
+      "value": "Yes",
+      "url": null,
+      "element_text": null,
+      "field_label": "Are you legally authorized to work in the country where the job is located?",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:aafa2998",
+          "label": "Are you legally authorized to work in the country where the job is located?",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "Yes",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831678.422182,
+      "selector": "label_hash:b9fad315",
+      "value": "Yes",
+      "url": null,
+      "element_text": null,
+      "field_label": "Will you now or in the future require company sponsorship to retain or extend your work authorization in the country where the job is located?",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:b9fad315",
+          "label": "Will you now or in the future require company sponsorship to retain or extend your work authorization in the country where the job is located?",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "Yes",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831683.4984577,
+      "selector": "label_hash:019ec313",
+      "value": "Male",
+      "url": null,
+      "element_text": null,
+      "field_label": "Gender",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:019ec313",
+          "label": "Gender",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "Male",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831688.5425353,
+      "selector": "label_hash:e38adc7f",
+      "value": "Not a veteran",
+      "url": null,
+      "element_text": null,
+      "field_label": "Veteran Status",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:e38adc7f",
+          "label": "Veteran Status",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "Not a veteran",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831694.2645288,
+      "selector": "label_hash:7352ba9f",
+      "value": "No disability",
+      "url": null,
+      "element_text": null,
+      "field_label": "Disability Status",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:7352ba9f",
+          "label": "Disability Status",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "No disability",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831715.891015,
+      "selector": "label_hash:7193518e",
+      "value": "C:\\Users\\proto\\AppData\\Local\\Temp\\Sahil_Chordia_CoverLetter.txt",
+      "url": null,
+      "element_text": null,
+      "field_label": "Attach",
+      "field_type": "file_upload",
+      "success": false,
+      "error": "[WinError 32] The process cannot access the file because it is being used by another process",
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:7193518e",
+          "label": "Attach",
+          "field_category": "file_upload",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": null,
+        "element_attributes": {},
+        "final_value": "None",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831716.234792,
+      "selector": "aria_label:Website",
+      "value": "https://github.com/protocorn",
+      "url": null,
+      "element_text": null,
+      "field_label": "Website",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "aria_label:Website",
+          "label": "Website",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "https://github.com/protocorn",
+        "verification": {
+          "expected": "https://github.com/protocorn",
+          "actual": "https://github.com/protocorn",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831721.2841084,
+      "selector": "label_hash:f517c292",
+      "value": "Yes",
+      "url": null,
+      "element_text": null,
+      "field_label": "Are you open to working in person in our San Francisco or New York office 3 times a week?",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:f517c292",
+          "label": "Are you open to working in person in our San Francisco or New York office 3 times a week?",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "Yes",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831726.2072587,
+      "selector": "label_hash:4b22479a",
+      "value": "No",
+      "url": null,
+      "element_text": null,
+      "field_label": "Are you currently bound by any agreements with a current or former employer that may restrict your ability to work for Scale AI or perform the duties of the position for which you are applying? This includes, but is not limited to, non-compete agreements, non-solicitation agreements, confidentiality or non-disclosure agreements, or any other contractual obligations that could limit your employment activities.",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:4b22479a",
+          "label": "Are you currently bound by any agreements with a current or former employer that may restrict your ability to work for Scale AI or perform the duties of the position for which you are applying? This includes, but is not limited to, non-compete agreements, non-solicitation agreements, confidentiality or non-disclosure agreements, or any other contractual obligations that could limit your employment activities.",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "No",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831726.5912244,
+      "selector": "label_hash:44f8c1c3",
+      "value": "https://www.linkedin.com/in/sahil--chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "LinkedIn Profile",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:44f8c1c3",
+          "label": "LinkedIn Profile",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "https://www.linkedin.com/in/sahil--chordia",
+        "verification": {
+          "expected": "https://www.linkedin.com/in/sahil--chordia",
+          "actual": "https://www.linkedin.com/in/sahil--chordia",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831731.5376015,
+      "selector": "label_hash:764cdf33",
+      "value": "No",
+      "url": null,
+      "element_text": null,
+      "field_label": "Are you Hispanic/Latino?",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:764cdf33",
+          "label": "Are you Hispanic/Latino?",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "No",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776831762.3332212,
+      "selector": "label_hash:01a9cb6b",
+      "value": "Asian",
+      "url": null,
+      "element_text": null,
+      "field_label": "Please identify your race",
+      "field_type": "greenhouse_dropdown",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "label_hash:01a9cb6b",
+          "label": "Please identify your race",
+          "field_category": "greenhouse_dropdown",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "fast_fuzzy_match_verified",
+        "element_attributes": {},
+        "final_value": "Asian",
+        "verification": {}
+      }
+    }
+  ],
+  "total_actions": 22,
+  "successful_actions": 21,
+  "last_recorded": 1776831775.3421326
+}

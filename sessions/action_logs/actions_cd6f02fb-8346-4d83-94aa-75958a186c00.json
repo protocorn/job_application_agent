@@ -1,0 +1,61 @@
+{
+  "session_id": "cd6f02fb-8346-4d83-94aa-75958a186c00",
+  "current_url": "https://jobs.ashbyhq.com/Pulsora%20Inc/40114f0d-d976-43b6-867c-23e52d6c6fff/application?utm_source=zvkPOE4Oqg",
+  "actions": [
+    {
+      "type": "navigate",
+      "timestamp": 1776831780.11362,
+      "selector": null,
+      "value": null,
+      "url": "http://jobs.ashbyhq.com/Pulsora%20Inc/40114f0d-d976-43b6-867c-23e52d6c6fff/application?utm_source=zvkPOE4Oqg",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776831781.010322,
+      "selector": null,
+      "value": null,
+      "url": "http://jobs.ashbyhq.com/Pulsora%20Inc/40114f0d-d976-43b6-867c-23e52d6c6fff/application?utm_source=zvkPOE4Oqg",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "click",
+      "timestamp": 1776831841.8024364,
+      "selector": "button._button_8wvgw_29",
+      "value": null,
+      "url": null,
+      "element_text": "element",
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776831846.870873,
+      "selector": null,
+      "value": null,
+      "url": "https://jobs.ashbyhq.com/Pulsora%20Inc/40114f0d-d976-43b6-867c-23e52d6c6fff/application?utm_source=zvkPOE4Oqg",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    }
+  ],
+  "total_actions": 4,
+  "successful_actions": 4,
+  "last_recorded": 1776831848.1377816
+}

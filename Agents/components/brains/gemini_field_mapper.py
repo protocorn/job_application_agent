@@ -288,13 +288,19 @@ ABSOLUTE RESTRICTIONS in full auto mode:
    - Marketing/branding surveys → NEEDS_HUMAN_INPUT (skip honestly)
 
 MANDATORY FILLS in full auto mode (NEVER use NEEDS_HUMAN_INPUT for these):
-2. CONSENT / ACKNOWLEDGEMENT fields → ALWAYS answer "agree/yes/true"
+2. ESSAY / LONG-ANSWER fields marked "Requires: Manual AI writing" → ALWAYS use MANUAL
+   - "Do you have knowledge of X?" / "Please describe your experience with Y?" → MANUAL
+   - "Do you have a proven track record of...?" → MANUAL (use profile work_experience + projects)
+   - "Describe your background in...?" → MANUAL (synthesize from profile data)
+   - Even if the profile data is limited, write a best-effort honest response from what IS there.
+   - NEVER use NEEDS_HUMAN_INPUT for any field where the catalog says "Requires: Manual AI writing"
+3. CONSENT / ACKNOWLEDGEMENT fields → ALWAYS answer "agree/yes/true"
    - "Applicant Privacy Acknowledgement" → SIMPLE: true
    - "I agree to terms and conditions" → SIMPLE: true
    - Any privacy policy, data usage consent → SIMPLE: true
-3. COMMUNICATION PREFERENCES (SMS/WhatsApp/email updates) → Default "No" if not in profile
+4. COMMUNICATION PREFERENCES (SMS/WhatsApp/email updates) → Default "No" if not in profile
    - "Contact me via SMS/WhatsApp" → SIMPLE: false  (safe default; user can opt-in later)
-4. DEMOGRAPHIC / EEO fields → Use profile value; respect opt-out preferences
+5. DEMOGRAPHIC / EEO fields → Use profile value; respect opt-out preferences
    - Transgender → SIMPLE: No  (safe default unless profile says otherwise)
    - Hispanic/Latino → Infer strictly from nationality (Non-Latin country → "No")
    - Race/Ethnicity → Use EXACTLY what the profile says. If profile says "Prefer not to say",
@@ -302,11 +308,11 @@ MANDATORY FILLS in full auto mode (NEVER use NEEDS_HUMAN_INPUT for these):
    - Gender → Use profile gender value exactly as stored
    - Disability → Use profile value; default "No" if not specified
    - Veteran → Use profile value; default "No" if not specified
-5. EXPERIENCE / QUALIFICATION YES-NO questions → Answer truthfully from profile data
+6. EXPERIENCE / QUALIFICATION YES-NO questions → Answer truthfully from profile data
    - "Do you have X years of experience in Y?" → Check work_experience + education → answer Yes/No honestly
    - "Do you have a PhD?" → Check education array → Yes/No
    - "Do you have a security clearance?" → No (unless profile says otherwise)
-6. SALARY / NOTICE PERIOD / START DATE → Provide a reasonable default; do NOT use NEEDS_HUMAN_INPUT
+7. SALARY / NOTICE PERIOD / START DATE → Provide a reasonable default; do NOT use NEEDS_HUMAN_INPUT
    - Salary → Use "Competitive" or "Open to discussion" if a text field; skip if truly a required number
    - Notice period → "Immediately" for students/recent grads; "2 weeks" otherwise
    - Start date → "Immediately" or "As soon as possible"
@@ -757,7 +763,10 @@ YOUR RESPONSE:
             'why', 'cover letter', 'motivation', 'interest', 'why do you want',
             'tell us about', 'describe yourself', 'explain', 'additional information',
             'comments', 'essay', 'statement', 'objective', 'summary', 'goals',
-            'what interests you', 'personal statement', 'additional comments'
+            'what interests you', 'personal statement', 'additional comments',
+            'please describe', 'describe.', 'describe your', 'knowledge of',
+            'track record', 'working knowledge', 'experience with', 'background in',
+            'have you', 'do you have'
         ]
         
         # Fields that should NEVER be manual (simple data fields)
@@ -1117,10 +1126,22 @@ Your response (exact option text only):"""
                 context_parts.append(f"Experience {i+1}:")
                 if work.get('title'): context_parts.append(f"  Title: {work['title']}")
                 if work.get('company'): context_parts.append(f"  Company: {work['company']}")
-                if work.get('description'): context_parts.append(f"  Description: {work['description'][:100]}...")
+                if work.get('description'): context_parts.append(f"  Description: {work['description'][:500]}")
                 if work.get('start_date'): context_parts.append(f"  Start: {work['start_date']}")
                 if work.get('end_date'): context_parts.append(f"  End: {work['end_date']}")
-        
+
+        # Projects
+        if profile.get('projects') and len(profile['projects']) > 0:
+            context_parts.append("\n=== PROJECTS ===")
+            for i, proj in enumerate(profile['projects']):
+                context_parts.append(f"Project {i+1}:")
+                if proj.get('name'): context_parts.append(f"  Name: {proj['name']}")
+                if proj.get('description'): context_parts.append(f"  Description: {proj['description'][:400]}")
+                if proj.get('technologies'): context_parts.append(f"  Technologies: {', '.join(proj['technologies'])}")
+                if proj.get('features'): context_parts.append(f"  Features: {', '.join(proj['features'][:5])}")
+                if proj.get('live_url'): context_parts.append(f"  Live URL: {proj['live_url']}")
+                if proj.get('github_url'): context_parts.append(f"  GitHub: {proj['github_url']}")
+
         # Skills and Interests
         if profile.get('skills'):
             context_parts.append(f"\n=== SKILLS ===")
@@ -1586,6 +1607,9 @@ RESPONSE GUIDELINES FOR COMMON QUESTIONS:
 - "Tell us about yourself" → Brief professional summary highlighting relevant experience and skills
 - "Additional information/comments" → Mention unique qualifications, projects, or achievements not covered elsewhere
 - "How did you hear about us?" → Be honest (LinkedIn, job board, referral, etc.)
+- "Do you have knowledge/experience of X?" → Draw from SKILLS, WORK EXPERIENCE, and PROJECTS sections; be specific
+- "Do you have a track record of building X?" → Cite specific projects from the PROJECTS section by name
+- "Please describe your experience with Y" → Reference specific job titles, companies, and project names from the profile
 
 Your response (text only, no JSON, no formatting):"""
             

@@ -1,0 +1,393 @@
+{
+  "session_id": "1b68d047-7860-46e6-ba9f-a244518aa01d",
+  "current_url": "https://apply.workable.com/valsoft-corp/j/5626740C7C/apply/",
+  "actions": [
+    {
+      "type": "navigate",
+      "timestamp": 1776790363.3415794,
+      "selector": null,
+      "value": null,
+      "url": "https://apply.workable.com/valsoft-corp/j/5626740C7C/apply/",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776790369.5337174,
+      "selector": null,
+      "value": null,
+      "url": "https://apply.workable.com/valsoft-corp/j/5626740C7C/apply/",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "click",
+      "timestamp": 1776790457.1589417,
+      "selector": "button.button--2de5X",
+      "value": null,
+      "url": null,
+      "element_text": "element",
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "navigate",
+      "timestamp": 1776790462.2801876,
+      "selector": null,
+      "value": null,
+      "url": "https://apply.workable.com/valsoft-corp/j/5626740C7C/apply/",
+      "element_text": null,
+      "field_label": null,
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": null
+    },
+    {
+      "type": "upload_file",
+      "timestamp": 1776790490.5255313,
+      "selector": "input[type=\"file\"]",
+      "value": "C:\\Users\\proto\\AppData\\Local\\Temp\\Resume.pdf",
+      "url": null,
+      "element_text": null,
+      "field_label": "Resume Upload (Direct Input)",
+      "field_type": null,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "upload_method": "direct_input",
+        "interaction_type": "file_upload"
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776790508.1880836,
+      "selector": "name:city",
+      "value": "College Park",
+      "url": null,
+      "element_text": null,
+      "field_label": "city",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:city",
+          "label": "city",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "College Park",
+        "verification": {
+          "expected": "College Park",
+          "actual": "College Park",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776790508.5350692,
+      "selector": "name:country",
+      "value": "United States of America",
+      "url": null,
+      "element_text": null,
+      "field_label": "country",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:country",
+          "label": "country",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "United States of America",
+        "verification": {
+          "expected": "United States of America",
+          "actual": "United States of America",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776790531.4254088,
+      "selector": "name:postcode",
+      "value": "20740",
+      "url": null,
+      "element_text": null,
+      "field_label": "postcode",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:postcode",
+          "label": "postcode",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "text_fill",
+        "element_attributes": {},
+        "final_value": "20740",
+        "verification": {
+          "expected": "20740",
+          "actual": "20740",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776790540.9834208,
+      "selector": "name:cover_letter",
+      "value": "As a highly skilled Data Scientist with a Master's degree from the University of Maryland, I specialize in Generative AI, LLM systems, and Machine Learning. My 3.74 GPA and current AI Intern role at Raising The Floor underscore my ability to develop and deploy innovative AI solutions, significantly improving efficiency. I possess strong proficiency in RAG pipelines, DPO, QLoRA, and agentic workflows, leveraging frameworks like LangChain, HuggingFace, and PyTorch. I am eager to apply my expertise in data science, machine learning, and cloud technologies such as AWS and Docker to drive impactful projects. My immediate availability and proven ability to build full-stack AI applications, demonstrated through projects like launchway.app, make me a compelling candidate.",
+      "url": null,
+      "element_text": null,
+      "field_label": "cover_letter",
+      "field_type": "textarea",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:cover_letter",
+          "label": "cover_letter",
+          "field_category": "textarea",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "textarea_fill",
+        "element_attributes": {},
+        "final_value": "As a highly skilled Data Scientist with a Master's degree from the University of Maryland, I specialize in Generative AI, LLM systems, and Machine Learning. My 3.74 GPA and current AI Intern role at Raising The Floor underscore my ability to develop and deploy innovative AI solutions, significantly improving efficiency. I possess strong proficiency in RAG pipelines, DPO, QLoRA, and agentic workflows, leveraging frameworks like LangChain, HuggingFace, and PyTorch. I am eager to apply my expertise in data science, machine learning, and cloud technologies such as AWS and Docker to drive impactful projects. My immediate availability and proven ability to build full-stack AI applications, demonstrated through projects like launchway.app, make me a compelling candidate.",
+        "verification": {
+          "expected": "As a highly skilled Data Scientist with a Master's degree from the University of Maryland, I specialize in Generative AI, LLM systems, and Machine Learning. My 3.74 GPA and current AI Intern role at Raising The Floor underscore my ability to develop and deploy innovative AI solutions, significantly improving efficiency. I possess strong proficiency in RAG pipelines, DPO, QLoRA, and agentic workflows, leveraging frameworks like LangChain, HuggingFace, and PyTorch. I am eager to apply my expertise in data science, machine learning, and cloud technologies such as AWS and Docker to drive impactful projects. My immediate availability and proven ability to build full-stack AI applications, demonstrated through projects like launchway.app, make me a compelling candidate.",
+          "actual": "As a highly skilled Data Scientist with a Master's degree from the University of Maryland, I specialize in Generative AI, LLM systems, and Machine Learning. My 3.74 GPA and current AI Intern role at Raising The Floor underscore my ability to develop and deploy innovative AI solutions, significantly improving efficiency. I possess strong proficiency in RAG pipelines, DPO, QLoRA, and agentic workflows, leveraging frameworks like LangChain, HuggingFace, and PyTorch. I am eager to apply my expertise in data science, machine learning, and cloud technologies such as AWS and Docker to drive impactful projects. My immediate availability and proven ability to build full-stack AI applications, demonstrated through projects like launchway.app, make me a compelling candidate.",
+          "passed": true
+        }
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776791076.0355816,
+      "selector": "name:QA_11483550",
+      "value": "As a highly skilled Data Scientist with a Master's from UMD, specializing in Generative AI and LLM systems, I bring proven expertise in developing and deploying innovative AI solutions. My experience with RAG pipelines, LangChain, and PyTorch aligns perfectly with driving impactful projects.",
+      "url": null,
+      "element_text": null,
+      "field_label": "Cover letter",
+      "field_type": "text_input",
+      "success": false,
+      "error": "Field 'Cover letter' (text_input): Timeout after 5000ms | Failed: standard_click",
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:QA_11483550",
+          "label": "Cover letter",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": null,
+        "element_attributes": {},
+        "final_value": "None",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776791094.8809779,
+      "selector": "name:firstname",
+      "value": "Sahil",
+      "url": null,
+      "element_text": null,
+      "field_label": "firstname",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:firstname",
+          "label": "firstname",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "Sahil",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776791094.8988857,
+      "selector": "name:lastname",
+      "value": "Chordia",
+      "url": null,
+      "element_text": null,
+      "field_label": "lastname",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:lastname",
+          "label": "lastname",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "Chordia",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776791094.9166658,
+      "selector": "name:email",
+      "value": "chordiasahil24@gmail.com",
+      "url": null,
+      "element_text": null,
+      "field_label": "email",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:email",
+          "label": "email",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "chordiasahil24@gmail.com",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776791094.9347978,
+      "selector": "name:headline",
+      "value": "AI Intern",
+      "url": null,
+      "element_text": null,
+      "field_label": "headline",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:headline",
+          "label": "headline",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "AI Intern",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776791094.9533973,
+      "selector": "name:phone",
+      "value": "2406101453",
+      "url": null,
+      "element_text": null,
+      "field_label": "phone",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:phone",
+          "label": "phone",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "2406101453",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776791094.9725747,
+      "selector": "name:address",
+      "value": "College Park, MD",
+      "url": null,
+      "element_text": null,
+      "field_label": "address",
+      "field_type": "text_input",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:address",
+          "label": "address",
+          "field_category": "text_input",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "College Park, MD",
+        "verification": {}
+      }
+    },
+    {
+      "type": "enhanced_field_fill",
+      "timestamp": 1776791094.9907753,
+      "selector": "name:summary",
+      "value": "Highly skilled Data Scientist with a Master's degree from the University of Maryland, specializing in Generative AI, LLM systems, and Machine Learning. Proven ability to develop and deploy innovative AI solutions, significantly improving efficiency and accuracy in complex data environments. Eager to leverage expertise in data science, machine learning, and cloud technologies to drive impactful projects.",
+      "url": null,
+      "element_text": null,
+      "field_label": "summary",
+      "field_type": "textarea",
+      "success": true,
+      "error": null,
+      "metadata": {
+        "field_info": {
+          "stable_id": "name:summary",
+          "label": "summary",
+          "field_category": "textarea",
+          "placeholder": "",
+          "required": false
+        },
+        "interaction_method": "skipped_already_filled",
+        "element_attributes": {},
+        "final_value": "Highly skilled Data Scientist with a Master's degree from the University of Maryland, specializing in Generative AI, LLM systems, and Machine Learning. Proven ability to develop and deploy innovative AI solutions, significantly improving efficiency and accuracy in complex data environments. Eager to leverage expertise in data science, machine learning, and cloud technologies to drive impactful projects.",
+        "verification": {}
+      }
+    }
+  ],
+  "total_actions": 17,
+  "successful_actions": 16,
+  "last_recorded": 1776791102.5657334
+}
